@@ -4,7 +4,7 @@ import type { CryptoSignal, SetupScoreBreakdown, SignalSetupType } from '@/types
 import type { SymbolTicker } from '@/types/market';
 
 /** Core watchlist symbols (scanner / signal engine focus). Order is preserved in UI. */
-export const TRACKED_SYMBOLS = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'AVAXUSDT', 'LINKUSDT'] as const;
+export const TRACKED_SYMBOLS = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'AVAXUSDT', 'LINKUSDT', 'PAXGUSDT', 'XAGUSDT'] as const;
 export type TrackedSymbol = (typeof TRACKED_SYMBOLS)[number];
 
 /** How many symbols to show (top 24h % gainers among USDT linear perpetuals). */

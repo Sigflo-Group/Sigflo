@@ -13,6 +13,8 @@ const FALLBACK_LAST_BY_BASE: Record<string, number> = {
   AVAX: 36,
   DOGE: 0.16,
   XRP: 0.55,
+  PAXG: 2350,
+  XAG: 30,
 };
 
 function pairBaseUpper(pair: string): string {

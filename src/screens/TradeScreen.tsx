@@ -86,6 +86,8 @@ const TRADE_PAIR_PICKER_FALLBACKS: CryptoSignal[] = [
   buildTrackedFallbackSignal('BTC', 'BTCUSDT'),
   buildTrackedFallbackSignal('ETH', 'ETHUSDT'),
   buildTrackedFallbackSignal('SOL', 'SOLUSDT'),
+  buildTrackedFallbackSignal('PAXG', 'PAXGUSDT'),
+  buildTrackedFallbackSignal('XAG', 'XAGUSDT'),
 ];
 
 function roundUsdAmount(n: number): number {

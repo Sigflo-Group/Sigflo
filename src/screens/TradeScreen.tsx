@@ -1103,7 +1103,7 @@ export function TradeScreen() {
       setAssistedExitBarForceHidden(false);
       return;
     }
-    const id = window.setTimeout(() => setAssistedExitBarForceHidden(true), 2800);
+    const id = window.setTimeout(() => setAssistedExitBarForceHidden(true), 12000);
     return () => window.clearTimeout(id);
   }, [exitAuto.mode, exitFlowDispState, exitFlowRawState]);
 
@@ -2387,6 +2387,8 @@ export function TradeScreen() {
                 onClearActivity={exitAuto.clearActivity}
                 compactActivity={!isManageMode}
                 hasOpenPosition={hasActiveTradePosition || isManageMode}
+                exitFlowState={exitFlow?.effective.state ?? null}
+                exitFlowNextPlanned={exitFlow?.nextPlanned ?? null}
               />
             </ExitModePanel>
           </div>

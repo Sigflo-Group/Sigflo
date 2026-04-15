@@ -138,6 +138,10 @@ export type ExitAutomationControlsProps = {
   compactActivity?: boolean;
   /** When false, shows a hint that exit actions require an open position. */
   hasOpenPosition?: boolean;
+  /** Current exit guidance state from the engine (hold / trim / exit). */
+  exitFlowState?: 'hold' | 'trim' | 'exit' | null;
+  /** Human-readable next-planned automation line. */
+  exitFlowNextPlanned?: string | null;
 };
 
 export function ExitAutomationControls(props: ExitAutomationControlsProps) {
@@ -155,6 +159,8 @@ export function ExitAutomationControls(props: ExitAutomationControlsProps) {
     onClearActivity,
     compactActivity,
     hasOpenPosition,
+    exitFlowState,
+    exitFlowNextPlanned,
   } = props;
   const [safeguardsOpen, setSafeguardsOpen] = useState(false);
   const [customSensitivityOpen, setCustomSensitivityOpen] = useState(false);
@@ -237,6 +243,33 @@ export function ExitAutomationControls(props: ExitAutomationControlsProps) {
               <p className="rounded-lg border border-amber-500/20 bg-amber-500/[0.06] px-2 py-1.5 text-[10px] leading-snug text-amber-200/90">
                 Open a position first — exit actions activate once a trade is live.
               </p>
+            ) : null}
+            {mode === 'assisted' && hasOpenPosition !== false && exitFlowState != null ? (
+              <div
+                className={`rounded-lg border px-2 py-1.5 text-[10px] leading-snug ${
+                  exitFlowState === 'exit'
+                    ? 'border-rose-400/25 bg-rose-500/[0.08] text-rose-100/90'
+                    : exitFlowState === 'trim'
+                      ? 'border-amber-400/25 bg-amber-500/[0.08] text-amber-100/90'
+                      : 'border-cyan-400/20 bg-cyan-500/[0.06] text-cyan-100/90'
+                }`}
+              >
+                <span className="font-semibold">
+                  {exitFlowState === 'exit'
+                    ? '⚠ EXIT signal'
+                    : exitFlowState === 'trim'
+                      ? '↗ TRIM signal'
+                      : '● Watching'}
+                </span>
+                {exitFlowNextPlanned ? (
+                  <span className="ml-1 font-normal text-white/70">{exitFlowNextPlanned}</span>
+                ) : null}
+                {(exitFlowState === 'trim' || exitFlowState === 'exit') ? (
+                  <p className="mt-1 text-[9px] font-medium text-white/60">
+                    Confirm bar will appear above — scroll up to review and confirm.
+                  </p>
+                ) : null}
+              </div>
             ) : null}
 
             {mode !== 'manual' ? (

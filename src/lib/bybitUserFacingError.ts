@@ -39,7 +39,11 @@ export function formatBybitTradeErrorMessage(err: unknown, fallback = 'Request f
     return 'This API key cannot trade on Bybit. Connect a read/write key in Account.';
   }
 
-  if (low.includes('leverage') && (low.includes('not modified') || low.includes('invalid'))) {
+  if (low.includes('not modified')) {
+    return 'Bybit reports nothing to change (already set). If you just placed an order, check the exchange — it may have gone through.';
+  }
+
+  if (low.includes('leverage') && low.includes('invalid')) {
     return 'Bybit could not apply that leverage for this symbol. Lower leverage or set it on the exchange, then retry.';
   }
 

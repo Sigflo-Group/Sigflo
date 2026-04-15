@@ -1,4 +1,5 @@
 import { log } from '../lib/logger.js';
+import { isBybitTradingStopNoopError } from '../lib/bybitNoopErrors.js';
 import { sanitizeHttpErrorDetail } from '../lib/httpErrorDetail.js';
 import { getJson, signHmacSha256 } from './http.js';
 import type {
@@ -736,8 +737,8 @@ export class BybitAdapter implements ExchangeAdapter {
       );
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      // Bybit returns this when leverage is already at the requested value — safe no-op.
-      if (/leverage not modified/i.test(msg)) return;
+      // Bybit e.g. retCode 110043: "Set leverage has not been modified" — wording varies; any *not modified* here is a no-op.
+      if (/not modified/i.test(msg)) return;
       throw e;
     }
   }
@@ -767,7 +768,14 @@ export class BybitAdapter implements ExchangeAdapter {
       takeProfit: params.takeProfit.trim(),
       stopLoss: params.stopLoss.trim(),
     };
-    await privatePost<Record<string, unknown>>('/v5/position/trading-stop', body, input);
+    try {
+      await privatePost<Record<string, unknown>>('/v5/position/trading-stop', body, input);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      // Bybit e.g. retMsg "not modified" / 34040 — TP/SL already matches (e.g. set on order create + we sync same levels after fill).
+      if (isBybitTradingStopNoopError(msg)) return;
+      throw e;
+    }
   }
 
   async placeLinearOrder(

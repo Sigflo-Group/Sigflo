@@ -1,25 +1,40 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { AddBotFlowModal, type AddBotCompletePayload } from '@/components/bots/AddBotFlowModal';
 import { BotCard } from '@/components/bots/BotCard';
+import { BotConsensusStrip } from '@/components/bots/BotConsensusStrip';
 import { BotOverviewCard } from '@/components/bots/BotOverviewCard';
+import { TradingControlModeSheet } from '@/components/bots/TradingControlModeSheet';
+import { useTradingControlMode } from '@/context/TradingControlModeContext';
+import { useAccountSnapshot } from '@/hooks/useAccountSnapshot';
 import { useBotStatuses } from '@/hooks/useBotStatuses';
+import { useBotUserConfig } from '@/hooks/useBotUserConfig';
 import { useSignalEngine } from '@/hooks/useSignalEngine';
 import {
   BOTS_RECENT_ACTIVITY_MAX,
   baseBots,
   resolveBotCardStatus,
 } from '@/lib/bots';
-import { buildBotViewChartTradeQuery } from '@/lib/tradeNavigation';
 import { deriveMarketStatus } from '@/lib/marketScannerRows';
+import {
+  buildBotCardExchangeStats,
+  portfolioHasConnectedExchange,
+  portfolioNetEquityUsd,
+} from '@/lib/portfolioBotAttribution';
 import { uiSignalStateClasses, uiSignalStateFromMarketStatus, uiSignalStateLabel } from '@/lib/signalState';
 import type { CryptoSignal } from '@/types/signal';
 
 export default function BotsScreen() {
   const navigate = useNavigate();
   const { signals } = useSignalEngine();
+  const { items: portfolioSnapshots, closedTrades } = useAccountSnapshot({ pollMs: 12_000 });
+  const { mode, meta, setMode } = useTradingControlMode();
+  const [modeSheetOpen, setModeSheetOpen] = useState(false);
   const [tick, setTick] = useState(0);
-  const { statusMap, togglePause } = useBotStatuses();
+  const { statusMap, setBotStatus, togglePause } = useBotStatuses();
+  const { mergeBot, upsertConfig } = useBotUserConfig();
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [addBotOpen, setAddBotOpen] = useState(false);
 
   useEffect(() => {
     const id = window.setInterval(() => setTick((v) => v + 1), 1800);
@@ -32,21 +47,55 @@ export default function BotsScreen() {
     return map;
   }, [signals]);
 
+  const portfolioConnected = useMemo(
+    () => portfolioHasConnectedExchange(portfolioSnapshots),
+    [portfolioSnapshots],
+  );
+  const portfolioEquityUsd = useMemo(() => portfolioNetEquityUsd(portfolioSnapshots), [portfolioSnapshots]);
+
+  const exchangeFooterByBotId = useMemo(() => {
+    if (!portfolioConnected) return undefined;
+    const out: Record<string, ReturnType<typeof buildBotCardExchangeStats>> = {};
+    for (const b of baseBots) {
+      const merged = mergeBot(b);
+      out[b.id] = buildBotCardExchangeStats(merged, closedTrades, portfolioEquityUsd);
+    }
+    return out;
+  }, [portfolioConnected, closedTrades, portfolioEquityUsd, mergeBot]);
+
   const botsWithSignal = useMemo(
     () =>
-      baseBots.map((b) => ({
-        ...b,
-        status: statusMap[b.id] ?? b.status,
-        signal: signalById.get(b.signalId) ?? signals[0],
-      })),
-    [statusMap, signalById, signals],
+      baseBots.map((b) => {
+        const merged = mergeBot(b);
+        return {
+          ...merged,
+          status: statusMap[b.id] ?? merged.status,
+          signal: signalById.get(b.signalId) ?? signals[0],
+        };
+      }),
+    [mergeBot, statusMap, signalById, signals],
+  );
+
+  const handleAddBotComplete = useCallback(
+    (payload: AddBotCompletePayload) => {
+      upsertConfig(payload.botId, { watchedPairs: payload.watchedPairs, riskLevel: payload.riskLevel });
+      setBotStatus(payload.botId, 'scanning');
+      setMode(payload.setupMode === 'assisted' ? 'assisted' : 'suggestion');
+      setExpandedId(payload.botId);
+    },
+    [upsertConfig, setBotStatus, setMode],
   );
 
   const activeCount = botsWithSignal.filter((b) => b.status === 'active').length;
   const scanningCount = botsWithSignal.filter((b) => b.status === 'scanning').length;
   const pausedCount = botsWithSignal.filter((b) => b.status === 'paused').length;
   const watchingCount = new Set(botsWithSignal.flatMap((b) => b.watchedPairs)).size;
-  const signalsTodayTotal = botsWithSignal.reduce((s, b) => s + b.stats.signalsToday, 0);
+  const signalsTodayTotal = useMemo(() => {
+    if (exchangeFooterByBotId) {
+      return Object.values(exchangeFooterByBotId).reduce((s, x) => s + x.tradesToday, 0);
+    }
+    return botsWithSignal.reduce((s, b) => s + b.stats.signalsToday, 0);
+  }, [exchangeFooterByBotId, botsWithSignal]);
 
   const inTradeCount = useMemo(() => {
     let n = 0;
@@ -77,9 +126,16 @@ export default function BotsScreen() {
     return Array.from({ length: n }, (_, offset) => ordered[(tick + offset) % ordered.length]);
   }, [signals, tick]);
 
-  const openBot = useCallback(
+  const openBotWorkspace = useCallback(
     (botId: string) => {
-      navigate(`/bots/${botId}`);
+      navigate(`/bots/${botId}/focus`);
+    },
+    [navigate],
+  );
+
+  const openBotSettings = useCallback(
+    (botId: string) => {
+      navigate(`/bots/${botId}/settings`);
     },
     [navigate],
   );
@@ -120,18 +176,30 @@ export default function BotsScreen() {
             scanningBots: scanningCount,
             marketsWatched: watchingCount,
             signalsToday: signalsTodayTotal,
+            todayActivityLabel: exchangeFooterByBotId ? 'Trades today' : undefined,
           }}
           subline={overviewSubline}
-          onAddBot={() => navigate('/feed')}
+          modeLabel={`Mode: ${meta.label}`}
+          onOpenModeSheet={() => setModeSheetOpen(true)}
+          modeSheetOpen={modeSheetOpen}
+          onAddBot={() => setAddBotOpen(true)}
         />
 
-        <div className="relative overflow-hidden rounded-2xl border border-amber-400/20 bg-gradient-to-r from-amber-500/[0.08] via-[rgba(0,255,200,0.06)] to-amber-500/[0.08] px-4 py-3 text-center shadow-[0_0_32px_-14px_rgba(251,191,36,0.35)] ring-1 ring-amber-400/15">
-          <p className="text-[11px] font-extrabold uppercase tracking-[0.28em] text-amber-100/95">Coming soon</p>
-          <p className="mt-1 text-[11px] leading-snug text-sigflo-muted">
-            Autonomous bot execution and exchange-linked agents are in development. This screen is a preview of the command
-            center.
-          </p>
-        </div>
+        <AddBotFlowModal
+          open={addBotOpen}
+          onClose={() => setAddBotOpen(false)}
+          onComplete={handleAddBotComplete}
+        />
+
+        <TradingControlModeSheet
+          open={modeSheetOpen}
+          onClose={() => setModeSheetOpen(false)}
+          currentMode={mode}
+          onSelectMode={(m) => {
+            setMode(m);
+            setModeSheetOpen(false);
+          }}
+        />
 
         <section className="space-y-3">
           {botsWithSignal.map((bot) => {
@@ -148,22 +216,21 @@ export default function BotsScreen() {
                 bot={bot}
                 signal={hasSignal ? signal : null}
                 cardStatus={cardStatus}
+                exchangeFooter={exchangeFooterByBotId?.[bot.id]}
                 isSpotlight={isSpotlight}
                 expanded={expandedId === bot.id}
                 onToggleExpand={() => toggleExpand(bot.id)}
-                onOpenBot={() => openBot(bot.id)}
+                onOpenBot={() => openBotWorkspace(bot.id)}
                 onPause={() => togglePause(bot.id)}
-                onSettings={() => openBot(bot.id)}
-                onViewChart={() =>
-                  navigate(`/trade?${buildBotViewChartTradeQuery({ id: bot.id, watchedPairs: bot.watchedPairs }, hasSignal ? signal : null)}`)
-                }
-                onAdjustRisk={() => openBot(bot.id)}
+                onSettings={() => openBotSettings(bot.id)}
+                onViewChart={() => navigate(`/bots/${bot.id}/focus?focusSetup=1`)}
+                onAdjustRisk={() => openBotWorkspace(bot.id)}
               />
             );
           })}
         </section>
 
-        <section className="rounded-2xl border border-white/[0.06] bg-sigflo-surface/90 p-3 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.04)]">
+        <section className="rounded-2xl border border-white/[0.06] bg-sigflo-surface sigflo-panel-texture p-3 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.04)]">
           <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-sigflo-muted">Recent market activity</p>
           <div className="mt-2 space-y-1.5">
             {recentActivity.map((s) => {
@@ -172,7 +239,7 @@ export default function BotsScreen() {
               return (
                 <div
                   key={s.id}
-                  className="flex items-center justify-between rounded-xl border border-white/[0.04] bg-black/25 px-2.5 py-2 text-xs"
+                  className="flex items-center justify-between rounded-xl border border-white/[0.06] bg-sigflo-elevated px-2.5 py-2 text-xs"
                 >
                   <p className="font-medium text-sigflo-text">{s.pair}</p>
                   <p className={`inline-flex items-center gap-1 font-semibold ${stateStyle.text}`}>
@@ -185,10 +252,7 @@ export default function BotsScreen() {
           </div>
         </section>
 
-        <div className="rounded-2xl border border-dashed border-cyan-400/15 bg-black/25 px-3 py-3 text-center">
-          <p className="text-[10px] font-extrabold uppercase tracking-[0.22em] text-cyan-200/80">Coming soon</p>
-          <p className="mt-1 text-[11px] text-sigflo-muted/90">Pro agent slots and custom strategies</p>
-        </div>
+        <BotConsensusStrip />
       </div>
     </div>
   );

@@ -23,67 +23,128 @@ function SlideToExecute({
   const [trackW, setTrackW] = useState(0);
   const [dragX, setDragX] = useState(0);
   const [dragging, setDragging] = useState(false);
+  const draggingRef = useRef(false);
   const startX = useRef(0);
   const startDragX = useRef(0);
   const commitScheduledRef = useRef(false);
+  const maxXRef = useRef(0);
+  const dragXRef = useRef(0);
+  const disabledRef = useRef(disabled);
+  const busyRef = useRef(busy);
+  const onCommitRef = useRef(onCommit);
+  const removeWindowListenersRef = useRef<(() => void) | null>(null);
 
   const maxX = Math.max(0, trackW - THUMB_W);
+  maxXRef.current = maxX;
+  dragXRef.current = dragX;
+  disabledRef.current = disabled;
+  busyRef.current = busy;
+  onCommitRef.current = onCommit;
+
   const rawProgress = maxX > 0 ? dragX / maxX : 0;
   const fillProgress = maxX > 0 ? Math.pow(rawProgress, 1.12) : 0;
 
   useLayoutEffect(() => {
     const el = trackRef.current;
     if (!el) return;
-    const ro = new ResizeObserver(() => setTrackW(el.clientWidth));
+    const measure = () => {
+      const w = el.clientWidth;
+      setTrackW(w);
+      if (w === 0) {
+        requestAnimationFrame(() => setTrackW(el.clientWidth));
+      }
+    };
+    const ro = new ResizeObserver(measure);
     ro.observe(el);
-    setTrackW(el.clientWidth);
+    measure();
     return () => ro.disconnect();
   }, []);
 
   useEffect(() => {
-    if (!disabled && !busy && !dragging) {
+    if (disabled || busy) {
+      removeWindowListenersRef.current?.();
+      removeWindowListenersRef.current = null;
+      draggingRef.current = false;
+      setDragging(false);
       setDragX(0);
       commitScheduledRef.current = false;
     }
-  }, [disabled, busy, dragging]);
+  }, [disabled, busy]);
+
+  useEffect(
+    () => () => {
+      removeWindowListenersRef.current?.();
+      removeWindowListenersRef.current = null;
+    },
+    [],
+  );
 
   const snapBack = useCallback(() => setDragX(0), []);
 
-  const onPointerDown = (e: React.PointerEvent) => {
-    if (disabled || busy || maxX <= 0) return;
+  const onPointerDown = (e: React.PointerEvent<HTMLButtonElement>) => {
+    if (disabledRef.current || busyRef.current || maxXRef.current <= 0) return;
     e.preventDefault();
+    e.stopPropagation();
+    removeWindowListenersRef.current?.();
+    removeWindowListenersRef.current = null;
     commitScheduledRef.current = false;
-    (e.target as HTMLElement).setPointerCapture(e.pointerId);
-    setDragging(true);
-    startX.current = e.clientX;
-    startDragX.current = dragX;
-  };
-
-  const onPointerMove = (e: React.PointerEvent) => {
-    if (!dragging || disabled || busy) return;
-    const dx = e.clientX - startX.current;
-    setDragX(clamp(startDragX.current + dx, 0, maxX));
-  };
-
-  const onPointerUp = (e: React.PointerEvent) => {
-    if (!dragging) return;
-    setDragging(false);
+    const pointerId = e.pointerId;
+    const target = e.currentTarget;
     try {
-      (e.target as HTMLElement).releasePointerCapture(e.pointerId);
+      target.setPointerCapture(pointerId);
     } catch {
       /* ignore */
     }
-    const x = clamp(startDragX.current + (e.clientX - startX.current), 0, maxX);
-    if (maxX > 0 && x >= maxX * COMMIT_THRESHOLD && !commitScheduledRef.current) {
-      commitScheduledRef.current = true;
-      window.setTimeout(() => onCommit(), EXEC_DELAY_MS);
-    } else {
-      snapBack();
-    }
+    draggingRef.current = true;
+    setDragging(true);
+    startX.current = e.clientX;
+    startDragX.current = dragXRef.current;
+
+    const removeListeners = () => {
+      window.removeEventListener('pointermove', onMove, true);
+      window.removeEventListener('pointerup', onUp, true);
+      window.removeEventListener('pointercancel', onUp, true);
+      removeWindowListenersRef.current = null;
+    };
+
+    const onMove = (ev: PointerEvent) => {
+      if (ev.pointerId !== pointerId) return;
+      if (!draggingRef.current || disabledRef.current || busyRef.current) return;
+      ev.preventDefault();
+      const dx = ev.clientX - startX.current;
+      const mx = maxXRef.current;
+      setDragX(clamp(startDragX.current + dx, 0, mx));
+    };
+
+    const onUp = (ev: PointerEvent) => {
+      if (ev.pointerId !== pointerId) return;
+      removeListeners();
+      if (!draggingRef.current) return;
+      draggingRef.current = false;
+      setDragging(false);
+      try {
+        target.releasePointerCapture(pointerId);
+      } catch {
+        /* ignore */
+      }
+      const mx = maxXRef.current;
+      const x = clamp(startDragX.current + (ev.clientX - startX.current), 0, mx);
+      if (mx > 0 && x >= mx * COMMIT_THRESHOLD && !commitScheduledRef.current) {
+        commitScheduledRef.current = true;
+        window.setTimeout(() => onCommitRef.current(), EXEC_DELAY_MS);
+      } else {
+        snapBack();
+      }
+    };
+
+    removeWindowListenersRef.current = removeListeners;
+    window.addEventListener('pointermove', onMove, { capture: true, passive: false });
+    window.addEventListener('pointerup', onUp, { capture: true });
+    window.addEventListener('pointercancel', onUp, { capture: true });
   };
 
   return (
-    <div className="relative h-[48px] overflow-hidden rounded-2xl border border-landing-accent/25 bg-black/40 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
+    <div className="relative h-[48px] touch-none overflow-hidden rounded-2xl border border-landing-accent/25 bg-black/40 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
       <div
         className="absolute inset-y-0 left-0 bg-gradient-to-r from-landing-accent/30 to-landing-accent/10 transition-[width] duration-75 ease-out"
         style={{ width: `${fillProgress * 100}%` }}
@@ -97,10 +158,7 @@ function SlideToExecute({
         type="button"
         disabled={disabled || busy}
         onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={onPointerUp}
-        onPointerCancel={onPointerUp}
-        className="absolute top-1 bottom-1 flex w-10 items-center justify-center rounded-xl border border-landing-accent/40 bg-landing-surface text-landing-accent-hi shadow-landing-glow-sm transition-[transform] duration-150 ease-out disabled:cursor-not-allowed"
+        className="absolute top-1 bottom-1 flex w-11 touch-none items-center justify-center rounded-xl border border-landing-accent/40 bg-landing-surface text-landing-accent-hi shadow-landing-glow-sm transition-[transform] duration-150 ease-out disabled:cursor-not-allowed"
         style={{
           transform: `translateX(${dragX}px)`,
           transition: dragging ? 'none' : 'transform 180ms cubic-bezier(0.34, 1.56, 0.64, 1)',
@@ -165,7 +223,7 @@ export function ManagePartialCloseSheet({
         onClick={onClose}
       />
       <div
-        className="fixed left-0 right-0 z-[53] mx-auto max-w-lg rounded-t-3xl border border-landing-border bg-landing-surface px-4 pb-4 pt-2 shadow-[0_-16px_48px_rgba(0,0,0,0.55),0_0_40px_-12px_rgba(0,200,120,0.2)]"
+        className="fixed left-0 right-0 z-[53] mx-auto max-w-lg rounded-t-3xl border border-landing-border bg-landing-surface landing-panel-texture px-4 pb-4 pt-2 shadow-[0_-16px_48px_rgba(0,0,0,0.55),0_0_40px_-12px_rgba(0,200,120,0.2)]"
         style={{ bottom: bottom }}
         role="dialog"
         aria-modal="true"

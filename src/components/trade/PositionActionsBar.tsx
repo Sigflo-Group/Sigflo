@@ -6,8 +6,51 @@ const PARTIAL_STEP = 5;
 /** Initial / reset slider — full close by default; user can lower before confirming. */
 const PARTIAL_DEFAULT_PCT = 100;
 
+export type DockManageAdjustButtonsProps = {
+  disabled?: boolean;
+  onManagePosition?: () => void;
+  onAdjustRisk?: () => void;
+  className?: string;
+};
+
+/** Dock-only: Manage + Adjust risk (same chrome as inside {@link PositionActionsBar}). */
+export function DockManageAdjustButtons({
+  disabled = false,
+  onManagePosition,
+  onAdjustRisk,
+  className = '',
+}: DockManageAdjustButtonsProps) {
+  if (!onManagePosition && !onAdjustRisk) return null;
+  return (
+    <div className={`flex flex-col gap-0.5 ${className}`} role="group" aria-label="Position and risk">
+      {onManagePosition ? (
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={onManagePosition}
+          className="flex min-h-[28px] w-full items-center justify-center rounded-lg border border-cyan-400/28 bg-cyan-500/[0.07] text-[9px] font-bold uppercase tracking-[0.08em] text-cyan-100/90 transition hover:bg-cyan-500/12 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-45 sm:min-h-[30px] sm:text-[10px]"
+        >
+          Manage position
+        </button>
+      ) : null}
+      {onAdjustRisk ? (
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={onAdjustRisk}
+          className="flex min-h-[28px] w-full items-center justify-center rounded-lg border border-landing-accent/30 bg-landing-accent-dim/35 text-[9px] font-bold uppercase tracking-[0.08em] text-landing-accent-hi transition hover:bg-landing-accent-dim/50 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-45 sm:min-h-[30px] sm:text-[10px]"
+        >
+          Adjust risk
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
 export type PositionActionsBarProps = {
   variant?: 'dock' | 'sheet';
+  /** When true, Manage position + Adjust risk are not rendered here (parent places them, e.g. above the trade/setup grid). */
+  detachedManageAdjust?: boolean;
   onCloseAll: () => void;
   /**
    * Fraction of position to close (e.g. 0.25 = 25%). Invoked only when the user taps **Close position**
@@ -16,6 +59,10 @@ export type PositionActionsBarProps = {
   onPartialClose: (fraction: number) => void;
   /** Linear futures: open manage-position screen (TP/SL, add size). */
   onManagePosition?: () => void;
+  /** Open risk profile / automation sheet (live position). */
+  onAdjustRisk?: () => void;
+  /** Frame entry / stop / target on the price chart (no navigation). */
+  onViewSetupOnChart?: () => void;
   disabled?: boolean;
   className?: string;
 };
@@ -25,9 +72,12 @@ export type PositionActionsBarProps = {
  */
 export function PositionActionsBar({
   variant = 'dock',
+  detachedManageAdjust = false,
   onCloseAll,
   onPartialClose,
   onManagePosition,
+  onAdjustRisk,
+  onViewSetupOnChart,
   disabled = false,
   className = '',
 }: PositionActionsBarProps) {
@@ -73,7 +123,7 @@ export function PositionActionsBar({
         </button>
       </div>
 
-      {onManagePosition ? (
+      {!detachedManageAdjust && onManagePosition ? (
         <button
           type="button"
           disabled={disabled}
@@ -81,6 +131,28 @@ export function PositionActionsBar({
           className="flex min-h-[28px] w-full items-center justify-center rounded-lg border border-cyan-400/28 bg-cyan-500/[0.07] text-[9px] font-bold uppercase tracking-[0.08em] text-cyan-100/90 transition hover:bg-cyan-500/12 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-45 sm:min-h-[30px] sm:text-[10px]"
         >
           Manage position
+        </button>
+      ) : null}
+
+      {onViewSetupOnChart ? (
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={onViewSetupOnChart}
+          className="flex min-h-[28px] w-full items-center justify-center rounded-lg border border-white/[0.1] bg-white/[0.04] text-[9px] font-bold uppercase tracking-[0.08em] text-sigflo-muted transition hover:border-cyan-400/25 hover:text-cyan-100/90 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-45 sm:min-h-[30px] sm:text-[10px]"
+        >
+          View on chart
+        </button>
+      ) : null}
+
+      {!detachedManageAdjust && onAdjustRisk ? (
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={onAdjustRisk}
+          className="flex min-h-[28px] w-full items-center justify-center rounded-lg border border-landing-accent/30 bg-landing-accent-dim/35 text-[9px] font-bold uppercase tracking-[0.08em] text-landing-accent-hi transition hover:bg-landing-accent-dim/50 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-45 sm:min-h-[30px] sm:text-[10px]"
+        >
+          Adjust risk
         </button>
       ) : null}
 

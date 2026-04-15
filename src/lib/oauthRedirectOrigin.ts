@@ -26,3 +26,15 @@ export function getOAuthRedirectToProfile(): string {
   const base = import.meta.env.BASE_URL.replace(/\/$/, '');
   return `${getOAuthRedirectOrigin()}${base}/profile`;
 }
+
+/** Magic-link / PKCE return URL — add to Supabase Auth → Redirect URLs. */
+export function getMagicLinkRedirectTo(): string {
+  const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+  return `${getOAuthRedirectOrigin()}${base}/auth/callback`;
+}
+
+/** Password recovery link target — add to Supabase Auth → Redirect URLs. */
+export function getPasswordRecoveryRedirectTo(): string {
+  const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+  return `${getOAuthRedirectOrigin()}${base}/auth/reset-password`;
+}

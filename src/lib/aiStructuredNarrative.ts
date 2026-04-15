@@ -38,10 +38,21 @@ export function expandStructuredToQuickNarrative(
       ? s.levels_used.map((n) => n.toLocaleString('en-US', { maximumFractionDigits: 8 })).join(', ')
       : 'none from package';
   const gaps = ctx.dataGaps.length ? `Data gaps: ${ctx.dataGaps.join(', ')}.` : '';
-  const body = `Confidence (model): ${s.confidence}/100 · Bias: ${s.bias}\n${s.reasoning}\nLevels cited: ${lv}\nTrade valid (model): ${s.trade_valid ? 'yes' : 'no'}\nNotes: ${s.notes}${gaps ? `\n${gaps}` : ''}`;
 
   const actionLabel = action === 'explain' ? 'Explain' : action === 'watch' ? 'Watch list' : 'Entry';
   const headline = `${ctx.symbol} · ${actionLabel} — ${s.bias} (${s.confidence}%)`;
+
+  if (action === 'explain') {
+    const lvShort =
+      s.levels_used.length > 0
+        ? s.levels_used.map((n) => n.toLocaleString('en-US', { maximumFractionDigits: 2 })).join(', ')
+        : '—';
+    const gapBit = ctx.dataGaps.length ? ` Missing: ${ctx.dataGaps.join(', ')}.` : '';
+    const body = `${s.reasoning.trim()} ${s.notes.trim()} Levels: ${lvShort}. ${s.trade_valid ? 'Model: trade ok.' : 'Model: wait / invalid.'}${gapBit}`.trim();
+    return { headline, body };
+  }
+
+  const body = `Confidence (model): ${s.confidence}/100 · Bias: ${s.bias}\n${s.reasoning}\nLevels cited: ${lv}\nTrade valid (model): ${s.trade_valid ? 'yes' : 'no'}\nNotes: ${s.notes}${gaps ? `\n${gaps}` : ''}`;
   return { headline, body };
 }
 
@@ -62,8 +73,9 @@ export function buildLocalStructuredAnalysis(
   let trade_valid: boolean;
 
   if (action === 'explain') {
-    reasoning = `Sigflo classifies this as a ${signal.side} ${signal.setupType} with setup score ${signal.setupScore}/100 and scanner status "${status}". Readiness score is ${conf}. Structure is described by internal subscores (trend ${signal.scoreBreakdown.trendAlignment}/25, momentum ${signal.scoreBreakdown.momentumQuality}/20, structure ${signal.scoreBreakdown.structureQuality}/25, participation ${signal.scoreBreakdown.volumeConfirmation}/15, risk ${signal.scoreBreakdown.riskConditions}/15) — only indicators named in allowedIndicatorTerms may be referenced elsewhere.`;
-    notes = `Risk tag: ${signal.riskTag}. Entry timing label: ${timing}. ${ctx.dataGaps.includes('recent_ohlc_series') ? 'Insufficient candle series in package — do not infer intrabar behavior.' : ''}`.trim();
+    const b = signal.scoreBreakdown;
+    reasoning = `${signal.side} ${signal.setupType} · score ${signal.setupScore}/100 · scanner "${status}" · readiness ${conf} · subs T${b.trendAlignment}/M${b.momentumQuality}/S${b.structureQuality}/P${b.volumeConfirmation}/R${b.riskConditions}.`;
+    notes = `${signal.riskTag}. Timing: ${timing}.${ctx.dataGaps.includes('recent_ohlc_series') ? ' No OHLC in package.' : ''}`.trim();
     trade_valid = status !== 'overextended' && conf >= 45;
   } else if (action === 'watch') {
     const cue = signal.watchCue?.trim();

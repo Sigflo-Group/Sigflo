@@ -1,13 +1,8 @@
-import { useMemo } from 'react';
-import { ScannerInsightCard } from '@/components/trade/ScannerInsightCard';
 import { OrderInputsCard } from '@/components/trade/OrderInputsCard';
 import { PreTradeWarningCard } from '@/components/trade/PreTradeWarningCard';
 import { formatQuoteNumber } from '@/lib/formatQuote';
 import type { ManageTradePositionContext } from '@/lib/manageTradeContext';
-import type { MarketRowStatus } from '@/types/markets';
-import type { CryptoSignal } from '@/types/signal';
 import type { DerivedTradeMetrics } from '@/lib/tradeRisk';
-import { buildGroundedMarketContext } from '@/lib/buildGroundedMarketContext';
 import type { MarketMode, TradeSide, TradeViewModel } from '@/types/trade';
 
 function fmtManageSignedUsd(n: number): string {
@@ -41,8 +36,6 @@ export type TradeControlsProps = {
   managePnlDisplay: { pnlUsd: number; pnlPct: number } | null;
   markForManage: number;
   manageInsightLine: string | null;
-  selectedSignal: CryptoSignal;
-  scannerStatus: MarketRowStatus;
   amountUsd: number;
   leverage: number;
   /** Manage mode: exchange / URL leverage for the open leg (PnL banner); sizing still uses `leverage`. */
@@ -76,8 +69,6 @@ export type TradeControlsProps = {
   utaWalletBalanceUsd?: number | null;
   /** When set, Position size panel shows Transfer → exchange asset UI (Funding ↔ UTA). */
   assetTransferHref?: string | null;
-  /** Active chart interval label for grounded AI context (e.g. 15m, 1H). */
-  chartInterval: string;
   /** Manage + linear: apply SL/TP to the open leg on Bybit (`null` when N/A). */
   manageFuturesTpSl?: {
     canApply: boolean;
@@ -101,8 +92,6 @@ export function TradeControls(props: TradeControlsProps) {
     managePnlDisplay,
     markForManage,
     manageInsightLine,
-    selectedSignal,
-    scannerStatus,
     amountUsd,
     leverage,
     managePositionLeverage,
@@ -128,33 +117,11 @@ export function TradeControls(props: TradeControlsProps) {
     utaUnrealizedPnlUsd,
     utaWalletBalanceUsd,
     assetTransferHref,
-    chartInterval,
     manageFuturesTpSl,
     suppressLegacyManageHero = false,
   } = props;
 
   const passLevelsToOrderCard = !isManageMode || (isManageMode && market === 'futures');
-
-  const groundedAiContext = useMemo(
-    () =>
-      buildGroundedMarketContext({
-        signal: selectedSignal,
-        status: scannerStatus,
-        tradeScore: metrics.riskSummary.tradeScore,
-        market,
-        chartInterval,
-        model: mergedModel,
-        recentCandles: mergedModel.chartCandles,
-      }),
-    [
-      chartInterval,
-      market,
-      mergedModel,
-      metrics.riskSummary.tradeScore,
-      scannerStatus,
-      selectedSignal,
-    ],
-  );
 
   return (
     <div className="mx-auto flex w-full max-w-lg flex-col space-y-1 px-3 pb-4 pt-0">
@@ -221,7 +188,7 @@ export function TradeControls(props: TradeControlsProps) {
               ({fmtManageSignedPct(managePnlDisplay.pnlPct)})
             </p>
           </div>
-          <div className="rounded-2xl border border-white/[0.06] bg-sigflo-surface/95 p-3.5">
+          <div className="rounded-2xl border border-white/[0.06] bg-sigflo-surface sigflo-panel-texture p-3.5">
             <div className="flex items-center justify-between gap-2 border-b border-white/[0.06] pb-2.5">
               <span className="min-w-0 truncate text-lg font-bold text-white">{manageCtx.pair}</span>
               <span
@@ -269,15 +236,6 @@ export function TradeControls(props: TradeControlsProps) {
             ) : null}
           </div>
         </>
-      ) : null}
-
-      {!isManageMode ? (
-        <ScannerInsightCard
-          signal={selectedSignal}
-          status={scannerStatus}
-          tradeScore={metrics.riskSummary.tradeScore}
-          groundedContext={groundedAiContext}
-        />
       ) : null}
 
       <OrderInputsCard

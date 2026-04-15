@@ -48,10 +48,10 @@ data_package includes marketRegime (trending | range | risk_off | transition) an
 Return a single JSON object with EXACTLY these keys and no others:
 bias (string: "long" | "short" | "neutral"),
 confidence (number 0-100, aligned with tradeReadinessScore when unsure),
-reasoning (string, 2-6 sentences, only package facts),
+reasoning (string, 1-2 short sentences, only package facts; no bullet lists),
 levels_used (array of numbers from allowedPriceLevels only),
 trade_valid (boolean: whether the packaged setup supports a new trade per scannerStatus and scores),
-notes (string, one or two sentences on gaps or caution).
+notes (string, one short sentence on gaps or caution only).
 
 No markdown. No headline or body fields.`;
 

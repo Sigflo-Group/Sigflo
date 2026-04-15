@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { useAccountSnapshot } from '@/hooks/useAccountSnapshot';
 import { useBotStatuses } from '@/hooks/useBotStatuses';
@@ -16,6 +17,7 @@ const MFA_TOTP_FRIENDLY_NAME = 'Sigflo Account';
 type RiskMode = 'Conservative' | 'Balanced' | 'Aggressive';
 
 export default function ProfileScreen() {
+  const navigate = useNavigate();
   const { user, loading: authLoading, authMode, signInWithGoogle, signOut } = useAuth();
   const [pushAlerts, setPushAlerts] = useState(true);
   const [highRiskAlerts, setHighRiskAlerts] = useState(false);
@@ -77,7 +79,7 @@ export default function ProfileScreen() {
     : null;
   const signalCount = signals.length;
   const winRate = useMemo(() => {
-    if (closedTrades.length === 0) return '63%';
+    if (closedTrades.length === 0) return '—';
     const wins = closedTrades.filter((trade) => trade.closedPnl > 0).length;
     return `${Math.round((wins / closedTrades.length) * 100)}%`;
   }, [closedTrades]);
@@ -318,7 +320,7 @@ export default function ProfileScreen() {
         <h2 className="text-lg font-semibold tracking-tight text-white">Account</h2>
       </div>
 
-      <section className="rounded-2xl border border-white/[0.06] bg-sigflo-surface p-4 shadow-[0_0_28px_-20px_rgba(0,255,200,0.35)]">
+      <section className="rounded-2xl border border-white/[0.06] bg-sigflo-surface sigflo-panel-texture p-4 shadow-[0_0_28px_-20px_rgba(0,255,200,0.35)]">
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-center gap-3">
             <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-cyan-400/25 bg-cyan-500/[0.14] text-sm font-bold text-cyan-200">
@@ -350,7 +352,7 @@ export default function ProfileScreen() {
                     setGoogleSignInError(e instanceof Error ? e.message : 'Google sign-in failed');
                   });
                 }}
-                className="rounded-lg border border-white/[0.1] bg-white/[0.06] px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-white/[0.1]"
+                className="rounded-lg border border-white/[0.1] bg-sigflo-elevated px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-[#1c1d26]"
               >
                 Continue with Google
               </button>
@@ -362,8 +364,13 @@ export default function ProfileScreen() {
           {authMode === 'supabase' && user ? (
             <button
               type="button"
-              onClick={() => void signOut()}
-              className="rounded-lg border border-white/[0.08] bg-black/25 px-3 py-1.5 text-xs font-semibold text-sigflo-muted transition hover:text-white"
+              onClick={() => {
+                void (async () => {
+                  await signOut();
+                  navigate('/login', { replace: true });
+                })();
+              }}
+              className="rounded-lg border border-white/[0.08] bg-sigflo-elevated px-3 py-1.5 text-xs font-semibold text-sigflo-muted transition hover:text-white"
             >
               Sign out
             </button>
@@ -374,7 +381,7 @@ export default function ProfileScreen() {
         </div>
       </section>
 
-      <section className="rounded-2xl border border-white/[0.06] bg-sigflo-surface p-3.5">
+      <section className="rounded-2xl border border-white/[0.06] bg-sigflo-surface sigflo-panel-texture p-3.5">
         <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-sigflo-muted">Exchange Connections</p>
         {authMode === 'supabase' && !user && !authLoading ? (
           <p className="mt-2 text-[11px] text-amber-200/90">Sign in with Google to connect Bybit or MEXC.</p>
@@ -389,8 +396,8 @@ export default function ProfileScreen() {
                 key={exchange}
                 className={`rounded-xl border p-2.5 transition ${
                   connected
-                    ? 'border-sigflo-accent/30 bg-gradient-to-b from-sigflo-accent/[0.08] to-black/25 shadow-[0_0_26px_-16px_rgba(0,255,200,0.45)]'
-                    : 'border-white/[0.06] bg-black/20'
+                    ? 'border-sigflo-accent/30 bg-[#101916] shadow-[0_0_26px_-16px_rgba(0,255,200,0.45)]'
+                    : 'border-white/[0.06] bg-sigflo-elevated'
                 }`}
               >
                 <div className="flex items-center justify-between">
@@ -457,7 +464,7 @@ export default function ProfileScreen() {
             type="button"
             disabled={syncBusy}
             onClick={() => void handleManualSync()}
-            className="shrink-0 rounded-lg border border-white/[0.12] bg-white/[0.04] px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-sigflo-text transition hover:bg-white/[0.08] disabled:opacity-50"
+            className="shrink-0 rounded-lg border border-white/[0.12] bg-sigflo-elevated px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-sigflo-text transition hover:bg-[#1c1d26] disabled:opacity-50"
           >
             {syncBusy ? 'Syncing...' : 'Sync now'}
           </button>
@@ -546,7 +553,7 @@ export default function ProfileScreen() {
         </section>
       ) : null}
 
-      <section className="rounded-2xl border border-white/[0.06] bg-sigflo-surface p-3.5">
+      <section className="rounded-2xl border border-white/[0.06] bg-sigflo-surface sigflo-panel-texture p-3.5">
         <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-sigflo-muted">Trading Profile</p>
         <div className="mt-2 grid grid-cols-3 gap-1.5">
           {(['Conservative', 'Balanced', 'Aggressive'] as RiskMode[]).map((mode) => {
@@ -558,8 +565,8 @@ export default function ProfileScreen() {
                 onClick={() => setRiskMode(mode)}
                 className={`rounded-lg border px-2 py-2 text-[11px] font-semibold transition ${
                   active
-                    ? 'border-cyan-400/35 bg-cyan-500/12 text-cyan-100'
-                    : 'border-white/[0.08] bg-black/20 text-sigflo-muted hover:border-white/[0.14] hover:text-sigflo-text'
+                    ? 'border-cyan-400/35 bg-[#152028] text-cyan-100'
+                    : 'border-white/[0.08] bg-sigflo-elevated text-sigflo-muted hover:border-white/[0.14] hover:bg-[#1c1d26] hover:text-sigflo-text'
                 }`}
               >
                 {mode}
@@ -570,7 +577,7 @@ export default function ProfileScreen() {
         <p className={`mt-2 text-xs ${riskColor}`}>Risk profile: {riskMode}</p>
       </section>
 
-      <section className="rounded-2xl border border-white/[0.06] bg-sigflo-surface p-3.5">
+      <section className="rounded-2xl border border-white/[0.06] bg-sigflo-surface sigflo-panel-texture p-3.5">
         <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-sigflo-muted">Alerts</p>
         <div className="mt-2 space-y-2">
           <ToggleRow label="Push alerts" subtext="Signals & execution updates" value={pushAlerts} onChange={setPushAlerts} />
@@ -579,18 +586,18 @@ export default function ProfileScreen() {
         </div>
       </section>
 
-      <section className="rounded-2xl border border-white/[0.06] bg-sigflo-surface p-3.5">
+      <section className="rounded-2xl border border-white/[0.06] bg-sigflo-surface sigflo-panel-texture p-3.5">
         <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-sigflo-muted">Your Stats</p>
         <div className="mt-2.5 grid grid-cols-3 gap-2 text-center">
-          <div className="rounded-xl border border-white/[0.06] bg-black/20 px-2 py-2.5">
+          <div className="rounded-xl border border-white/[0.06] bg-sigflo-elevated px-2 py-2.5">
             <p className="text-[10px] uppercase tracking-[0.12em] text-sigflo-muted">Signals</p>
             <p className="mt-1 text-base font-bold text-white">{signalCount.toLocaleString()}</p>
           </div>
-          <div className="rounded-xl border border-white/[0.06] bg-black/20 px-2 py-2.5">
+          <div className="rounded-xl border border-white/[0.06] bg-sigflo-elevated px-2 py-2.5">
             <p className="text-[10px] uppercase tracking-[0.12em] text-sigflo-muted">Win rate</p>
             <p className="mt-1 text-base font-bold text-emerald-300">{winRate}</p>
           </div>
-          <div className="rounded-xl border border-white/[0.06] bg-black/20 px-2 py-2.5">
+          <div className="rounded-xl border border-white/[0.06] bg-sigflo-elevated px-2 py-2.5">
             <p className="text-[10px] uppercase tracking-[0.12em] text-sigflo-muted">Avg R:R</p>
             <p className="mt-1 text-base font-bold text-white">{avgRr}</p>
           </div>
@@ -598,7 +605,7 @@ export default function ProfileScreen() {
         <p className="mt-2 text-[11px] text-sigflo-muted">Based on your trading activity</p>
       </section>
 
-      <section className="rounded-2xl border border-white/[0.06] bg-sigflo-surface p-3.5">
+      <section className="rounded-2xl border border-white/[0.06] bg-sigflo-surface sigflo-panel-texture p-3.5">
         <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-sigflo-muted">System</p>
         <div className="mt-2 grid grid-cols-3 gap-2">
           <SystemIndicator label="API" value={apiConnected ? 'Connected' : 'Degraded'} active={apiConnected} />
@@ -607,14 +614,14 @@ export default function ProfileScreen() {
         </div>
       </section>
 
-      <section className="rounded-2xl border border-white/[0.06] bg-sigflo-surface p-3.5">
+      <section className="rounded-2xl border border-white/[0.06] bg-sigflo-surface sigflo-panel-texture p-3.5">
         <div className="flex items-center justify-between gap-2">
           <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-sigflo-muted">Security</p>
           <span
             className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] ${
               mfaEnabled
                 ? 'border-emerald-400/35 bg-emerald-500/15 text-emerald-200'
-                : 'border-white/10 bg-white/[0.04] text-sigflo-muted'
+                : 'border-white/10 bg-sigflo-elevated text-sigflo-muted'
             }`}
           >
             {mfaStatusLoading ? 'Checking 2FA...' : mfaEnabled ? '2FA enabled' : '2FA not enabled'}
@@ -647,7 +654,7 @@ export default function ProfileScreen() {
           <div className="mt-2 rounded-xl border border-sigflo-accent/25 bg-sigflo-accent/[0.06] p-3">
             <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-sigflo-accent">Authenticator setup</p>
             {totpSetup.qrCode ? (
-              <div className="mt-2 flex justify-center rounded-lg border border-white/[0.08] bg-black/35 p-2">
+              <div className="mt-2 flex justify-center rounded-lg border border-white/[0.08] bg-[#08090d] p-2">
                 <div className="rounded bg-white p-2" dangerouslySetInnerHTML={{ __html: totpSetup.qrCode }} />
               </div>
             ) : (
@@ -662,7 +669,7 @@ export default function ProfileScreen() {
                 <input
                   readOnly
                   value={totpSetup.secret}
-                  className="min-w-0 flex-1 rounded-lg border border-white/[0.08] bg-black/40 px-2 py-2 font-mono text-[11px] text-white outline-none"
+                  className="min-w-0 flex-1 rounded-lg border border-white/[0.08] bg-sigflo-elevated px-2 py-2 font-mono text-[11px] text-white outline-none"
                   aria-label="TOTP setup secret"
                 />
                 <button
@@ -698,7 +705,7 @@ export default function ProfileScreen() {
               onChange={(event) => setTotpSetup((prev) => (prev ? { ...prev, code: event.target.value.replace(/\D/g, '').slice(0, 6) } : prev))}
               placeholder="Enter 6-digit code"
               inputMode="numeric"
-              className="mt-2 w-full rounded-lg border border-white/[0.08] bg-black/30 px-2.5 py-2 text-sm text-white outline-none"
+              className="mt-2 w-full rounded-lg border border-white/[0.08] bg-sigflo-elevated px-2.5 py-2 text-sm text-white outline-none"
             />
             <div className="mt-2 flex items-center justify-end gap-2">
               <button
@@ -721,7 +728,7 @@ export default function ProfileScreen() {
           </div>
         ) : null}
         {securityMessage ? (
-          <p className="mt-2 rounded-lg border border-white/[0.08] bg-black/20 px-2.5 py-2 text-[11px] text-sigflo-text">{securityMessage}</p>
+          <p className="mt-2 rounded-lg border border-white/[0.08] bg-sigflo-elevated px-2.5 py-2 text-[11px] text-sigflo-text">{securityMessage}</p>
         ) : null}
       </section>
 
@@ -790,7 +797,7 @@ function ToggleRow({
     <button
       type="button"
       onClick={() => onChange(!value)}
-      className="flex w-full items-center justify-between rounded-lg border border-white/[0.06] bg-black/20 px-3 py-2 text-left transition hover:border-white/[0.12] hover:bg-white/[0.03]"
+      className="flex w-full items-center justify-between rounded-lg border border-white/[0.06] bg-sigflo-elevated px-3 py-2 text-left transition hover:border-white/[0.12] hover:bg-[#1c1d26]"
     >
       <div>
         <p className="text-sm text-white">{label}</p>
@@ -814,7 +821,7 @@ function fmtUsdMaybe(n: number | null | undefined): string {
 
 function BalanceMetricCell({ label, value }: { label: string; value: number | null | undefined }) {
   return (
-    <div className="rounded-lg border border-white/[0.06] bg-black/25 p-2">
+    <div className="rounded-lg border border-white/[0.06] bg-sigflo-elevated p-2">
       <p className="text-[9px] uppercase tracking-[0.12em] text-sigflo-muted">{label}</p>
       <p className="mt-1 text-xs font-semibold tabular-nums text-white">{fmtUsdMaybe(value)}</p>
     </div>
@@ -866,11 +873,11 @@ function ExchangeBalanceBreakdown({ snapshot }: { snapshot: ExchangeSnapshot }) 
           USD totals unavailable — showing raw row counts from the last sync.
         </p>
         <div className="grid grid-cols-2 gap-2">
-          <div className="rounded-lg border border-white/[0.06] bg-black/30 p-2">
+          <div className="rounded-lg border border-white/[0.06] bg-sigflo-elevated p-2">
             <p className="text-[10px] uppercase tracking-[0.12em] text-sigflo-muted">Balance rows</p>
             <p className="mt-1 text-sm font-semibold text-white">{snapshot.balances.length}</p>
           </div>
-          <div className="rounded-lg border border-white/[0.06] bg-black/30 p-2">
+          <div className="rounded-lg border border-white/[0.06] bg-sigflo-elevated p-2">
             <p className="text-[10px] uppercase tracking-[0.12em] text-sigflo-muted">Positions</p>
             <p className="mt-1 text-sm font-semibold text-white">{snapshot.positions.length}</p>
           </div>
@@ -885,7 +892,7 @@ function ExchangeBalanceBreakdown({ snapshot }: { snapshot: ExchangeSnapshot }) 
         <BalanceMetricCell label="Total Equity" value={breakdown.overview.totalEquity} />
         <BalanceMetricCell label="Wallet Balance" value={breakdown.overview.totalWalletBalance} />
         <BalanceMetricCell label="Available to Trade" value={breakdown.overview.availableToTrade} />
-        <div className="rounded-lg border border-white/[0.06] bg-black/25 p-2">
+        <div className="rounded-lg border border-white/[0.06] bg-sigflo-elevated p-2">
           <p className="text-[9px] uppercase tracking-[0.12em] text-sigflo-muted">Funding Balance</p>
           <p className="mt-1 text-xs font-semibold tabular-nums text-white">
             {formatFundingBalance(
@@ -902,7 +909,7 @@ function ExchangeBalanceBreakdown({ snapshot }: { snapshot: ExchangeSnapshot }) 
       {breakdown.buckets.map((bucket) => {
         const usdt = bucket.assets.find((a) => a.asset === 'USDT');
         return (
-          <div key={bucket.kind} className="rounded-lg border border-white/[0.06] bg-black/25 p-2.5">
+          <div key={bucket.kind} className="rounded-lg border border-white/[0.06] bg-sigflo-elevated p-2.5">
             <div className="flex items-start justify-between gap-2">
               <div>
                 <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-white/95">{bucket.label}</p>
@@ -928,7 +935,7 @@ function ExchangeBalanceBreakdown({ snapshot }: { snapshot: ExchangeSnapshot }) 
                 {bucket.assets.slice(0, 8).map((a) => (
                   <span
                     key={a.asset}
-                    className="rounded border border-white/[0.08] bg-black/30 px-1.5 py-0.5 text-[9px] font-medium tabular-nums text-sigflo-text/95"
+                    className="rounded border border-white/[0.08] bg-[#08090d] px-1.5 py-0.5 text-[9px] font-medium tabular-nums text-sigflo-text/95"
                     title={`${a.asset} — wallet total`}
                   >
                     {a.asset}{' '}
@@ -946,7 +953,7 @@ function ExchangeBalanceBreakdown({ snapshot }: { snapshot: ExchangeSnapshot }) 
 
 function SystemIndicator({ label, value, active }: { label: string; value: string; active?: boolean }) {
   return (
-    <div className="rounded-lg border border-white/[0.06] bg-black/20 px-2.5 py-2">
+    <div className="rounded-lg border border-white/[0.06] bg-sigflo-elevated px-2.5 py-2">
       <p className="text-[10px] uppercase tracking-[0.12em] text-sigflo-muted">{label}</p>
       <p className={`mt-1 text-xs font-semibold ${active ? 'text-emerald-300' : 'text-sigflo-text'}`}>{value}</p>
     </div>
@@ -971,7 +978,7 @@ function ActionButton({
       type="button"
       onClick={onClick}
       disabled={busy}
-      className="w-full rounded-lg border border-white/[0.08] bg-black/20 px-3 py-2 text-left text-sm text-sigflo-text transition hover:border-white/[0.14] hover:bg-white/[0.04] disabled:opacity-60"
+      className="w-full rounded-lg border border-white/[0.08] bg-sigflo-elevated px-3 py-2 text-left text-sm text-sigflo-text transition hover:border-white/[0.14] hover:bg-[#1c1d26] disabled:opacity-60"
     >
       <p>{busy ? busyLabel ?? label : label}</p>
       <p className="mt-0.5 text-[11px] text-sigflo-muted">{subtext}</p>

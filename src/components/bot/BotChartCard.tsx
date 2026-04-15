@@ -40,7 +40,7 @@ export function BotChartCard(props: BotChartCardProps) {
   } = props;
 
   return (
-    <section className="mt-3 rounded-2xl border border-white/[0.07] bg-sigflo-surface p-3 opacity-0 [animation:fade-in-up_260ms_ease-out_forwards]">
+    <section className="mt-3 rounded-2xl border border-white/[0.07] bg-sigflo-surface sigflo-panel-texture p-3 opacity-0 [animation:fade-in-up_260ms_ease-out_forwards]">
       <div className="mb-2 flex items-center justify-between text-xs">
         <p className="text-sigflo-muted">Chart</p>
         <p className="font-semibold text-white">${formatQuoteNumber(lastPrice)}</p>

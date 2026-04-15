@@ -77,20 +77,6 @@ const LAYERS: Record<LandingSectionBackdropVariant, ReactNode> = {
         className="absolute right-[8%] bottom-[22%] h-44 w-44 rounded-full opacity-45 blur-2xl motion-reduce:opacity-30"
         style={{ background: 'radial-gradient(circle, rgba(0, 224, 138, 0.028), transparent 73%)' }}
       />
-      <svg
-        className="absolute inset-x-[12%] bottom-[10%] h-20 w-auto opacity-[0.05] motion-reduce:opacity-[0.03]"
-        viewBox="0 0 800 48"
-        fill="none"
-        preserveAspectRatio="none"
-      >
-        <path
-          d="M0 36 C180 8 380 44 520 22 S700 6 800 28"
-          stroke="rgb(0, 200, 120)"
-          strokeWidth="1"
-          strokeOpacity="0.32"
-          vectorEffect="non-scaling-stroke"
-        />
-      </svg>
     </>
   ),
   features: (

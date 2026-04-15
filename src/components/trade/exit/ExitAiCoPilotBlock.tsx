@@ -26,7 +26,7 @@ export function ExitAiCoPilotBlock({
 
   return (
     <section
-      className={`rounded-2xl border bg-landing-surface/90 ${pad} ${model.panelToneClass}`}
+      className={`rounded-2xl border bg-landing-surface landing-panel-texture ${pad} ${model.panelToneClass}`}
       aria-label="Exit AI co-pilot"
     >
       <div className="flex items-start justify-between gap-2">
@@ -46,6 +46,17 @@ export function ExitAiCoPilotBlock({
       </div>
 
       <p className={`mt-2 leading-snug text-landing-text/95 ${intentSz}`}>{model.intentLine}</p>
+
+      {exitMode === 'assisted' ? (
+        <p className="mt-2 rounded-lg border border-white/[0.06] bg-black/20 px-2 py-1.5 text-[10px] leading-snug text-landing-muted">
+          Suggestion mode — readouts update as price moves; you confirm any exchange action.
+        </p>
+      ) : null}
+      {exitMode === 'auto' ? (
+        <p className="mt-2 rounded-lg border border-landing-accent/25 bg-landing-accent-dim/20 px-2 py-1.5 text-[10px] leading-snug text-landing-accent-hi/90">
+          Auto mode — exits may run within your safeguard limits. You can switch to static or assisted anytime.
+        </p>
+      ) : null}
 
       {model.confidenceLine ? (
         <p className="mt-2 text-[11px] leading-relaxed text-landing-muted">{model.confidenceLine}</p>

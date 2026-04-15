@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { formatQuoteNumber } from '@/lib/formatQuote';
 import { useTriggeredMotion } from '@/hooks/useTriggeredMotion';
 import { uiSignalStateClasses, uiSignalStateFromMarketStatus, uiSignalStateLabel } from '@/lib/signalState';
+import { TriggeredFireMark } from '@/components/ui/TriggeredFireMark';
 import type { Candle } from '@/types/market';
 import type { MarketScannerRow } from '@/types/markets';
 
@@ -135,7 +136,7 @@ export function MarketCard({
       aria-label={`Open trade for ${row.symbol}`}
     >
       <div
-        className={`rounded-2xl border bg-sigflo-surface p-4 transition-all active:scale-[0.98] ${
+        className={`rounded-2xl border bg-sigflo-surface sigflo-panel-texture p-4 transition-all active:scale-[0.98] ${
           isTriggered
             ? `${uiStateStyle.card} sigflo-trigger-card-rest ${justTriggered ? 'sigflo-trigger-card-just' : ''} ${
                 isPrimaryTriggered
@@ -157,24 +158,27 @@ export function MarketCard({
           {/* Left: pair + status */}
           <div className="flex flex-col gap-0.5">
             <div className="flex items-center gap-3">
-            <h3 className="text-base font-bold tracking-tight text-white">{row.pair}</h3>
-            <span className={`inline-flex items-center gap-1.5 text-[11px] font-semibold ${uiStateStyle.text}`}>
-              <span className={`relative flex ${isTriggered ? 'h-2 w-2' : 'h-1.5 w-1.5'}`}>
-                {uiStateStyle.pulse ? (
-                  <>
-                    {justTriggered ? <span className="absolute inset-[-1px] rounded-full border border-[#7fffe0]/45 sigflo-trigger-dot-halo" /> : null}
-                    <span className={`absolute inline-flex h-full w-full rounded-full ${uiStateStyle.dot} sigflo-trigger-dot ${justTriggered ? 'sigflo-trigger-dot-just' : ''}`} />
-                  </>
-                ) : null}
-                <span className={`relative inline-flex h-full w-full rounded-full ${uiStateStyle.dot}`} />
+              <div className="flex items-center gap-1.5">
+                {isTriggered ? <TriggeredFireMark hot={justTriggered || showJustTriggered} /> : null}
+                <h3 className="text-base font-bold tracking-tight text-white">{row.pair}</h3>
+              </div>
+              <span className={`inline-flex items-center gap-1.5 text-[11px] font-semibold ${uiStateStyle.text}`}>
+                <span className={`relative flex ${isTriggered ? 'h-2 w-2' : 'h-1.5 w-1.5'}`}>
+                  {uiStateStyle.pulse ? (
+                    <>
+                      {justTriggered ? <span className="absolute inset-[-1px] rounded-full border border-[#7fffe0]/45 sigflo-trigger-dot-halo" /> : null}
+                      <span className={`absolute inline-flex h-full w-full rounded-full ${uiStateStyle.dot} sigflo-trigger-dot ${justTriggered ? 'sigflo-trigger-dot-just' : ''}`} />
+                    </>
+                  ) : null}
+                  <span className={`relative inline-flex h-full w-full rounded-full ${uiStateStyle.dot}`} />
+                </span>
+                <span className={isTriggered ? 'uppercase tracking-[0.11em] text-[#b2ffef] drop-shadow-[0_0_8px_rgba(0,255,200,0.45)]' : ''}>
+                  {showJustTriggered ? 'Just triggered' : uiSignalStateLabel(uiState)}
+                </span>
               </span>
-              <span className={isTriggered ? 'uppercase tracking-[0.11em] text-[#b2ffef] drop-shadow-[0_0_8px_rgba(0,255,200,0.45)]' : ''}>
-                {showJustTriggered ? 'Just triggered' : uiSignalStateLabel(uiState)}
-              </span>
-            </span>
-          </div>
+            </div>
             {isTriggered && !showJustTriggered ? (
-              <p className={`pl-[74px] text-[10px] font-semibold text-[#9fffe9]/90 ${justTriggered ? 'sigflo-trigger-entry-active sigflo-trigger-entry-shimmer' : ''}`}>
+              <p className={`pl-[94px] text-[10px] font-semibold text-[#9fffe9]/90 ${justTriggered ? 'sigflo-trigger-entry-active sigflo-trigger-entry-shimmer' : ''}`}>
                 Entry open
               </p>
             ) : null}
@@ -182,7 +186,7 @@ export function MarketCard({
 
           {/* Middle: mini chart */}
           <div className="min-w-0 flex-1">
-            <div className="overflow-hidden rounded-md border border-white/[0.05] bg-black/20 px-1.5 py-1">
+            <div className="overflow-hidden rounded-md border border-white/[0.05] bg-[#08090d] px-1.5 py-1">
               <svg viewBox={`0 0 ${chartW} ${chartH}`} className="h-[34px] w-full" aria-hidden>
                 <defs>
                   <linearGradient id={`market-area-${row.symbol}`} x1="0" y1="0" x2="0" y2="1">

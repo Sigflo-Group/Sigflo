@@ -118,7 +118,9 @@
   to = "/index.html"
   status = 200
 
-# Site root or other paths (if this deploy is the whole site)
+# Site root or other paths (if this deploy is the whole site).
+# Netlify serves real files under publish/ before these rules — e.g. `public/privacy/index.html` → `/privacy/index.html`.
+# Unmatched paths hit the SPA; React must define routes (see App.tsx). A missing route + `path="*"` → /feed was why /privacy redirected.
 [[redirects]]
   from = "/*"
   to = "/index.html"

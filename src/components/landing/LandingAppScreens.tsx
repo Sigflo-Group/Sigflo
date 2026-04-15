@@ -1,7 +1,6 @@
 import { motion, useScroll, useTransform, type MotionValue } from 'framer-motion';
 import type { ReactNode } from 'react';
 import { useRef } from 'react';
-import { LandingSectionPixelField } from '@/components/landing/effects/LandingSectionPixelField';
 import { LandingSectionBackdrop } from '@/components/landing/LandingSectionBackdrop';
 import { LANDING_SECTIONS } from '@/components/landing/landingSections';
 import { ScrollReveal } from '@/components/landing/ScrollReveal';
@@ -226,7 +225,6 @@ export function LandingAppScreens() {
       className="relative scroll-mt-24 overflow-hidden bg-landing-bg px-4 py-20 sm:px-6 sm:py-24 lg:px-8 lg:py-32"
     >
       <LandingSectionBackdrop variant="screens" />
-      <LandingSectionPixelField count={60} />
       <div className="relative z-[2] mx-auto max-w-6xl">
         <ScrollReveal>
           <h2 className="text-[1.65rem] font-semibold tracking-tight text-landing-text sm:text-[1.875rem] lg:text-[2.125rem]">

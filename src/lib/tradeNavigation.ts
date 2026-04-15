@@ -82,6 +82,8 @@ export type PortfolioPositionTradeExtras = {
   leverage?: number;
   /** From swipe actions on portfolio cards. */
   ticketIntent?: 'close' | 'add';
+  /** Open Trade with Adjust Risk sheet once (manage mode). */
+  focusAdjust?: boolean;
 };
 
 /**
@@ -122,6 +124,9 @@ export function buildPortfolioPositionTradeQuery(
   }
   if (extras?.ticketIntent === 'close' || extras?.ticketIntent === 'add') {
     qp.set('ticketIntent', extras.ticketIntent);
+  }
+  if (extras?.focusAdjust === true) {
+    qp.set('focusAdjust', '1');
   }
 
   /** Manage mode only when leg data is complete; otherwise Trade falls back to entry-style shell. */

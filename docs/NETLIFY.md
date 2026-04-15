@@ -50,6 +50,18 @@ netlify deploy --prod
 
 Redeploy after changing env vars.
 
+### App at `app.sigflo.group`
+
+The SPA treats **`app.sigflo.group`** as the product host: the **feed hub is `/`**, and **`/landing`** is the in-app marketing page if needed. Marketing on **www** stays **`/` = landing**, **`/feed` = product** when the build uses site root (`VITE_BASE` unset or `/`).
+
+1. Add **`app.sigflo.group`** in Netlify → **Domain management** (same site or a dedicated deploy).
+2. For that hostname, build with **`VITE_BASE` unset** or **`VITE_BASE=/`** (not `/feed/`), so assets load from `/assets/*` and routes match.
+3. In **Supabase → Authentication → URL configuration**, add **`https://app.sigflo.group/**`** to redirect allowlists alongside www/apex.
+4. Landing **“Open app”** links to **`https://app.sigflo.group/`** in production (`src/config/appRoutes.ts`).
+5. On the **Express backend** (Railway, Render, etc.), add **`https://app.sigflo.group`** to **`FRONTEND_ORIGIN`** (comma-separated). CORS must allow that exact origin or **exchange connect** (`POST /api/integrations/bybit/connect`) fails in the browser—often first noticed on mobile when the app is opened on the subdomain.
+
+Local dev: set **`VITE_APP_HOST=app`** in `.env.local` to mimic app routing on `localhost`.
+
 ## What Netlify serves
 
 - **Static SPA** from `dist/` (Vite build).

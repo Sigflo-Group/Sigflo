@@ -321,7 +321,7 @@ export function ExitAutomationControls(props: ExitAutomationControlsProps) {
                 </button>
 
                 {customSensitivityOpen ? (
-                  <div className="space-y-1.5 rounded-lg border border-white/[0.06] bg-sigflo-surface/80 px-2 py-2">
+                  <div className="space-y-1.5 rounded-lg border border-white/[0.06] bg-[#13161c] px-2 py-2">
                     <p className="text-[7px] leading-tight text-sigflo-muted/90 sm:text-[8px]">
                       Tunable weights for <span className="font-semibold text-sigflo-text/90">Custom</span> exit behavior. Named presets use fixed curves.
                     </p>
@@ -372,7 +372,7 @@ export function ExitAutomationControls(props: ExitAutomationControlsProps) {
             </button>
 
             {safeguardsOpen ? (
-              <div className="space-y-1.5 rounded-lg border border-white/[0.06] bg-sigflo-surface/80 px-2 py-2">
+              <div className="space-y-1.5 rounded-lg border border-white/[0.06] bg-[#13161c] px-2 py-2">
                 <label className="block text-[8px] text-sigflo-muted">
                   <span className="font-semibold uppercase tracking-wider text-sigflo-text/90">Max loss before forced close</span>
                   <span className="mt-0.5 block text-[8px] text-sigflo-muted">% unrealized (e.g. 5 = −5%)</span>

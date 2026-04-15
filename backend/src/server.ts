@@ -7,6 +7,8 @@ import { requireAuth } from './middleware/auth.js';
 import { integrationsRouter } from './routes/integrations.js';
 import { portfolioRouter } from './routes/portfolio.js';
 import { tradeRouter } from './routes/trade.js';
+import { exitWatchRouter } from './routes/exitWatch.js';
+import { startExitAutomationWorker } from './jobs/exitAutomationWorker.js';
 import { log } from './lib/logger.js';
 
 const isProd = process.env.NODE_ENV === 'production';
@@ -63,6 +65,7 @@ app.get('/health', (_req, res) => {
 app.use('/api/integrations', requireAuth, integrationsRouter);
 app.use('/api/portfolio', requireAuth, portfolioRouter);
 app.use('/api/trade', requireAuth, tradeRouter);
+app.use('/api/exit-watch', requireAuth, exitWatchRouter);
 
 function serializeError(error: unknown): Record<string, unknown> {
   if (!(error instanceof Error)) return { error: String(error) };
@@ -87,4 +90,5 @@ app.use((err: unknown, _req: express.Request, res: express.Response, _next: expr
 const host = process.env.HOST ?? '0.0.0.0';
 app.listen(env.PORT, host, () => {
   log('info', `Backend listening on ${host}:${env.PORT}`);
+  startExitAutomationWorker();
 });

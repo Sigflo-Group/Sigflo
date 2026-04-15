@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type MutableRefObject } from 'react';
 import { BybitWsClient } from '@/lib/bybitWsClient';
 import { LIVE_MARKET_CHART_THROTTLE_MS, LIVE_MARKET_UI_THROTTLE_MS } from '@/lib/liveMarketTickConstants';
 import { fetchKlines, fetchTickers } from '@/services/bybit/client';
@@ -18,6 +18,8 @@ export type LiveTradeTickSnapshot = {
 };
 
 type LiveTradeState = {
+  /** Set when `lastPrice` / candles were produced for this Bybit linear symbol; used to mask stale rows after `symbol` prop changes. */
+  dataSymbol?: string;
   lastPrice?: number;
   change24hPct?: number;
   high24h?: number;
@@ -96,6 +98,12 @@ export function useLiveTradeMarket(symbol: string, interval: TradeChartInterval)
   });
   const readyRef = useRef(false);
 
+  /** Drop tick refs as soon as `symbol` changes so nothing reads the prior pair’s price before the main effect runs. */
+  useLayoutEffect(() => {
+    lastPriceRef.current = undefined;
+    tickSnapshotRef.current = null;
+  }, [symbol]);
+
   /** RAF loop: refs → React state at throttled rates. */
   useEffect(() => {
     let stopped = false;
@@ -140,12 +148,14 @@ export function useLiveTradeMarket(symbol: string, interval: TradeChartInterval)
           next.volume24h = snap.volume24h;
           next.lastUpdateTs = snap.lastUpdateTs;
           next.mode = readyRef.current ? 'WS' : prev.mode;
+          next.dataSymbol = symbol;
         }
         if (chartDue && active.length > 0) {
           next.priceSeries = normalizeSeries(active);
           next.chartCandles = toTradeCandles(active);
           next.loadingInterval = false;
           next.mode = readyRef.current ? 'WS' : prev.mode;
+          next.dataSymbol = symbol;
         }
         return next;
       });
@@ -167,7 +177,20 @@ export function useLiveTradeMarket(symbol: string, interval: TradeChartInterval)
     pendingUiRef.current = false;
     pendingChartRef.current = false;
     chartImmediateRef.current = false;
-    setState((prev) => ({ ...prev, loadingInterval: true }));
+    /** Drop prior symbol/interval OHLC from React state immediately — avoids painting the wrong asset after pair change (e.g. BTC candles under LINK). */
+    setState((prev) => ({
+      ...prev,
+      loadingInterval: true,
+      chartCandles: undefined,
+      priceSeries: undefined,
+      lastPrice: undefined,
+      change24hPct: undefined,
+      high24h: undefined,
+      low24h: undefined,
+      volume24h: undefined,
+      lastUpdateTs: undefined,
+      dataSymbol: symbol,
+    }));
 
     async function bootstrap(reason: 'startup' | 'reconnect') {
       try {
@@ -193,7 +216,18 @@ export function useLiveTradeMarket(symbol: string, interval: TradeChartInterval)
         };
         const active = candlesRef.current[interval];
         const t = tickers[0];
-        if (!t || cancelled) return;
+        if (!t || cancelled) {
+          if (!cancelled) {
+            setState((prev) => ({
+              ...prev,
+              loadingInterval: false,
+              dataSymbol: symbol,
+              mode: 'OFFLINE',
+              connection: 'disconnected',
+            }));
+          }
+          return;
+        }
         readyRef.current = true;
 
         const snap: LiveTradeTickSnapshot = {
@@ -209,6 +243,7 @@ export function useLiveTradeMarket(symbol: string, interval: TradeChartInterval)
 
         setState((prev) => ({
           ...prev,
+          dataSymbol: symbol,
           lastPrice: snap.lastPrice,
           change24hPct: snap.change24hPct,
           high24h: snap.high24h,
@@ -224,7 +259,13 @@ export function useLiveTradeMarket(symbol: string, interval: TradeChartInterval)
         if (cancelled) return;
         tickSnapshotRef.current = null;
         lastPriceRef.current = undefined;
-        setState((prev) => ({ ...prev, loadingInterval: false, mode: 'OFFLINE', connection: 'disconnected' }));
+        setState((prev) => ({
+          ...prev,
+          loadingInterval: false,
+          dataSymbol: symbol,
+          mode: 'OFFLINE',
+          connection: 'disconnected',
+        }));
       }
     }
 
@@ -347,12 +388,20 @@ export function useLiveTradeMarket(symbol: string, interval: TradeChartInterval)
     }));
   }, [interval]);
 
-  return useMemo(
-    () => ({
-      ...state,
+  return useMemo(() => {
+    const mismatched = state.dataSymbol != null && state.dataSymbol !== symbol;
+    const core: LiveTradeState = mismatched
+      ? {
+          loadingInterval: true,
+          mode: state.mode,
+          connection: state.connection,
+          dataSymbol: state.dataSymbol,
+        }
+      : state;
+    return {
+      ...core,
       lastPriceRef,
       tickSnapshotRef,
-    }),
-    [state],
-  );
+    };
+  }, [state, symbol]);
 }

@@ -2,9 +2,10 @@ import { motion } from 'framer-motion';
 import { HeroBackground } from '@/components/landing/hero/HeroBackground';
 import { HeroLiveTickerStrip } from '@/components/landing/hero/HeroLiveTickerStrip';
 import { HeroNavBar, scrollToLandingId } from '@/components/landing/HeroNavBar';
-import { HeroSignalPanel } from '@/components/landing/hero/HeroSignalPanel';
 import { LandingPrimaryCta, LandingSecondaryCta } from '@/components/landing/LandingCta';
 import { LANDING_SECTIONS } from '@/components/landing/landingSections';
+
+const HERO_PHONE_SRC = `${import.meta.env.BASE_URL}landing-hero-phone.png`;
 
 const rise = {
   initial: { opacity: 0, y: 16 },
@@ -19,9 +20,35 @@ export function HeroSection({ embedNav }: Props) {
   return (
     <section
       id="top"
-      className="relative flex min-h-[92vh] flex-col overflow-hidden bg-[#05070b] text-[#F5F7FA] antialiased"
+      className="relative flex min-h-[92vh] flex-col overflow-hidden bg-[#0c0e12] text-[#F5F7FA] antialiased"
     >
-      <HeroBackground />
+      {/* Background stack: scene + tint toward landing-bg + tall handoff (incl. last trace of hero green). */}
+      <div className="pointer-events-none absolute inset-0 z-0 overflow-hidden" aria-hidden>
+        <HeroBackground />
+        {/* Mid-to-bottom wash: nudges whole lower hero toward page chrome without a visible band */}
+        <div
+          className="absolute inset-0 z-[1]"
+          style={{
+            background:
+              'linear-gradient(180deg, transparent 0%, transparent 42%, rgba(15, 17, 21, 0.12) 72%, rgba(15, 17, 21, 0.38) 100%)',
+          }}
+        />
+        <div
+          className="absolute inset-x-0 bottom-0 z-[2] h-[clamp(7rem,22vh,13rem)] sm:h-[clamp(8rem,26vh,15rem)]"
+          style={{
+            background: `
+              linear-gradient(to top,
+                #0F1115 0%,
+                rgba(15, 17, 21, 0.97) 18%,
+                rgba(15, 17, 21, 0.72) 42%,
+                rgba(12, 14, 18, 0.35) 68%,
+                rgba(0, 200, 120, 0.028) 88%,
+                transparent 100%
+              )
+            `,
+          }}
+        />
+      </div>
 
       {embedNav ? (
         <div className="sticky top-0 z-30 shrink-0">
@@ -87,14 +114,22 @@ export function HeroSection({ embedNav }: Props) {
           </div>
 
           <div className="flex min-w-0 justify-center lg:justify-end lg:pl-2">
-            <motion.div
+            <motion.figure
               initial={{ opacity: 0, y: 24 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.55, delay: 0.12, ease: [0.22, 1, 0.36, 1] }}
-              className="w-full max-w-[560px] lg:max-w-none"
+              className="relative isolate m-0 w-full max-w-[min(100%,520px)] lg:max-w-[min(100%,600px)]"
             >
-              <HeroSignalPanel />
-            </motion.div>
+              <img
+                src={HERO_PHONE_SRC}
+                alt="Sigflo app on a phone with bots command center, floating trend charts, and green glow accents on a dark background."
+                width={682}
+                height={1024}
+                decoding="async"
+                fetchPriority="high"
+                className="mx-auto h-auto w-full max-h-[min(78vh,700px)] object-contain [filter:drop-shadow(0_32px_64px_rgba(0,0,0,0.38))_drop-shadow(0_12px_36px_rgba(0,0,0,0.22))] motion-reduce:[filter:drop-shadow(0_20px_48px_rgba(0,0,0,0.35))]"
+              />
+            </motion.figure>
           </div>
         </div>
       </div>

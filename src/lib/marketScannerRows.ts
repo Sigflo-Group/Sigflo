@@ -223,6 +223,51 @@ export function deriveMarketStatus(signal: CryptoSignal): MarketRowStatus {
   return 'idle';
 }
 
+/**
+ * User watchlist (Trade header star). Order matches `favoriteBases`.
+ * Uses engine signal when present; else ticker-driven synthetic or a neutral shell when offline.
+ */
+export function buildWatchlistMarketRows(
+  favoriteBases: string[],
+  engineSignals: CryptoSignal[],
+  tickersBySymbol: Record<string, SymbolTicker>,
+): MarketScannerRow[] {
+  const out: MarketScannerRow[] = [];
+  const seenSym = new Set<string>();
+  for (const baseRaw of favoriteBases) {
+    const pair = baseRaw.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+    if (pair.length < 2) continue;
+    const symbol = `${pair}USDT`;
+    if (seenSym.has(symbol)) continue;
+    seenSym.add(symbol);
+
+    const ticker = tickersBySymbol[symbol];
+    const fromEngine = engineSignals.find((s) => s.pair === pair);
+    const signal =
+      fromEngine ??
+      (ticker != null ? buildSyntheticTrendingSignal(symbol, pair, ticker) : buildTrackedFallbackSignal(pair, symbol));
+
+    const lastPrice = ticker != null ? ticker.lastPrice : Number.NaN;
+    const change24hPct = ticker != null ? ticker.price24hPcnt * 100 : Number.NaN;
+    const status = deriveMarketStatus(signal);
+    const setupTag = signal.setupTags[0];
+
+    out.push({
+      symbol,
+      pair,
+      signal,
+      lastPrice,
+      change24hPct,
+      setupScore: signal.setupScore,
+      setupScoreLabel: signal.setupScoreLabel,
+      insight: signal.aiExplanation,
+      setupTag,
+      status,
+    });
+  }
+  return out;
+}
+
 /** Same rules as Feed → “Actionable” filter (triggered/developing, score ≥ 65, not overextended). */
 export function isFeedActionableOpportunity(signal: CryptoSignal): boolean {
   const status = deriveMarketStatus(signal);

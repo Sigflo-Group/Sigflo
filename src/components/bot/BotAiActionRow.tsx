@@ -18,7 +18,7 @@ export function BotAiActionRow({
   onImprove,
 }: BotAiActionRowProps) {
   return (
-    <section className="mt-3 rounded-2xl border border-white/[0.06] bg-sigflo-surface p-3 opacity-0 [animation:fade-in-up_240ms_ease-out_200ms_forwards]">
+    <section className="mt-3 rounded-2xl border border-white/[0.06] bg-sigflo-surface sigflo-panel-texture p-3 opacity-0 [animation:fade-in-up_240ms_ease-out_200ms_forwards]">
       <div className="flex gap-2">
         <button
           type="button"

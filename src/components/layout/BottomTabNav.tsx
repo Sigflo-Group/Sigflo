@@ -1,7 +1,7 @@
 import { NavLink } from 'react-router-dom';
+import { getFeedRoute } from '@/config/appRoutes';
 
-const tabs = [
-  { to: '/feed', label: 'Feed', icon: FeedIcon },
+const staticTabs = [
   { to: '/markets', label: 'Markets', icon: MarketsIcon },
   { to: '/bots', label: 'Bots', icon: BotsIcon },
   { to: '/portfolio', label: 'Portfolio', icon: PortfolioIcon },
@@ -9,6 +9,8 @@ const tabs = [
 ] as const;
 
 export function BottomTabNav() {
+  const tabs = [{ to: getFeedRoute(), label: 'Feed', icon: FeedIcon }, ...staticTabs] as const;
+
   return (
     <nav
       className="fixed bottom-0 left-0 right-0 z-40 border-t border-white/[0.06] bg-sigflo-bg/95 pb-[max(0.65rem,env(safe-area-inset-bottom))] pt-1.5 backdrop-blur-2xl"

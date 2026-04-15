@@ -7,8 +7,9 @@ import {
   CrosshairMode,
   HistogramSeries,
   LineSeries,
+  LineStyle,
   TickMarkType,
-  type AutoscaleInfo,
+  TrackingModeExitMode,
   type IChartApi,
   type ISeriesApi,
   type Time,
@@ -16,9 +17,15 @@ import {
 } from 'lightweight-charts';
 import { MarketStatsRow } from '@/components/trade/MarketStatsRow';
 import { SetupToggle } from '@/components/trade/SetupToggle';
+import { TradePlanCornerStats } from '@/components/trade/TradePlanCornerStats';
+import { TradePlanZonesOverlay } from '@/components/trade/TradePlanZonesOverlay';
 import { TRADE_CHART_PLOT_EXPANDED_PX } from '@/config/tradeChartHeights';
 import type { TradeChartInterval } from '@/hooks/useLiveTradeMarket';
 import { hexToRgba } from '@/lib/chartColorUtils';
+import {
+  CHART_SETUP_FOCUS_EVENT,
+  type ChartSetupFocusDetail,
+} from '@/lib/chartSetupFocus';
 import {
   tradeTimingLineAlpha,
   tradeTimingOverlayVisual,
@@ -32,6 +39,15 @@ import {
   type TradeChartAuxLine,
 } from '@/lib/tradeChartLevels';
 import type { MarketMode, TradeViewModel } from '@/types/trade';
+
+/** Normalize pair for setup-focus filter (`BTC` vs `BTC / USDT`). */
+function chartSetupFocusPairBase(pair: string): string {
+  const raw = pair.trim().toUpperCase();
+  if (raw.includes('/')) {
+    return raw.split('/')[0]?.trim().replace(/[^A-Z0-9]/g, '') || '';
+  }
+  return raw.replace(/USDT$/i, '').replace(/[^A-Z0-9]/g, '') || '';
+}
 
 /**
  * Chart surface: Lightweight Charts plot, interval chips, `SetupToggle` (Clean vs Setup overlays).
@@ -52,19 +68,6 @@ const levelStyles: Record<LevelKey, { label: string; stroke: string; labelClass:
 
 /** Ease-out fade for setup overlays (entry / stop / target / liq). */
 const SETUP_LINE_ANIM_MS = 175;
-
-/**
- * Stop and liquidation are often far below/above the live last/entry/target band. Including them
- * in y-autoscale squashes candles. We anchor the band on last + entry + target (+ aux), then only
- * widen to include stop/liq when within this ratio of that band's span (from the nearest edge).
- */
-const SETUP_RISK_OUTSIDE_PRIMARY_RATIO = 0.28;
-
-function padPriceExtent(min: number, max: number): { min: number; max: number } {
-  const span = max - min;
-  const pad = span > 0 ? span * 0.03 : Math.max(min, max) * 0.002;
-  return { min: min - pad, max: max + pad };
-}
 
 function toUtcTime(tsMs: number): UTCTimestamp {
   return Math.floor(tsMs / 1000) as UTCTimestamp;
@@ -143,6 +146,11 @@ export function PriceChartCard({
   liveHeaderMetrics,
   /** When this key changes, refit time scale once so entry/stop/target stay in view. */
   liveTradeRefitKey,
+  /**
+   * When this key changes (e.g. bot focus route / pair context), refit + scroll to the live edge so the latest
+   * candle is aligned like Trade screen — not stuck on early history after OHLC loads.
+   */
+  chartViewportSnapKey,
   /** Subtle frame hint when price is near stop or target. */
   chartProximity = null,
   /**
@@ -152,14 +160,21 @@ export function PriceChartCard({
    */
   liveTradeOverlayPreset = false,
   /**
-   * When true, hide last price + 24h change in the exchange hero row (e.g. when a `LiveMarketStrip` above
-   * already shows them). Left column becomes “Price chart” + `liveHeaderMetrics` instead.
+   * When true, the exchange TF row still shows last price + 24h; `liveHeaderMetrics.secondaryLine` (e.g. uPnL)
+   * is merged into that left cluster instead of duplicating last in a separate live-metrics band.
    */
   suppressExchangeHeroLivePrice = false,
   /** Strip label when `liveTradeMode` (open position context). */
   liveActivePositionTitle = 'Live position',
   pnlHeaderLabel,
   pnlHeaderTone,
+  timeScaleMaxBarSpacingPx,
+  chartInnerChromeToggle,
+  onSetupFocusBanner,
+  /** When true, plot height fills space below header chrome (parent must be a flex column with bounded height). */
+  chartPlotFlexFill = false,
+  /** Premium zone overlay: exit label when live / AI exit tooling is active. */
+  tradePlanExitLabel = 'exit' as 'exit' | 'ai',
 }: {
   model: TradeViewModel;
   market: MarketMode;
@@ -193,12 +208,13 @@ export function PriceChartCard({
     rewardPercent: number;
     rrRatio: number;
     badge?: string;
-    /** Shown under R/T/R:R when `suppressExchangeHeroLivePrice` (e.g. uPnL — not duplicate last). */
+    /** Shown next to last price in the exchange TF row when `suppressExchangeHeroLivePrice` (e.g. uPnL). */
     secondaryLine?: string;
     /** uPnL coloring: green / red / muted when flat. */
     secondaryLineTone?: 'positive' | 'negative' | 'neutral';
   };
   liveTradeRefitKey?: string;
+  chartViewportSnapKey?: string;
   chartProximity?: 'stop' | 'target' | null;
   liveTradeOverlayPreset?: boolean;
   suppressExchangeHeroLivePrice?: boolean;
@@ -206,12 +222,33 @@ export function PriceChartCard({
   /** Optional compact PnL line next to live chart price. */
   pnlHeaderLabel?: string;
   pnlHeaderTone?: 'positive' | 'negative' | 'neutral';
+  /**
+   * When set, limits time-scale bar width so `fitContent()` does not stretch a short history into huge candles
+   * (common on desktop bot focus / wide containers).
+   */
+  timeScaleMaxBarSpacingPx?: number;
+  /**
+   * Compact control in the exchange-style chart header (next to the live clock): e.g. collapse trade dock or
+   * enter/exit bot full-chart mode — same actions as outer chrome, discoverable from inside the chart card.
+   */
+  chartInnerChromeToggle?: {
+    expanded: boolean;
+    onToggle: () => void;
+    /** `dock` = trade price-chart strip; `immersive` = bot focus full-chart. */
+    variant: 'dock' | 'immersive';
+  };
+  /** Optional banner when setup focus runs (e.g. “Viewing Nova setup”). */
+  onSetupFocusBanner?: (label: string) => void;
+  chartPlotFlexFill?: boolean;
+  tradePlanExitLabel?: 'exit' | 'ai';
 }) {
   const showTimeframeBar =
     Boolean(timeframeOptions?.length && chartInterval != null && onChartIntervalChange);
   /** Exchange trade header: price/TF row should meet the plot with no extra chrome gap. */
   const exchangeTfHero =
     Boolean(exchangeStyleHero && showTimeframeBar && timeframeOptions && chartInterval != null && onChartIntervalChange);
+  /** Bot focus: pull price + TF row down toward the plot; trade dock keeps the tighter `items-end` strip. */
+  const immersiveTfHero = exchangeTfHero && chartInnerChromeToggle?.variant === 'immersive';
   const pnlHeaderToneClass =
     pnlHeaderTone === 'positive'
       ? 'text-emerald-300'
@@ -234,6 +271,14 @@ export function PriceChartCard({
   const [priceDirection, setPriceDirection] = useState<'up' | 'down' | 'flat'>('flat');
   /** Single plot host — fixed height + overflow-hidden; autoSize tracks this element. */
   const chartContainerRef = useRef<HTMLDivElement | null>(null);
+  const [chartPlotMountEl, setChartPlotMountEl] = useState<HTMLDivElement | null>(null);
+  const [tradePlanChartGen, setTradePlanChartGen] = useState(0);
+  const bindChartPlotEl = useCallback((node: HTMLDivElement | null) => {
+    chartContainerRef.current = node;
+    setChartPlotMountEl(node);
+  }, []);
+  /** After pointer down, first move past this threshold disables price autoscale so LC can scroll the Y range. */
+  const pricePanPrimedRef = useRef<{ x: number; y: number } | null>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const candleRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
   const lineRef = useRef<ISeriesApi<'Line'> | null>(null);
@@ -243,6 +288,15 @@ export function PriceChartCard({
   const auxPriceLineByIdRef = useRef<Record<string, PriceLineHandle>>({});
   /** Which series owns `priceLineByKeyRef` — must match candle vs line fallback in data effect. */
   const priceLineHostModeRef = useRef<'candle' | 'line' | null>(null);
+  const [setupFocusPulse, setSetupFocusPulse] = useState(false);
+  /** After programmatic setup zoom, block candle refresh from forcing price autoscale. */
+  const lockSetupPriceViewportRef = useRef(false);
+  const onSetupFocusBannerRef = useRef(onSetupFocusBanner);
+  onSetupFocusBannerRef.current = onSetupFocusBanner;
+  /** Manage-position hero TF strip: active chip ref for scroll-into-view (narrow widths + overflow-x). */
+  const heroTfActiveChipRef = useRef<HTMLButtonElement | null>(null);
+  const heroTfScrollRef = useRef<HTMLDivElement | null>(null);
+
   const [visibleLevels, setVisibleLevels] = useState<Record<LevelKey, boolean>>({
     entry: false,
     stop: false,
@@ -263,6 +317,13 @@ export function PriceChartCard({
     }
     prevSetupModeForSoloRef.current = setupMode;
   }, [setupMode, setupControlled]);
+
+  useLayoutEffect(() => {
+    if (!heroPairLabel || !showTimeframeBar) return;
+    const strip = heroTfScrollRef.current;
+    if (strip) strip.scrollLeft = Math.max(0, strip.scrollWidth - strip.clientWidth);
+    heroTfActiveChipRef.current?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  }, [heroPairLabel, showTimeframeBar, chartInterval]);
 
   useEffect(() => {
     if (!setupControlled) return;
@@ -360,6 +421,23 @@ export function PriceChartCard({
     [showLiquidation, visibleLevels],
   );
 
+  const usePremiumTradeZones = setupControlled && setupMode === true;
+  /** Must match candle vs line branch below: we draw OHLC whenever `length > 0`, so overlays / price lines must use the same host series. */
+  const candlesActiveOverlay = (model.chartCandles?.length ?? 0) > 0;
+
+  const premiumZonesVisible =
+    usePremiumTradeZones && (visibleLevels.entry || visibleLevels.stop || visibleLevels.target);
+
+  /** When HTML zones render, hide LC last price on the axis so it does not stack on tick labels / overlap the gutter. */
+  useEffect(() => {
+    const candle = candleRef.current;
+    const line = lineRef.current;
+    if (!candle || !line) return;
+    const showLastOnScale = !premiumZonesVisible;
+    candle.applyOptions({ lastValueVisible: showLastOnScale, priceLineVisible: showLastOnScale });
+    line.applyOptions({ lastValueVisible: showLastOnScale, priceLineVisible: showLastOnScale });
+  }, [premiumZonesVisible]);
+
   const useTimedSetupOverlays = setupControlled && setupMode && tradeTimingState != null;
   const setupOverlayVisual = useMemo(() => {
     if (!useTimedSetupOverlays || tradeTimingState == null) {
@@ -383,6 +461,12 @@ export function PriceChartCard({
   /** Only auto-fit when pair/interval changes or first paint — not on every new candle (preserves zoom). */
   const chartViewKeyRef = useRef<string>('');
   const didFitContentRef = useRef(false);
+  /**
+   * Line fallback runs while OHLC is empty (`priceSeries` can still be synthetic). That path sets
+   * `didFitContentRef`; when real candles arrive we must refit + `scrollToRealTime` or the viewport
+   * stays aligned to the short synthetic series instead of the latest candle.
+   */
+  const hadOhlcCandlesRef = useRef(false);
   /** Last bar logical index (0-based) for live-edge detection — updated when series data changes. */
   const lastBarLogicalIndexRef = useRef(0);
   /** While true, `subscribeVisibleLogicalRangeChange` ignores updates (programmatic fit/scroll). */
@@ -406,6 +490,120 @@ export function PriceChartCard({
         programmaticViewportRef.current = false;
       });
     }
+  }, []);
+
+  const handleSetupFocusRef = useRef<(d?: ChartSetupFocusDetail) => void>(() => {});
+  handleSetupFocusRef.current = (d) => {
+    const pairFilter = d?.pairFilter;
+    const botName = d?.botName;
+    if (pairFilter) {
+      const fa = chartSetupFocusPairBase(pairFilter);
+      const fb = chartSetupFocusPairBase(model.pair);
+      if (fa && fb && fa !== fb) return;
+    }
+
+    onRequestSetupMode?.();
+
+    const entry = model.entry;
+    const stop = model.stop;
+    const target = model.target;
+    const last = model.lastPrice;
+    const prices = [entry, stop, target, last].filter(
+      (p): p is number => typeof p === 'number' && Number.isFinite(p) && p > 0,
+    );
+    if (prices.length < 2) return;
+
+    setVisibleLevels((prev) => ({
+      ...prev,
+      entry: true,
+      stop: true,
+      target: true,
+      liquidation: false,
+    }));
+
+    setSetupFocusPulse(true);
+    window.setTimeout(() => setSetupFocusPulse(false), 2600);
+
+    const label =
+      botName != null && String(botName).trim().length > 0
+        ? `Viewing ${String(botName).trim()} setup`
+        : 'Viewing setup on chart';
+    onSetupFocusBannerRef.current?.(label);
+
+    const easeOutCubic = (t: number) => 1 - (1 - t) ** 3;
+    const durationMs = 420;
+
+    const startAnim = () => {
+      const chart = chartRef.current;
+      if (!chart) return;
+
+      const lastIdx = Math.max(0, lastBarLogicalIndexRef.current);
+      const targetFromL = Math.max(0, lastIdx - 72);
+      const targetToL = lastIdx + 4;
+
+      /**
+       * Animate **time** only. Animating the price scale to entry/stop/target can clip candles when those
+       * levels sit far from live OHLC (e.g. stale plan vs ~72k spot). Autoscale keeps price + lines in view.
+       */
+      runProgrammaticViewport(() => {
+        try {
+          chart.priceScale('right').setAutoScale(true);
+        } catch {
+          /* ignore */
+        }
+      });
+
+      requestAnimationFrame(() => {
+        const chart2 = chartRef.current;
+        if (!chart2) return;
+        const ts = chart2.timeScale();
+        const lStart = ts.getVisibleLogicalRange();
+        const fromL0 = lStart?.from ?? targetFromL;
+        const toL0 = lStart?.to ?? targetToL;
+
+        const t0 = performance.now();
+
+        const tick = (now: number) => {
+          const c = chartRef.current;
+          if (!c) return;
+          const tss = c.timeScale();
+          const u = Math.min(1, (now - t0) / durationMs);
+          const e = easeOutCubic(u);
+          const lf = fromL0 + (targetFromL - fromL0) * e;
+          const lt = toL0 + (targetToL - toL0) * e;
+          const lLo = Math.min(lf, lt);
+          const lHi = Math.max(lf, lt);
+          try {
+            runProgrammaticViewport(() => {
+              tss.setVisibleLogicalRange({ from: lLo, to: lHi });
+            });
+          } catch {
+            /* LC may reject degenerate ranges */
+          }
+          if (u < 1) requestAnimationFrame(tick);
+          else skipScrollToRealTimeRef.current = true;
+        };
+        requestAnimationFrame(tick);
+      });
+    };
+
+    const tryMount = (attempt: number) => {
+      if (!chartRef.current) {
+        if (attempt < 20) requestAnimationFrame(() => tryMount(attempt + 1));
+        return;
+      }
+      startAnim();
+    };
+    requestAnimationFrame(() => tryMount(0));
+  };
+
+  useEffect(() => {
+    const fn = (e: Event) => {
+      const ce = e as CustomEvent<ChartSetupFocusDetail>;
+      handleSetupFocusRef.current(ce.detail);
+    };
+    window.addEventListener(CHART_SETUP_FOCUS_EVENT, fn);
+    return () => window.removeEventListener(CHART_SETUP_FOCUS_EVENT, fn);
   }, []);
 
   /** After full `setData`, restore horizontal zoom when the user had panned off the live edge. */
@@ -449,91 +647,6 @@ export function PriceChartCard({
     [model.entry, model.liquidation, model.stop, model.target],
   );
 
-  /**
-   * v5 autoscale only uses bar min/max — custom price lines do not widen the scale. We merge a padded
-   * extent so levels stay in view. Risk levels (stop, liq) widen the merge only when close to the
-   * last/entry/target band; otherwise they stay off-scale and the line may clip — values remain in chips.
-   */
-  const overlayPriceAutoscaleExtent = useMemo(() => {
-    const primaryBand: number[] = [];
-    if (Number.isFinite(model.lastPrice) && model.lastPrice > 0) {
-      primaryBand.push(model.lastPrice);
-    }
-    if (visibleLevels.entry && Number.isFinite(staticLevelPrices.entry) && staticLevelPrices.entry > 0) {
-      primaryBand.push(staticLevelPrices.entry);
-    }
-    if (visibleLevels.target && Number.isFinite(staticLevelPrices.target) && staticLevelPrices.target > 0) {
-      primaryBand.push(staticLevelPrices.target);
-    }
-    for (const aux of auxiliaryPriceLines ?? []) {
-      if (Number.isFinite(aux.price) && aux.price > 0) primaryBand.push(aux.price);
-    }
-
-    if (primaryBand.length === 0) {
-      if (!Number.isFinite(model.lastPrice) || model.lastPrice <= 0) return null;
-      let lo = model.lastPrice;
-      let hi = model.lastPrice;
-      const span = Math.max(hi - lo, hi * 0.0005, 1);
-      const tryRiskOnly = (price: number, enabled: boolean) => {
-        if (!enabled || !Number.isFinite(price) || price <= 0) return;
-        if (price >= lo && price <= hi) return;
-        if (price < lo) {
-          const dist = lo - price;
-          if (dist / span <= SETUP_RISK_OUTSIDE_PRIMARY_RATIO) lo = price;
-        } else {
-          const dist = price - hi;
-          if (dist / span <= SETUP_RISK_OUTSIDE_PRIMARY_RATIO) hi = price;
-        }
-      };
-      tryRiskOnly(
-        staticLevelPrices.stop,
-        visibleLevels.stop && Number.isFinite(staticLevelPrices.stop) && staticLevelPrices.stop > 0,
-      );
-      tryRiskOnly(
-        staticLevelPrices.liquidation,
-        showLiquidation &&
-          visibleLevels.liquidation &&
-          Number.isFinite(staticLevelPrices.liquidation) &&
-          staticLevelPrices.liquidation > 0,
-      );
-      return padPriceExtent(lo, hi);
-    }
-
-    const pMin = Math.min(...primaryBand);
-    const pMax = Math.max(...primaryBand);
-    const pSpan = Math.max(pMax - pMin, pMax * 0.0005, 1);
-
-    let min = pMin;
-    let max = pMax;
-
-    const tryIncludeRisk = (price: number, enabled: boolean) => {
-      if (!enabled || !Number.isFinite(price) || price <= 0) return;
-      if (price >= pMin && price <= pMax) return;
-      if (price < pMin) {
-        const dist = pMin - price;
-        if (dist / pSpan <= SETUP_RISK_OUTSIDE_PRIMARY_RATIO) min = price;
-      } else {
-        const dist = price - pMax;
-        if (dist / pSpan <= SETUP_RISK_OUTSIDE_PRIMARY_RATIO) max = price;
-      }
-    };
-
-    tryIncludeRisk(
-      staticLevelPrices.stop,
-      visibleLevels.stop && Number.isFinite(staticLevelPrices.stop) && staticLevelPrices.stop > 0,
-    );
-    tryIncludeRisk(
-      staticLevelPrices.liquidation,
-      showLiquidation &&
-        visibleLevels.liquidation &&
-        Number.isFinite(staticLevelPrices.liquidation) &&
-        staticLevelPrices.liquidation > 0,
-    );
-
-    // Stop/liq still outside the ratio band: lines may clip — do not expand Y-scale or candles look flat.
-    return padPriceExtent(min, max);
-  }, [visibleLevels, staticLevelPrices, model.lastPrice, showLiquidation, auxiliaryPriceLines]);
-
   useLayoutEffect(() => {
     const el = chartContainerRef.current;
     if (!el) return;
@@ -541,10 +654,12 @@ export function PriceChartCard({
     const chart = createChart(el, {
       autoSize: true,
       layout: {
-        background: { type: ColorType.Solid, color: 'rgba(12,12,15,0.9)' },
+        background: { type: ColorType.Solid, color: '#0c0c0f' },
         textColor: 'rgba(148,163,184,0.9)',
         /** Drives time + price scale label metrics (shared by lightweight-charts). */
         fontSize: 12,
+        /** Hides bottom-left TV mark so custom trade labels (e.g. Stop) are not covered. Keep attribution in app docs if required by license. */
+        attributionLogo: false,
       },
       grid: {
         vertLines: { color: 'rgba(255,255,255,0.03)' },
@@ -556,6 +671,8 @@ export function PriceChartCard({
       },
       rightPriceScale: {
         borderColor: 'rgba(255,255,255,0.12)',
+        /** LC default is `{ top: 0.2, bottom: 0.1 }`. Tighter bottom keeps time labels snug; top must stay ≥ default or highs/wicks clip under `overflow-hidden`. */
+        scaleMargins: { top: 0.26, bottom: 0.02 },
       },
       timeScale: {
         borderColor: 'rgba(255,255,255,0.12)',
@@ -566,18 +683,25 @@ export function PriceChartCard({
         secondsVisible: false,
         allowBoldLabels: false,
         tickMarkFormatter: formatTimeScaleTick,
+        ...(typeof timeScaleMaxBarSpacingPx === 'number' &&
+        Number.isFinite(timeScaleMaxBarSpacingPx) &&
+        timeScaleMaxBarSpacingPx > 0
+          ? { maxBarSpacing: timeScaleMaxBarSpacingPx }
+          : {}),
       },
       handleScroll: {
         mouseWheel: true,
         pressedMouseMove: true,
         horzTouchDrag: true,
-        vertTouchDrag: false,
+        vertTouchDrag: true,
       },
       handleScale: {
         mouseWheel: true,
         pinch: true,
-        axisPressedMouseMove: true,
+        axisPressedMouseMove: { time: true, price: true },
       },
+      /** Touch: exit crosshair/inspect mode on lift so the next gesture can pan/zoom without an extra tap. */
+      trackingMode: { exitMode: TrackingModeExitMode.OnTouchEnd },
     });
 
     const candleSeries = chart.addSeries(CandlestickSeries, {
@@ -589,6 +713,8 @@ export function PriceChartCard({
       wickDownColor: '#f87171',
       lastValueVisible: true,
       priceLineVisible: true,
+      /** LC default is dashed — reads as “dotted” under HTML trade overlays when last ≈ entry. */
+      priceLineStyle: LineStyle.Solid,
     });
     const lineSeries = chart.addSeries(LineSeries, {
       color: '#22d3ee',
@@ -596,6 +722,7 @@ export function PriceChartCard({
       crosshairMarkerVisible: false,
       lastValueVisible: true,
       priceLineVisible: true,
+      priceLineStyle: LineStyle.Solid,
     });
     const volSeries = chart.addSeries(HistogramSeries, {
       priceScaleId: '',
@@ -608,18 +735,11 @@ export function PriceChartCard({
       scaleMargins: { top: 0.91, bottom: 0 },
     });
 
-    /** Default right scale uses ~10% bottom margin — pulls candles away from the time axis. Tighten so time labels sit just under the plot. */
-    chart.priceScale('right').applyOptions({
-      scaleMargins: {
-        top: 0.1,
-        bottom: 0.02,
-      },
-    });
-
     chartRef.current = chart;
     candleRef.current = candleSeries;
     lineRef.current = lineSeries;
     volRef.current = volSeries;
+    setTradePlanChartGen((g) => g + 1);
 
     const onVisibleLogicalRangeChange = () => applySkipScrollFromViewportRef.current();
 
@@ -641,7 +761,7 @@ export function PriceChartCard({
       lineRef.current = null;
       volRef.current = null;
     };
-  }, []);
+  }, [timeScaleMaxBarSpacingPx]);
 
   /** Keep LC in sync with the plot box — `chartPlotHeightPx` uses CSS `transition` on height; a one-shot effect
    * often read stale `clientHeight`. ResizeObserver + rAF resizes after layout and through the transition. */
@@ -655,8 +775,8 @@ export function PriceChartCard({
       if (raf !== 0) cancelAnimationFrame(raf);
       raf = window.requestAnimationFrame(() => {
         raf = 0;
-        const w = Math.max(1, Math.floor(el.clientWidth));
-        const h = Math.max(1, Math.floor(el.clientHeight));
+        const w = Math.max(1, Math.round(el.clientWidth));
+        const h = Math.max(1, Math.round(el.clientHeight));
         chart.resize(w, h);
       });
     };
@@ -679,40 +799,6 @@ export function PriceChartCard({
     return () => window.removeEventListener('blur', onBlur);
   }, []);
 
-  /** Widen right scale so setup price lines (stop / liq far from last) stay in view. */
-  useEffect(() => {
-    const candle = candleRef.current;
-    const line = lineRef.current;
-    const chart = chartRef.current;
-    if (!candle || !line || !chart) return;
-
-    const extent = overlayPriceAutoscaleExtent;
-    const autoscaleInfoProvider = (original: () => AutoscaleInfo | null): AutoscaleInfo | null => {
-      const base = original();
-      if (!extent) return base;
-      const { min: extMin, max: extMax } = extent;
-      if (base?.priceRange) {
-        return {
-          priceRange: {
-            minValue: Math.min(base.priceRange.minValue, extMin),
-            maxValue: Math.max(base.priceRange.maxValue, extMax),
-          },
-          margins: base.margins,
-        };
-      }
-      return {
-        priceRange: {
-          minValue: extMin,
-          maxValue: extMax,
-        },
-        margins: base?.margins,
-      };
-    };
-
-    candle.applyOptions({ autoscaleInfoProvider });
-    line.applyOptions({ autoscaleInfoProvider });
-  }, [overlayPriceAutoscaleExtent]);
-
   useEffect(() => {
     const candleSeries = candleRef.current;
     const lineSeries = lineRef.current;
@@ -726,10 +812,19 @@ export function PriceChartCard({
       candleStructRef.current = null;
       skipScrollToRealTimeRef.current = false;
       lineFallbackSeriesLenRef.current = -1;
+      lockSetupPriceViewportRef.current = false;
+      hadOhlcCandlesRef.current = false;
     }
 
     const candles = model.chartCandles ?? [];
-    if (candles.length > 10) {
+    if (candles.length === 0) {
+      hadOhlcCandlesRef.current = false;
+    } else if (!hadOhlcCandlesRef.current) {
+      hadOhlcCandlesRef.current = true;
+      didFitContentRef.current = false;
+    }
+
+    if (candles.length > 0) {
       lineFallbackSeriesLenRef.current = -1;
       const last = candles[candles.length - 1];
       const struct = candleStructRef.current;
@@ -765,6 +860,8 @@ export function PriceChartCard({
         const lastIdx = Math.max(0, candles.length - 1);
 
         runProgrammaticViewport(() => {
+          /** Set before `setData` so `subscribeVisibleLogicalRangeChange` sees the correct live index. */
+          lastBarLogicalIndexRef.current = lastIdx;
           candleSeries.setData(
             candles.map((c) => ({
               time: toUtcTime(c.ts) as Time,
@@ -785,10 +882,20 @@ export function PriceChartCard({
           if (last) {
             candleStructRef.current = { len: candles.length, lastTs: last.ts };
           }
-          lastBarLogicalIndexRef.current = lastIdx;
           if (!didFitContentRef.current) {
             ts?.fitContent();
+            if (
+              ts &&
+              typeof timeScaleMaxBarSpacingPx === 'number' &&
+              Number.isFinite(timeScaleMaxBarSpacingPx) &&
+              timeScaleMaxBarSpacingPx > 0
+            ) {
+              ts.applyOptions({ maxBarSpacing: timeScaleMaxBarSpacingPx });
+            }
             didFitContentRef.current = true;
+            if (!preserveViewport && !lockSetupPriceViewportRef.current) {
+              chart?.priceScale('right').setAutoScale(true);
+            }
             if (!preserveViewport && !skipScrollToRealTimeRef.current) {
               ts?.scrollToRealTime();
             }
@@ -799,6 +906,9 @@ export function PriceChartCard({
             });
           } else if (!skipScrollToRealTimeRef.current) {
             ts?.scrollToRealTime();
+            if (!lockSetupPriceViewportRef.current) {
+              chart?.priceScale('right').setAutoScale(true);
+            }
           }
         });
       }
@@ -830,13 +940,24 @@ export function PriceChartCard({
         preserveViewport && chart && ts ? ts.getVisibleLogicalRange() : null;
       const lastIdxLine = Math.max(0, series.length - 1);
       runProgrammaticViewport(() => {
+        lastBarLogicalIndexRef.current = lastIdxLine;
         lineSeries.setData(series);
         candleSeries.setData([]);
         volSeries.setData([]);
-        lastBarLogicalIndexRef.current = lastIdxLine;
         if (!didFitContentRef.current) {
           ts?.fitContent();
+          if (
+            ts &&
+            typeof timeScaleMaxBarSpacingPx === 'number' &&
+            Number.isFinite(timeScaleMaxBarSpacingPx) &&
+            timeScaleMaxBarSpacingPx > 0
+          ) {
+            ts.applyOptions({ maxBarSpacing: timeScaleMaxBarSpacingPx });
+          }
           didFitContentRef.current = true;
+          if (!preserveViewport && !lockSetupPriceViewportRef.current) {
+            chart?.priceScale('right').setAutoScale(true);
+          }
           if (!preserveViewport && !skipScrollToRealTimeRef.current) {
             ts?.scrollToRealTime();
           }
@@ -847,10 +968,21 @@ export function PriceChartCard({
           });
         } else if (!skipScrollToRealTimeRef.current) {
           ts?.scrollToRealTime();
+          if (!lockSetupPriceViewportRef.current) {
+            chart?.priceScale('right').setAutoScale(true);
+          }
         }
       });
     }
-  }, [intervalLabel, model.chartCandles, model.lastPrice, model.pair, model.priceSeries, runProgrammaticViewport]);
+  }, [
+    intervalLabel,
+    model.chartCandles,
+    model.lastPrice,
+    model.pair,
+    model.priceSeries,
+    runProgrammaticViewport,
+    timeScaleMaxBarSpacingPx,
+  ]);
 
   useEffect(() => {
     const prev = prevPriceRef.current;
@@ -865,7 +997,7 @@ export function PriceChartCard({
     const lineSeries = lineRef.current;
     if (!candleSeries || !lineSeries) return;
 
-    const candlesActive = (model.chartCandles?.length ?? 0) > 10;
+    const candlesActive = (model.chartCandles?.length ?? 0) > 0;
     const host = candlesActive ? candleSeries : lineSeries;
     const nextHostMode: 'candle' | 'line' = candlesActive ? 'candle' : 'line';
     const prevMode = priceLineHostModeRef.current;
@@ -895,13 +1027,27 @@ export function PriceChartCard({
 
     const strokeFor = (key: LevelKey) => {
       const style = levelStyles[key];
+      if (usePremiumTradeZones && key === 'stop') return '#fecaca';
+      if (usePremiumTradeZones && key === 'entry') return 'rgba(45,212,191,0.95)';
+      if (usePremiumTradeZones && key === 'target') return 'rgba(74,222,128,0.88)';
       if (useTimedSetupOverlays) {
         const a = tradeTimingLineAlpha(key, setupOverlayVisual.alphaScale);
         return hexToRgba(style.stroke, a);
       }
+      if (setupFocusPulse && (key === 'entry' || key === 'stop' || key === 'target')) {
+        return hexToRgba(style.stroke, 0.95);
+      }
       return style.stroke;
     };
     const widthFor = (key: LevelKey): 1 | 2 | 3 | 4 => {
+      if (usePremiumTradeZones && (key === 'entry' || key === 'stop' || key === 'target')) {
+        if (key === 'stop') return 4;
+        if (key === 'entry') return 2;
+        return 1;
+      }
+      if (setupFocusPulse && (key === 'entry' || key === 'stop' || key === 'target')) {
+        return (key === 'entry' ? 3 : 2) as 1 | 2 | 3 | 4;
+      }
       if (key !== 'entry') return 1;
       const w = 2 + (useTimedSetupOverlays ? setupOverlayVisual.entryLineExtraWidth : 0);
       return (w <= 4 ? w : 4) as 1 | 2 | 3 | 4;
@@ -919,31 +1065,47 @@ export function PriceChartCard({
         continue;
       }
       const existing = priceLineByKeyRef.current[key];
+      const premiumPlan = usePremiumTradeZones && key !== 'liquidation';
+      /** Native LC lines sit under `TradePlanZonesOverlay`; hiding them avoids a thin “dotted” double line under the HTML bars. */
+      const lineVisible = !premiumPlan;
       if (existing) {
         existing.applyOptions({
           price,
           color: strokeFor(key),
           lineWidth: widthFor(key),
-          title: style.label,
+          lineStyle: LineStyle.Solid,
+          lineVisible,
+          title: premiumPlan ? '' : style.label,
+          axisLabelVisible: !premiumPlan,
         });
       } else {
         priceLineByKeyRef.current[key] = host.createPriceLine({
           price,
           color: strokeFor(key),
           lineWidth: widthFor(key),
-          axisLabelVisible: true,
-          title: style.label,
+          lineStyle: LineStyle.Solid,
+          lineVisible,
+          axisLabelVisible: !premiumPlan,
+          title: premiumPlan ? '' : style.label,
         });
       }
     }
-  }, [model.chartCandles, staticLevelPrices, visibleLevelKeys, useTimedSetupOverlays, setupOverlayVisual]);
+  }, [
+    model.chartCandles,
+    staticLevelPrices,
+    visibleLevelKeys,
+    useTimedSetupOverlays,
+    setupOverlayVisual,
+    setupFocusPulse,
+    usePremiumTradeZones,
+  ]);
 
   useEffect(() => {
     const candleSeries = candleRef.current;
     const lineSeries = lineRef.current;
     if (!candleSeries || !lineSeries) return;
 
-    const candlesActive = (model.chartCandles?.length ?? 0) > 10;
+    const candlesActive = (model.chartCandles?.length ?? 0) > 0;
     const host = candlesActive ? candleSeries : lineSeries;
 
     const want = new Map((auxiliaryPriceLines ?? []).filter((a) => Number.isFinite(a.price) && a.price > 0).map((a) => [a.id, a]));
@@ -974,28 +1136,41 @@ export function PriceChartCard({
     }
   }, [auxiliaryPriceLines, model.chartCandles, model.lastPrice]);
 
-  const liveRefitSeenKeyRef = useRef<string | undefined>(undefined);
+  const viewportRefitSeenKeyRef = useRef<string | undefined>(undefined);
+  const viewportRefitCompositeKey = [liveTradeRefitKey, chartViewportSnapKey].filter(
+    (k): k is string => typeof k === 'string' && k.length > 0,
+  ).join('\u0000');
+
   useEffect(() => {
-    if (!liveTradeRefitKey) {
-      liveRefitSeenKeyRef.current = undefined;
+    if (!viewportRefitCompositeKey) {
+      viewportRefitSeenKeyRef.current = undefined;
       return;
     }
-    if (liveRefitSeenKeyRef.current === liveTradeRefitKey) return;
-    liveRefitSeenKeyRef.current = liveTradeRefitKey;
+    if (viewportRefitSeenKeyRef.current === viewportRefitCompositeKey) return;
+    viewportRefitSeenKeyRef.current = viewportRefitCompositeKey;
     didFitContentRef.current = false;
     skipScrollToRealTimeRef.current = false;
+    lockSetupPriceViewportRef.current = false;
     const id = window.requestAnimationFrame(() => {
       const chart = chartRef.current;
       if (!chart) return;
       runProgrammaticViewport(() => {
         const ts = chart.timeScale();
         ts.fitContent();
+        if (
+          typeof timeScaleMaxBarSpacingPx === 'number' &&
+          Number.isFinite(timeScaleMaxBarSpacingPx) &&
+          timeScaleMaxBarSpacingPx > 0
+        ) {
+          ts.applyOptions({ maxBarSpacing: timeScaleMaxBarSpacingPx });
+        }
         didFitContentRef.current = true;
+        chart.priceScale('right').setAutoScale(true);
         ts.scrollToRealTime();
       });
     });
     return () => window.cancelAnimationFrame(id);
-  }, [liveTradeRefitKey, runProgrammaticViewport]);
+  }, [viewportRefitCompositeKey, runProgrammaticViewport, timeScaleMaxBarSpacingPx]);
 
   useEffect(() => {
     if (!setupControlled || setupMode) return;
@@ -1171,161 +1346,377 @@ export function PriceChartCard({
         ? 'shadow-[inset_0_0_20px_-8px_rgba(74,222,128,0.22)]'
         : '';
 
-  return (
-    <Card
-      className={`overflow-hidden border-white/[0.1] bg-gradient-to-b from-white/[0.06] via-sigflo-surface to-black/35 p-1.5 shadow-[0_20px_50px_-28px_rgba(0,0,0,0.9)] backdrop-blur-md md:p-2 ${
-        liveTradeMode ? 'ring-1 ring-[#00ffc8]/14 shadow-[0_0_48px_-28px_rgba(0,255,200,0.12)]' : ''
-      }`}
-      style={{ ['--chart-h-desktop' as string]: `${chartHeightPx}px` }}
+  const showPairTfHero =
+    Boolean(heroPairLabel) &&
+    showTimeframeBar &&
+    Boolean(timeframeOptions && chartInterval != null && onChartIntervalChange);
+  /**
+   * Price + TF header rows render inside the chart panel (not in the padded card body) so quotes sit flush
+   * above the plot — applies to the trade dock (`exchangeStyleHero`) and manage (`heroPairLabel`) charts.
+   */
+  const headerDockedInPlotPanel =
+    showTimeframeBar && (exchangeStyleHero || Boolean(heroPairLabel));
+
+  /** Manage dock: show Stop/Tgt/R:R in the header above TF chips instead of on the plot (clears scale clutter). */
+  const dockTradePlanCornerStatsInHeader =
+    premiumZonesVisible && headerDockedInPlotPanel && !exchangeStyleHero && Boolean(heroPairLabel);
+
+  const pairTfHeroTfChips = (
+    <div
+      ref={heroTfScrollRef}
+      className="flex min-w-0 max-w-full justify-end overflow-x-auto overscroll-x-contain py-0 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden touch-pan-x"
     >
-      {exchangeStyleHero && showTimeframeBar && timeframeOptions && chartInterval != null && onChartIntervalChange ? (
+      <div className="inline-flex min-w-max shrink-0 items-center gap-1 sm:gap-1.5">
+        <span className="hidden shrink-0 text-[8px] font-semibold uppercase tracking-[0.14em] text-sigflo-muted/80 sm:inline sm:text-[9px] md:text-[10px]">
+          TF
+        </span>
+        <div className="flex shrink-0 items-center gap-0.5 sm:gap-1">
+          {timeframeOptions!.map((intv) => (
+            <button
+              key={intv.value}
+              ref={chartInterval === intv.value ? heroTfActiveChipRef : undefined}
+              type="button"
+              onClick={() => onChartIntervalChange!(intv.value)}
+              className={`shrink-0 rounded-md px-1.5 py-1 text-[9px] font-bold leading-none transition sm:px-2 sm:py-1.5 sm:text-[10px] md:px-2.5 md:text-[11px] ${
+                chartInterval === intv.value
+                  ? 'bg-sigflo-accent/18 text-sigflo-accent ring-1 ring-inset ring-sigflo-accent/35'
+                  : 'border border-white/[0.06] bg-white/[0.04] text-sigflo-muted hover:border-white/[0.1] hover:text-sigflo-text'
+              }`}
+            >
+              {intv.label}
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+
+  const pairTfHeroTfStrip = (
+    <div className="order-last flex w-full min-w-0 justify-end border-t border-white/[0.06] pt-1">
+      {pairTfHeroTfChips}
+    </div>
+  );
+
+  const pairTfHeroQuoteCluster = (
+    <div className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-1.5 gap-y-0 leading-tight md:gap-x-2">
+      <h2 className="max-w-[min(100%,40vw)] truncate text-xs font-bold tracking-tight text-white sm:max-w-[12rem] md:max-w-none md:text-xl">
+        {heroPairLabel}
+      </h2>
+      <span
+        className={`shrink-0 text-sm font-bold tabular-nums leading-none transition-colors md:text-2xl ${
+          priceDirection === 'up' ? 'text-emerald-200' : priceDirection === 'down' ? 'text-rose-200' : 'text-white'
+        }`}
+      >
+        {formatQuoteUsd(model.lastPrice)}
+      </span>
+      <span className={`shrink-0 text-[10px] font-bold tabular-nums leading-none md:text-sm ${changeClass}`}>
+        {change >= 0 ? '+' : ''}
+        {change.toFixed(2)}%
+      </span>
+    </div>
+  );
+
+  const pairTfHeroQuoteRow = (
+    <div
+      className={`flex w-full min-w-0 items-start justify-between gap-2 ${
+        headerDockedInPlotPanel ? 'shrink-0 py-1' : 'pt-0'
+      }`}
+    >
+      {pairTfHeroQuoteCluster}
+      {dockTradePlanCornerStatsInHeader ? null : (
+        <div className="shrink-0 border-l border-white/[0.08] pl-1.5 md:pl-2">{perpTimeCluster}</div>
+      )}
+    </div>
+  );
+
+  /** Manage dock + premium zones: pair / price / % on the same row as Stop·Tgt·R:R and live time. */
+  const pairTfHeroDockedQuoteStatsTimeRow = (
+    <div className="flex w-full min-w-0 shrink-0 items-start justify-between gap-2 py-1">
+      {pairTfHeroQuoteCluster}
+      <div className="flex shrink-0 items-start justify-end gap-2">
+        <div className="pointer-events-none shrink-0">
+          <TradePlanCornerStats
+            entry={model.entry}
+            stop={model.stop}
+            target={model.target}
+            lastPrice={model.lastPrice}
+            riskReward={model.riskReward}
+            className="max-w-[min(100%,11rem)] shrink-0"
+          />
+        </div>
+        <div className="pointer-events-none shrink-0">{perpTimeCluster}</div>
+      </div>
+    </div>
+  );
+
+  const pairTfHeroPnlRow =
+    pnlHeaderLabel != null && pnlHeaderLabel !== '' ? (
+      <div className={`flex w-full min-w-0 ${headerDockedInPlotPanel ? 'shrink-0 pb-1 pt-0' : ''}`}>
+        <p
+          className={`max-w-full truncate text-[9px] font-semibold tabular-nums leading-tight sm:text-[10px] md:text-[11px] ${pnlHeaderToneClass}`}
+        >
+          {pnlHeaderLabel}
+        </p>
+      </div>
+    ) : null;
+
+  /** Manage dock: PnL + TF chips share one row above the plot. */
+  const pairTfHeroDockedPnlTfRow = (
+    <div className="flex w-full min-w-0 shrink-0 items-center justify-between gap-2 py-1">
+      <div className="min-w-0 flex-1">
+        {pnlHeaderLabel != null && pnlHeaderLabel !== '' ? (
+          <p
+            className={`max-w-full truncate text-[9px] font-semibold tabular-nums leading-tight sm:text-[10px] md:text-[11px] ${pnlHeaderToneClass}`}
+          >
+            {pnlHeaderLabel}
+          </p>
+        ) : null}
+      </div>
+      <div className="flex min-w-0 max-w-[min(100%,11.5rem)] shrink-0 items-center sm:max-w-[min(100%,16rem)] md:max-w-none">
+        {pairTfHeroTfChips}
+      </div>
+    </div>
+  );
+
+  const pairTfHeroContent = showPairTfHero ? (
+    <div
+      className={`flex w-full min-w-0 flex-col border-b border-white/[0.06] ${
+        headerDockedInPlotPanel
+          ? 'shrink-0 divide-y divide-white/[0.06] px-[4.5px] pb-0 pt-1 md:px-[5.5px] md:pt-1.5'
+          : 'mb-0 gap-0 pb-px md:gap-0.5 md:pb-0.5'
+      }`}
+    >
+      {headerDockedInPlotPanel ? (
         <>
-          <div
-            className={`mb-0 flex min-w-0 w-full flex-wrap items-end justify-between gap-x-2 gap-y-1 border-b bg-black/20 px-[4.5px] pb-[3px] pt-px md:gap-x-2.5 md:px-[5.5px] md:pb-[3.5px] md:pt-[2px] ${
-              suppressExchangeHeroLivePrice && liveTradeMode
-                ? 'border-[#00ffc8]/12'
-                : 'border-white/[0.06]'
+          {dockTradePlanCornerStatsInHeader ? pairTfHeroDockedQuoteStatsTimeRow : pairTfHeroQuoteRow}
+          {pairTfHeroDockedPnlTfRow}
+        </>
+      ) : (
+        <>
+          {pairTfHeroTfStrip}
+          {pairTfHeroQuoteRow}
+          {pairTfHeroPnlRow}
+        </>
+      )}
+    </div>
+  ) : null;
+
+  const showExchangeTfHeader =
+    exchangeStyleHero &&
+    showTimeframeBar &&
+    Boolean(timeframeOptions && chartInterval != null && onChartIntervalChange);
+
+  /** Trade dock: one bar above the plot — price/PnL left, TF + chrome right. */
+  const exchangeTfHeaderSingleRowDocked = headerDockedInPlotPanel && !immersiveTfHero;
+
+  const exchangeTfControlsRow = (
+    <div
+      className={`${exchangeTfHeaderSingleRowDocked ? '' : 'ml-auto '}flex min-w-0 max-w-full shrink-0 items-end justify-end gap-x-1 gap-y-1 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:gap-x-1.5 md:gap-y-1`}
+    >
+      <div className="flex w-max shrink-0 flex-nowrap items-end justify-end gap-1 md:gap-1.5">
+        {timeframeOptions!.map((intv) => (
+          <button
+            key={intv.value}
+            type="button"
+            onClick={() => onChartIntervalChange!(intv.value)}
+            className={`shrink-0 rounded px-[6px] py-[3px] text-[8px] font-medium uppercase leading-none tracking-wide transition md:px-2 md:py-1 md:text-[9px] ${
+              chartInterval === intv.value
+                ? 'bg-cyan-500/15 text-cyan-200 ring-1 ring-cyan-400/25'
+                : 'bg-white/[0.04] text-sigflo-muted hover:bg-white/[0.07] hover:text-sigflo-text'
             }`}
           >
-            <div className="flex min-w-0 shrink-0 flex-col justify-end gap-0.5">
-              {suppressExchangeHeroLivePrice ? (
-                <>
-                  <span className="text-[9px] font-extrabold uppercase tracking-[0.14em] text-sigflo-muted/90 md:text-[10px]">
-                    Price chart
-                  </span>
-                  {liveHeaderMetrics?.secondaryLine ? (
-                    <p
-                      className={`max-w-[min(100%,16rem)] truncate text-[7px] font-semibold tabular-nums md:text-[8px] ${
-                        liveHeaderMetrics.secondaryLineTone === 'positive'
-                          ? 'text-emerald-300'
-                          : liveHeaderMetrics.secondaryLineTone === 'negative'
-                            ? 'text-rose-300'
-                            : 'text-sigflo-muted'
-                      }`}
-                    >
-                      {liveHeaderMetrics.secondaryLine}
-                    </p>
-                  ) : null}
-                </>
-              ) : (
-                <div className="flex min-w-0 items-baseline gap-2 md:gap-[4.5px]">
-                  <span
-                    className={`text-xs font-bold tabular-nums leading-none transition-colors md:text-sm ${
-                      priceDirection === 'up' ? 'text-emerald-200' : priceDirection === 'down' ? 'text-rose-200' : 'text-white'
-                    }`}
-                  >
-                    {formatQuoteUsd(model.lastPrice)}
-                  </span>
-                  <span className={`text-[7px] font-medium tabular-nums leading-tight md:text-[8px] ${changeClass}`}>
-                    {change >= 0 ? '+' : '−'}
-                    {abs24hFmt} ({change >= 0 ? '+' : ''}
-                    {change.toFixed(2)}%)
-                  </span>
-                </div>
-              )}
-            </div>
-            <div className="ml-auto flex min-w-0 max-w-full shrink-0 items-end justify-end gap-x-1 gap-y-1 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:gap-x-1.5 md:gap-y-1">
-              <div className="flex w-max shrink-0 flex-nowrap items-end justify-end gap-1 md:gap-1.5">
-                {timeframeOptions.map((intv) => (
-                  <button
-                    key={intv.value}
-                    type="button"
-                    onClick={() => onChartIntervalChange(intv.value)}
-                    className={`shrink-0 rounded px-[6px] py-[3px] text-[8px] font-medium uppercase leading-none tracking-wide transition md:px-2 md:py-1 md:text-[9px] ${
-                      chartInterval === intv.value
-                        ? 'bg-cyan-500/15 text-cyan-200 ring-1 ring-cyan-400/25'
-                        : 'bg-white/[0.04] text-sigflo-muted hover:bg-white/[0.07] hover:text-sigflo-text'
-                    }`}
-                  >
-                    {intv.label}
-                  </button>
-                ))}
-              </div>
-              {onSetupModeToggle ? (
-                <div className="shrink-0">
-                  <SetupToggle isActive={setupMode === true} onToggle={onSetupModeToggle} />
-                </div>
-              ) : null}
-              <span className="h-3 w-px shrink-0 bg-white/[0.12]" aria-hidden />
-              <div className="flex shrink-0 items-end pb-px">{perpTimeCluster}</div>
-            </div>
+            {intv.label}
+          </button>
+        ))}
+      </div>
+      {onSetupModeToggle ? (
+        <div className="shrink-0">
+          <SetupToggle isActive={setupMode === true} onToggle={onSetupModeToggle} />
+        </div>
+      ) : null}
+      <span className="h-3 w-px shrink-0 bg-white/[0.12]" aria-hidden />
+      <div className="flex shrink-0 items-end pb-px">{perpTimeCluster}</div>
+      {chartInnerChromeToggle ? (
+        <button
+          type="button"
+          onClick={chartInnerChromeToggle.onToggle}
+          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-white/[0.12] bg-white/[0.05] text-sigflo-muted transition hover:border-cyan-400/35 hover:text-cyan-100 active:scale-[0.97] md:h-7 md:w-7"
+          aria-label={
+            chartInnerChromeToggle.variant === 'immersive'
+              ? chartInnerChromeToggle.expanded
+                ? 'Exit full chart'
+                : 'Expand to full chart'
+              : chartInnerChromeToggle.expanded
+                ? 'Collapse chart'
+                : 'Expand chart'
+          }
+          title={
+            chartInnerChromeToggle.variant === 'immersive'
+              ? chartInnerChromeToggle.expanded
+                ? 'Exit full chart'
+                : 'Full chart'
+              : chartInnerChromeToggle.expanded
+                ? 'Collapse chart'
+                : 'Expand chart'
+          }
+        >
+          {chartInnerChromeToggle.variant === 'immersive' ? (
+            chartInnerChromeToggle.expanded ? (
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" className="md:h-4 md:w-4" aria-hidden>
+                <path
+                  d="M9 9H5V5M15 9h4V5M9 15H5v4M15 15h4v4"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            ) : (
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" className="md:h-4 md:w-4" aria-hidden>
+                <path
+                  d="M9 3H5a2 2 0 00-2 2v4M21 8V5a2 2 0 00-2-2h-3M3 16v3a2 2 0 002 2h4m8 0h4a2 2 0 002-2v-3"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            )
+          ) : chartInnerChromeToggle.expanded ? (
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" className="md:h-4 md:w-4" aria-hidden>
+              <path d="M6 15l6-6 6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          ) : (
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" className="md:h-4 md:w-4" aria-hidden>
+              <path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          )}
+        </button>
+      ) : null}
+    </div>
+  );
+
+  const exchangePricePnlStack = (
+    <div
+      className={
+        immersiveTfHero
+          ? 'flex min-h-0 min-w-0 shrink-0 flex-col justify-end gap-0.5 self-stretch'
+          : exchangeTfHeaderSingleRowDocked
+            ? 'flex min-w-0 min-h-0 flex-1 flex-col items-start justify-end gap-0.5 overflow-hidden'
+            : 'flex min-w-0 shrink-0 flex-col justify-end gap-0.5'
+      }
+    >
+      <div className="flex min-w-0 max-w-full flex-wrap items-baseline gap-x-2 gap-y-0">
+        <span
+          className={`text-xs font-bold tabular-nums leading-none transition-colors md:text-sm ${
+            priceDirection === 'up'
+              ? 'text-emerald-200'
+              : priceDirection === 'down'
+                ? 'text-rose-200'
+                : 'text-white'
+          }`}
+        >
+          {Number.isFinite(model.lastPrice) && model.lastPrice > 0 ? formatQuoteUsd(model.lastPrice) : '—'}
+        </span>
+        <span className={`text-[7px] font-medium tabular-nums leading-tight md:text-[8px] ${changeClass}`}>
+          {change >= 0 ? '+' : '−'}
+          {abs24hFmt} ({change >= 0 ? '+' : ''}
+          {change.toFixed(2)}%)
+        </span>
+      </div>
+      {suppressExchangeHeroLivePrice && liveHeaderMetrics?.secondaryLine ? (
+        <p
+          className={`w-full min-w-0 max-w-[min(100%,16rem)] shrink-0 truncate text-left leading-tight text-[7px] font-semibold tabular-nums md:text-[8px] ${
+            liveHeaderMetrics.secondaryLineTone === 'positive'
+              ? 'text-emerald-300'
+              : liveHeaderMetrics.secondaryLineTone === 'negative'
+                ? 'text-rose-300'
+                : 'text-sigflo-muted'
+          }`}
+        >
+          {liveHeaderMetrics.secondaryLine}
+        </p>
+      ) : null}
+    </div>
+  );
+
+  const renderExchangeTfHeaderBlock = () => (
+    <>
+      {headerDockedInPlotPanel && !immersiveTfHero ? (
+        <div
+          className={`shrink-0 flex min-w-0 w-full border-b bg-[rgb(12,12,15)] ${
+            suppressExchangeHeroLivePrice && liveTradeMode ? 'border-[#00ffc8]/12' : 'border-white/[0.06]'
+          } ${chartPlotFlexFill ? 'shrink-0' : ''}`}
+        >
+          <div className="flex w-full min-w-0 items-end justify-between gap-2 px-[4.5px] pb-1 pt-1 md:px-[5.5px] md:pt-1.5">
+            {exchangePricePnlStack}
+            {exchangeTfControlsRow}
           </div>
-          {liveTradeMode && liveHeaderMetrics && !suppressExchangeHeroLivePrice ? (
-            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-[#00ffc8]/12 bg-gradient-to-r from-[#00ffc8]/[0.06] via-black/20 to-transparent px-[4.5px] py-[4px] md:px-[5.5px]">
-              <span className="text-[6px] font-extrabold uppercase tracking-[0.14em] text-[#7ee8d3]/90 md:text-[7px]">
-                {liveActivePositionTitle}
-              </span>
-              <span className="text-[7px] font-medium tabular-nums text-sigflo-muted md:text-[8px]">
-                Risk{' '}
-                <span className="text-rose-200/90">{liveHeaderMetrics.riskPercent.toFixed(1)}%</span>
-                <span className="text-sigflo-muted/60"> · </span>
-                Target{' '}
-                <span className="text-emerald-200/90">{liveHeaderMetrics.rewardPercent.toFixed(1)}%</span>
-                <span className="text-sigflo-muted/60"> · </span>
-                R:R{' '}
-                <span className="text-white/90">
-                  {Number.isFinite(liveHeaderMetrics.rrRatio) && liveHeaderMetrics.rrRatio > 0
-                    ? liveHeaderMetrics.rrRatio.toFixed(1)
-                    : '—'}
-                </span>
-              </span>
-              {liveHeaderMetrics.badge ? (
-                <span className="rounded border border-cyan-400/25 bg-cyan-500/10 px-1.5 py-px text-[6px] font-bold uppercase tracking-wide text-cyan-100/95 md:text-[7px]">
-                  {liveHeaderMetrics.badge}
-                </span>
-              ) : null}
-            </div>
+        </div>
+      ) : (
+        <div
+          className={`shrink-0 flex min-w-0 w-full justify-between gap-x-2 border-b bg-[rgb(12,12,15)] md:gap-x-2.5 ${
+            immersiveTfHero
+              ? 'flex-wrap items-stretch gap-y-1 px-[4.5px] pb-1 pt-0 md:px-[5.5px] md:pb-1.5 md:pt-0'
+              : 'flex-wrap items-end gap-y-1 px-[4.5px] pb-[3px] pt-1.5 md:px-[5.5px] md:pb-[3.5px] md:pt-2'
+          } ${chartPlotFlexFill ? 'shrink-0' : ''} ${
+            suppressExchangeHeroLivePrice && liveTradeMode
+              ? 'border-[#00ffc8]/12'
+              : 'border-white/[0.06]'
+          }`}
+        >
+          {exchangePricePnlStack}
+          {exchangeTfControlsRow}
+        </div>
+      )}
+      {liveTradeMode && liveHeaderMetrics && !suppressExchangeHeroLivePrice ? (
+        <div
+          className={`shrink-0 flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-[#00ffc8]/12 bg-gradient-to-r from-[#00ffc8]/[0.06] via-black/20 to-transparent px-[4.5px] py-[4px] md:px-[5.5px] ${
+            chartPlotFlexFill ? 'shrink-0' : ''
+          }`}
+        >
+          <span className="text-[6px] font-extrabold uppercase tracking-[0.14em] text-[#7ee8d3]/90 md:text-[7px]">
+            {liveActivePositionTitle}
+          </span>
+          <span className="text-[7px] font-medium tabular-nums text-sigflo-muted md:text-[8px]">
+            Risk{' '}
+            <span className="text-rose-200/90">{liveHeaderMetrics.riskPercent.toFixed(1)}%</span>
+            <span className="text-sigflo-muted/60"> · </span>
+            Target{' '}
+            <span className="text-emerald-200/90">{liveHeaderMetrics.rewardPercent.toFixed(1)}%</span>
+            <span className="text-sigflo-muted/60"> · </span>
+            R:R{' '}
+            <span className="text-white/90">
+              {Number.isFinite(liveHeaderMetrics.rrRatio) && liveHeaderMetrics.rrRatio > 0
+                ? liveHeaderMetrics.rrRatio.toFixed(1)
+                : '—'}
+            </span>
+          </span>
+          {liveHeaderMetrics.badge ? (
+            <span className="rounded border border-cyan-400/25 bg-cyan-500/10 px-1.5 py-px text-[6px] font-bold uppercase tracking-wide text-cyan-100/95 md:text-[7px]">
+              {liveHeaderMetrics.badge}
+            </span>
           ) : null}
-        </>
-      ) : heroPairLabel ? (
-        showTimeframeBar && timeframeOptions && chartInterval != null && onChartIntervalChange ? (
-          <div className="mb-0.5 flex min-w-0 items-center gap-1.5 border-b border-white/[0.06] pb-1 md:mb-1.5 md:gap-2 md:pb-1.5">
-            <div className="min-w-0 flex-1">
-              <h2 className="truncate text-xs font-bold tracking-tight text-white md:text-xl">{heroPairLabel}</h2>
-              <div className="mt-0 flex flex-wrap items-baseline gap-1 md:mt-1 md:gap-2">
-                <span
-                  className={`text-sm font-bold tabular-nums leading-tight transition-colors md:text-2xl ${
-                    priceDirection === 'up' ? 'text-emerald-200' : priceDirection === 'down' ? 'text-rose-200' : 'text-white'
-                  }`}
-                >
-                  {formatQuoteUsd(model.lastPrice)}
-                </span>
-                <span className={`text-[11px] font-bold tabular-nums md:text-sm ${changeClass}`}>
-                  {change >= 0 ? '+' : ''}
-                  {change.toFixed(2)}%
-                </span>
-              </div>
-              {pnlHeaderLabel ? (
-                <p className={`mt-0.5 text-[10px] font-semibold tabular-nums md:text-[11px] ${pnlHeaderToneClass}`}>
-                  {pnlHeaderLabel}
-                </p>
-              ) : null}
-            </div>
-            <div className="flex min-w-0 max-w-[58%] shrink-0 items-center gap-1 sm:max-w-[62%] md:max-w-[55%] md:gap-1.5">
-              <span className="hidden shrink-0 text-[9px] font-semibold uppercase tracking-[0.16em] text-sigflo-muted/80 sm:inline md:text-[10px]">
-                TF
-              </span>
-              <div className="min-w-0 flex-1 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                <div className="flex w-max items-center justify-end gap-1 pr-0.5">
-                  {timeframeOptions.map((intv) => (
-                    <button
-                      key={intv.value}
-                      type="button"
-                      onClick={() => onChartIntervalChange(intv.value)}
-                      className={`shrink-0 rounded-md px-2 py-1 text-[10px] font-bold leading-none transition md:px-2.5 md:py-1 md:text-[11px] ${
-                        chartInterval === intv.value
-                          ? 'bg-sigflo-accent/18 text-sigflo-accent ring-1 ring-sigflo-accent/35'
-                          : 'border border-white/[0.06] bg-white/[0.04] text-sigflo-muted hover:border-white/[0.1] hover:text-sigflo-text'
-                      }`}
-                    >
-                      {intv.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div className="shrink-0 border-l border-white/[0.08] pl-1.5 md:pl-2">{perpTimeCluster}</div>
-            </div>
-          </div>
+        </div>
+      ) : null}
+    </>
+  );
+
+  return (
+    <Card
+      panelTexture={false}
+      className={`min-w-0 overflow-hidden border-white/[0.1] bg-gradient-to-b from-[#14141a] via-[#0e0e12] to-[#0c0c0f] shadow-[0_20px_50px_-28px_rgba(0,0,0,0.9)] ${
+        immersiveTfHero ? 'px-1.5 pb-1.5 pt-1 md:px-2 md:pb-2 md:pt-1.5' : headerDockedInPlotPanel
+          ? 'px-1.5 pb-1.5 pt-0 md:px-2 md:pb-2 md:pt-0'
+          : 'p-1.5 md:p-2'
+      } ${
+        chartPlotFlexFill ? 'flex h-full min-h-0 min-w-0 flex-1 flex-col' : ''
+      } ${liveTradeMode ? 'ring-1 ring-[#00ffc8]/14 shadow-[0_0_48px_-28px_rgba(0,255,200,0.12)]' : ''}`}
+      style={{ ['--chart-h-desktop' as string]: `${chartHeightPx}px` }}
+    >
+      {showExchangeTfHeader ? null : heroPairLabel ? (
+        headerDockedInPlotPanel && !exchangeStyleHero ? null : pairTfHeroContent ? (
+          pairTfHeroContent
         ) : (
           <div className="mb-1 flex items-start justify-between gap-1.5 md:mb-3 md:gap-3">
             <div className="min-w-0">
@@ -1400,33 +1791,104 @@ export function PriceChartCard({
       {exchangeStyleHero &&
       metaCaption &&
       !(showTimeframeBar && timeframeOptions && chartInterval != null && onChartIntervalChange) ? (
-        <p className="mt-0 border-b border-white/[0.06] bg-black/20 px-2 py-1 text-[9px] font-medium leading-snug tracking-wide text-sigflo-muted/75 md:px-2.5 md:py-1 md:text-[10px]">
+        <p className="mt-0 border-b border-white/[0.06] bg-[rgb(12,12,15)] px-2 py-1 text-[9px] font-medium leading-snug tracking-wide text-sigflo-muted/75 md:px-2.5 md:py-1 md:text-[10px]">
           {metaCaption}
         </p>
       ) : null}
       <div
         className={`mt-0 min-h-0 overflow-hidden transition-[box-shadow] duration-500 ${
-          exchangeTfHero
-            ? 'rounded-t-none rounded-b-lg border border-t-0 border-white/[0.08] bg-black/20 md:rounded-b-xl'
-            : 'rounded-lg border border-white/[0.08] bg-black/30 md:rounded-xl'
-        } ${chartFrameToneClass}`}
+          chartPlotFlexFill || headerDockedInPlotPanel ? 'flex min-h-0 min-w-0 flex-1 flex-col' : ''
+        } ${
+          headerDockedInPlotPanel || !exchangeTfHero
+            ? 'rounded-lg border border-white/[0.08] bg-[rgb(12,12,15)] md:rounded-xl'
+            : 'rounded-t-none rounded-b-lg border border-t-0 border-white/[0.08] bg-[rgb(12,12,15)] md:rounded-b-xl'
+        } ${chartFrameToneClass} ${setupFocusPulse ? 'sigflo-chart-setup-focus-pulse' : ''}`}
       >
+        {showExchangeTfHeader ? renderExchangeTfHeaderBlock() : null}
+        {headerDockedInPlotPanel && !exchangeStyleHero ? pairTfHeroContent : null}
         <div
-          ref={chartContainerRef}
           className={
-            chartPlotHeightPx != null
-              ? 'w-full shrink-0 overflow-hidden bg-black/20 transition-[height] duration-300 ease-out'
-              : 'h-[20dvh] min-h-[72px] max-h-[20dvh] w-full shrink-0 overflow-hidden bg-black/20 md:h-[var(--chart-h-desktop)] md:max-h-none md:min-h-[200px]'
+            chartPlotFlexFill
+              ? 'relative isolate z-0 min-h-0 w-full min-w-0 flex-1 basis-0 overflow-hidden bg-[rgb(12,12,15)]'
+              : chartPlotHeightPx != null
+                ? 'relative isolate z-0 w-full shrink-0 overflow-hidden bg-[rgb(12,12,15)] transition-[height] duration-300 ease-out'
+                : 'relative isolate z-0 h-[20dvh] min-h-[72px] max-h-[20dvh] w-full shrink-0 overflow-hidden bg-[rgb(12,12,15)] md:h-[var(--chart-h-desktop)] md:max-h-none md:min-h-[200px]'
           }
-          style={chartPlotHeightPx != null ? { height: chartPlotHeightPx } : undefined}
+          style={
+            chartPlotFlexFill
+              ? undefined
+              : chartPlotHeightPx != null
+                ? { height: chartPlotHeightPx, minHeight: chartPlotHeightPx }
+                : undefined
+          }
+          onPointerDown={(e) => {
+            if (e.button !== 0) return;
+            pricePanPrimedRef.current = { x: e.clientX, y: e.clientY };
+          }}
+          onPointerMoveCapture={(e) => {
+            const start = pricePanPrimedRef.current;
+            if (!start) return;
+            if (e.pointerType === 'mouse' && e.buttons === 0) return;
+            const dx = e.clientX - start.x;
+            const dy = e.clientY - start.y;
+            if (dx * dx + dy * dy < 9) return;
+            pricePanPrimedRef.current = null;
+            chartRef.current?.priceScale('right').setAutoScale(false);
+          }}
+          onPointerUp={() => {
+            pricePanPrimedRef.current = null;
+          }}
+          onPointerCancel={() => {
+            pricePanPrimedRef.current = null;
+          }}
           onPointerLeave={() => {
+            pricePanPrimedRef.current = null;
             skipScrollToRealTimeRef.current = true;
           }}
           onPointerEnter={() => {
             applySkipScrollFromViewportRef.current();
           }}
-        />
-        <div className="relative z-10 flex flex-wrap items-center justify-between gap-x-2 gap-y-1 border-t border-white/[0.06] bg-black/20 px-[4.5px] py-[3.5px] md:gap-x-2.5 md:px-[5.5px] md:py-[4.5px]">
+        >
+          {/*
+            Plot inset: docked manage hero sits above this wrapper; otherwise `top-px` avoids subpixel shear
+            from `overflow-hidden` ancestors (LC uses devicePixelRatio).
+          */}
+          <div
+            ref={bindChartPlotEl}
+            className={`absolute inset-x-0 bottom-0 z-[1] bg-[#0c0c0f] ${headerDockedInPlotPanel ? 'top-0' : 'top-px'}`}
+          />
+          {usePremiumTradeZones ? (
+            <div
+              className={`pointer-events-none absolute inset-x-0 bottom-0 z-20 overflow-hidden ${headerDockedInPlotPanel ? 'top-0' : 'top-px'}`}
+            >
+              <TradePlanZonesOverlay
+                plotEl={chartPlotMountEl}
+                chartRef={chartRef}
+                candleSeriesRef={candleRef}
+                lineSeriesRef={lineRef}
+                candlesActive={candlesActiveOverlay}
+                chartGen={tradePlanChartGen}
+                side={model.side}
+                entry={model.entry}
+                stop={model.stop}
+                target={model.target}
+                lastPrice={model.lastPrice}
+                riskReward={model.riskReward}
+                visibleEntry={visibleLevels.entry}
+                visibleStop={visibleLevels.stop}
+                visibleTarget={visibleLevels.target}
+                focusPulse={setupFocusPulse}
+                exitZoneMode={tradePlanExitLabel}
+                showCornerStats={!dockTradePlanCornerStatsInHeader}
+              />
+            </div>
+          ) : null}
+        </div>
+        <div
+          className={`relative z-10 flex flex-wrap items-center justify-between gap-x-2 gap-y-1 border-t border-white/[0.06] bg-[rgb(12,12,15)] px-[4.5px] py-[3.5px] md:gap-x-2.5 md:px-[5.5px] md:py-[4.5px] ${
+            chartPlotFlexFill ? 'shrink-0' : ''
+          }`}
+        >
           <div className="relative z-10 flex min-w-0 flex-wrap items-center gap-[3.5px] text-[7px] font-medium leading-tight md:gap-[4.5px] md:text-[8px]">
             <button
               type="button"

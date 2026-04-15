@@ -16,7 +16,7 @@ export function BotScannerPanel({
   actionLine,
 }: BotScannerPanelProps) {
   return (
-    <section className="mt-3 rounded-2xl border border-cyan-400/22 bg-sigflo-surface p-3 opacity-0 [animation:fade-in-up_260ms_ease-out_120ms_forwards]">
+    <section className="mt-3 rounded-2xl border border-cyan-400/22 bg-sigflo-surface sigflo-panel-texture p-3 opacity-0 [animation:fade-in-up_260ms_ease-out_120ms_forwards]">
       <div className="flex items-center gap-1.5">
         <span
           className="h-1.5 w-1.5 shrink-0 rounded-full bg-cyan-300/85 shadow-[0_0_8px_-2px_rgba(34,211,238,0.45)] ring-1 ring-cyan-400/22"

@@ -9,6 +9,8 @@ export type MarketScoreTrend = 'up' | 'down' | 'flat' | null;
 export interface MarketsScannerState {
   /** Core watchlist (fixed symbols). */
   trackedRows: MarketScannerRow[];
+  /** User-saved pairs from Trade (star); same card shape as scanner rows. */
+  watchlistRows: MarketScannerRow[];
   /** Top 24h gainers (Movers tab). */
   moverRows: MarketScannerRow[];
   activeSetupsTracked: number;

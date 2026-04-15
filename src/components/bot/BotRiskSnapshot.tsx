@@ -6,7 +6,7 @@ type BotRiskSnapshotProps = {
 
 export function BotRiskSnapshot({ risk, rr, walletPct }: BotRiskSnapshotProps) {
   return (
-    <section className="mt-3 rounded-2xl border border-white/[0.06] bg-sigflo-surface p-3 opacity-0 [animation:fade-in-up_220ms_ease-out_320ms_forwards]">
+    <section className="mt-3 rounded-2xl border border-white/[0.06] bg-sigflo-surface sigflo-panel-texture p-3 opacity-0 [animation:fade-in-up_220ms_ease-out_320ms_forwards]">
       <div className="flex items-center justify-between text-xs text-sigflo-muted">
         <p>Risk: <span className="font-semibold text-white">{risk}</span></p>
         <p>R:R <span className="font-semibold text-white">{rr}</span></p>

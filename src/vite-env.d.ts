@@ -14,6 +14,8 @@ interface ImportMetaEnv {
    * Use when users hit apex then Netlify sends them to www — implicit hash tokens can be lost.
    */
   readonly VITE_AUTH_REDIRECT_ORIGIN?: string;
+  /** Dev only: set to `app` to mimic `app.sigflo.group` routing (feed at `/`, landing at `/landing`). */
+  readonly VITE_APP_HOST?: string;
 }
 
 interface ImportMeta {

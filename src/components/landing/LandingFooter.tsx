@@ -1,5 +1,5 @@
-import { Link } from 'react-router-dom';
 import { LANDING_SECTIONS } from '@/components/landing/landingSections';
+import { openAppHref } from '@/config/appRoutes';
 
 function scrollToId(id: string) {
   document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -11,8 +11,6 @@ const FOOTER_LINKS = [
   { label: 'Screens', id: LANDING_SECTIONS.screens },
   { label: 'FAQ', id: LANDING_SECTIONS.faq },
 ] as const;
-const APP_ENTRY_PATH = import.meta.env.BASE_URL === '/' ? '/feed' : '/';
-
 export function LandingFooter() {
   return (
     <footer className="border-t border-white/[0.08] bg-[#0B0E14] px-4 py-14 sm:px-6 lg:px-8">
@@ -33,9 +31,9 @@ export function LandingFooter() {
                 {l.label}
               </button>
             ))}
-            <Link to={APP_ENTRY_PATH} className="transition-colors hover:text-landing-text">
+            <a href={openAppHref()} className="transition-colors hover:text-landing-text">
               Open app
-            </Link>
+            </a>
           </div>
         </div>
 

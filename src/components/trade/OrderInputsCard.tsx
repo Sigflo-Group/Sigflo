@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { useHoldStepper } from '@/hooks/useHoldStepper';
 import { RiskSegmentMeter } from '@/components/ui/RiskSegmentMeter';
 import type { MarketMode, RiskLevel, TradeSide } from '@/types/trade';
@@ -63,9 +63,185 @@ function sliderIndexToAmountUsd(idx: number, amountMax: number, indexMax: number
 /** Stop loss slider: adverse move from entry (0–100%). */
 const SL_PCT_SLIDER_MAX = 100;
 
+/** One-tap adverse % presets (must stay ≤ SL_PCT_SLIDER_MAX). */
+const SL_PCT_PRESETS = [1, 2, 3, 5, 10, 15, 25, 50] as const;
+
 /** Take profit slider: favorable move from entry (%). */
-const TP_PCT_SLIDER_MIN = 5;
-const TP_PCT_SLIDER_MAX = 400;
+const TP_PCT_SLIDER_MIN = 0;
+const TP_PCT_SLIDER_MAX = 500;
+
+/** One-tap favorable % presets (clamped to slider range in UI). */
+const TP_PCT_PRESETS = [0, 10, 25, 50, 100, 150, 200, 300, 400, 500] as const;
+
+/** Snap targets (slider only settles on these; includes 0% SL / TP preset list). */
+const SL_SNAP_PCTS = [0, ...SL_PCT_PRESETS] as const;
+const TP_SNAP_PCTS = TP_PCT_PRESETS;
+
+/** Internal range resolution (linear thumb position 0…1000). */
+const LEVEL_SLIDER_STEPS = 1000;
+
+/** Must match `.sigflo-level-slider` thumb width in `index.css` (WebKit + Moz). */
+const LEVEL_SLIDER_THUMB_PX = 20;
+
+function nearestSnapPct(raw: number, snaps: readonly number[]): number {
+  let best = snaps[0]!;
+  let bestD = Math.abs(raw - best);
+  for (const s of snaps) {
+    const d = Math.abs(raw - s);
+    if (d < bestD) {
+      bestD = d;
+      best = s;
+    }
+  }
+  return best;
+}
+
+/** Evenly spaces SL chip/tick centers along the track (last segment maps 50% → 100% for the thumb). */
+function slChipLayoutNorm(chipIndex: number): number {
+  const n = SL_SNAP_PCTS.length;
+  if (n <= 1) return 0;
+  return chipIndex / n;
+}
+
+function slPctFromLinearSteps(steps: number): number {
+  const u = Math.min(1, Math.max(0, steps / LEVEL_SLIDER_STEPS));
+  const s = SL_SNAP_PCTS as readonly number[];
+  const n = s.length;
+  if (n < 2) return u >= 1 ? SL_PCT_SLIDER_MAX : (s[0] ?? 0);
+
+  const uLastChip = (n - 1) / n;
+  if (u >= uLastChip) {
+    if (u >= 1) return SL_PCT_SLIDER_MAX;
+    const tail = 1 - uLastChip;
+    const t = tail > 0 ? (u - uLastChip) / tail : 1;
+    return s[n - 1]! + t * (SL_PCT_SLIDER_MAX - s[n - 1]!);
+  }
+
+  const f = u * n;
+  const k = Math.min(n - 2, Math.max(0, Math.floor(f)));
+  const u0 = k / n;
+  const u1 = (k + 1) / n;
+  const span = u1 - u0;
+  const t = span > 0 ? (u - u0) / span : 0;
+  return s[k]! + t * (s[k + 1]! - s[k]!);
+}
+
+function slLinearStepsFromPct(pct: number): number {
+  const p = Math.min(SL_PCT_SLIDER_MAX, Math.max(0, pct));
+  const s = SL_SNAP_PCTS as readonly number[];
+  const n = s.length;
+  if (n < 2) return Math.round((p / SL_PCT_SLIDER_MAX) * LEVEL_SLIDER_STEPS);
+
+  if (p >= s[n - 1]!) {
+    if (p >= SL_PCT_SLIDER_MAX) return LEVEL_SLIDER_STEPS;
+    const uLastChip = (n - 1) / n;
+    const tail = 1 - uLastChip;
+    const denom = SL_PCT_SLIDER_MAX - s[n - 1]!;
+    const t = denom > 0 ? (p - s[n - 1]!) / denom : 1;
+    const u = uLastChip + t * tail;
+    return Math.round(u * LEVEL_SLIDER_STEPS);
+  }
+
+  let k = 0;
+  while (k < n - 1 && s[k + 1]! < p) k++;
+  const lo = s[k]!;
+  const hi = s[k + 1]!;
+  const u0 = k / n;
+  const u1 = (k + 1) / n;
+  const span = hi - lo;
+  const t = span > 0 ? (p - lo) / span : 0;
+  const u = u0 + t * (u1 - u0);
+  return Math.round(u * LEVEL_SLIDER_STEPS);
+}
+
+/**
+ * Horizontal position where the range thumb *center* sits for `norm` in [0,1]
+ * (thumb inset matches `.sigflo-level-slider` 20px width).
+ */
+function levelThumbAlignedStyle(norm: number, placement: 'label' | 'tickBelow' = 'label'): CSSProperties {
+  const n = Math.min(1, Math.max(0, norm));
+  const half = LEVEL_SLIDER_THUMB_PX / 2;
+  const horizontal: CSSProperties = {
+    left: `calc(${half}px + (100% - ${LEVEL_SLIDER_THUMB_PX}px) * ${n})`,
+    transform: 'translateX(-50%)',
+  };
+  if (placement === 'tickBelow') {
+    return {
+      position: 'absolute',
+      ...horizontal,
+      top: 'auto',
+      bottom: 0,
+      width: 1,
+      height: 5,
+      borderRadius: 9999,
+      backgroundColor: 'rgba(168, 162, 154, 0.42)',
+      boxShadow: '0 0 0 1px rgba(255, 255, 255, 0.05)',
+    };
+  }
+  return horizontal;
+}
+
+function tpChipLayoutNorm(chipIndex: number): number {
+  const n = TP_SNAP_PCTS.length;
+  if (n <= 1) return 0;
+  return chipIndex / n;
+}
+
+function tpPctFromLinearSteps(steps: number): number {
+  const u = Math.min(1, Math.max(0, steps / LEVEL_SLIDER_STEPS));
+  const s = TP_SNAP_PCTS as readonly number[];
+  const n = s.length;
+  if (n < 2) {
+    return u >= 1 ? TP_PCT_SLIDER_MAX : (s[0] ?? TP_PCT_SLIDER_MIN);
+  }
+
+  const uLastChip = (n - 1) / n;
+  if (u >= uLastChip) {
+    if (u >= 1) return TP_PCT_SLIDER_MAX;
+    const tail = 1 - uLastChip;
+    const t = tail > 0 ? (u - uLastChip) / tail : 1;
+    return s[n - 1]! + t * (TP_PCT_SLIDER_MAX - s[n - 1]!);
+  }
+
+  const f = u * n;
+  const k = Math.min(n - 2, Math.max(0, Math.floor(f)));
+  const u0 = k / n;
+  const u1 = (k + 1) / n;
+  const span = u1 - u0;
+  const t = span > 0 ? (u - u0) / span : 0;
+  return s[k]! + t * (s[k + 1]! - s[k]!);
+}
+
+function tpLinearStepsFromPct(pct: number): number {
+  const p = Math.min(TP_PCT_SLIDER_MAX, Math.max(TP_PCT_SLIDER_MIN, pct));
+  const s = TP_SNAP_PCTS as readonly number[];
+  const n = s.length;
+  if (n < 2) {
+    const span = TP_PCT_SLIDER_MAX - TP_PCT_SLIDER_MIN;
+    return Math.round(span > 0 ? ((p - TP_PCT_SLIDER_MIN) / span) * LEVEL_SLIDER_STEPS : 0);
+  }
+
+  if (p >= s[n - 1]!) {
+    if (p >= TP_PCT_SLIDER_MAX) return LEVEL_SLIDER_STEPS;
+    const uLastChip = (n - 1) / n;
+    const tail = 1 - uLastChip;
+    const denom = TP_PCT_SLIDER_MAX - s[n - 1]!;
+    const t = denom > 0 ? (p - s[n - 1]!) / denom : 1;
+    const u = uLastChip + t * tail;
+    return Math.round(u * LEVEL_SLIDER_STEPS);
+  }
+
+  let k = 0;
+  while (k < n - 1 && s[k + 1]! < p) k++;
+  const lo = s[k]!;
+  const hi = s[k + 1]!;
+  const u0 = k / n;
+  const u1 = (k + 1) / n;
+  const spanPct = hi - lo;
+  const t = spanPct > 0 ? (p - lo) / spanPct : 0;
+  const u = u0 + t * (u1 - u0);
+  return Math.round(u * LEVEL_SLIDER_STEPS);
+}
 
 function distancePctToBps(pct: number): number {
   return Math.round(pct * 100);
@@ -295,6 +471,15 @@ export function OrderInputsCard(props: {
       : tpBpsImplied != null
         ? Math.min(TP_PCT_SLIDER_MAX, Math.max(TP_PCT_SLIDER_MIN, Math.round(tpBpsImplied / 100)))
         : 100;
+
+  const slSliderLinearSteps = useMemo(
+    () => (slEnabled ? slLinearStepsFromPct(slSliderPct) : 0),
+    [slEnabled, slSliderPct],
+  );
+  const tpSliderLinearSteps = useMemo(
+    () => (tpEnabled ? tpLinearStepsFromPct(tpSliderPct) : tpLinearStepsFromPct(100)),
+    [tpEnabled, tpSliderPct],
+  );
 
   const levMax =
     market === 'futures'
@@ -596,7 +781,7 @@ export function OrderInputsCard(props: {
             onChange={(e) => onLeverageChange(Number(e.target.value))}
             className="w-full accent-[#00ffc8]"
           />
-          <div className="flex flex-wrap gap-1">
+          <div className="flex flex-wrap justify-end gap-1">
             {leverageChipLevels.map((x) => (
               <button
                 key={x}
@@ -666,21 +851,65 @@ export function OrderInputsCard(props: {
                     {slEnabled ? `−${slSliderPct}%` : '—'}
                   </span>
                 </div>
-                <input
-                  type="range"
-                  min={0}
-                  max={SL_PCT_SLIDER_MAX}
-                  step={1}
-                  disabled={!slEnabled}
-                  value={slSliderPct}
-                  aria-label="Stop loss percent from entry on adverse side"
-                  onChange={(e) => {
-                    const pct = Number(e.target.value);
-                    setSlEnabled(true);
-                    onStopInputChange(formatQuoteNumber(stopPriceFromBps(entryNum, side, distancePctToBps(pct))));
-                  }}
-                  className="sigflo-level-slider sigflo-level-slider--rose w-full cursor-pointer disabled:cursor-not-allowed disabled:opacity-40"
-                />
+                <div className="relative w-full">
+                  <input
+                    type="range"
+                    min={0}
+                    max={LEVEL_SLIDER_STEPS}
+                    step={1}
+                    disabled={!slEnabled}
+                    value={slSliderLinearSteps}
+                    aria-label="Stop loss percent from entry on adverse side"
+                    onChange={(e) => {
+                      const rawPct = slPctFromLinearSteps(Number(e.target.value));
+                      const pct = nearestSnapPct(rawPct, SL_SNAP_PCTS);
+                      setSlEnabled(true);
+                      onStopInputChange(formatQuoteNumber(stopPriceFromBps(entryNum, side, distancePctToBps(pct))));
+                    }}
+                    className="sigflo-level-slider sigflo-level-slider--rose relative z-[1] w-full cursor-pointer disabled:cursor-not-allowed disabled:opacity-40"
+                  />
+                  <div
+                    className="pointer-events-none relative mt-px h-1.5 w-full shrink-0"
+                    aria-hidden
+                  >
+                    {SL_SNAP_PCTS.map((pct, i) => {
+                      const norm = slChipLayoutNorm(i);
+                      return (
+                        <span
+                          key={`sl-tick-${pct}`}
+                          className="pointer-events-none"
+                          style={levelThumbAlignedStyle(norm, 'tickBelow')}
+                        />
+                      );
+                    })}
+                  </div>
+                  <div className="relative z-[1] mt-1 h-5 w-full">
+                    {SL_SNAP_PCTS.map((pct, i) => {
+                      const on = slEnabled && slSliderPct === pct;
+                      const norm = slChipLayoutNorm(i);
+                      return (
+                        <button
+                          key={`sl-m-${pct}`}
+                          type="button"
+                          onClick={() => {
+                            if (entryNum == null || !onStopInputChange) return;
+                            setSlEnabled(true);
+                            onStopInputChange(
+                              formatQuoteNumber(stopPriceFromBps(entryNum, side, distancePctToBps(pct))),
+                            );
+                          }}
+                          title={`${pct}% adverse`}
+                          style={levelThumbAlignedStyle(norm)}
+                          className={`absolute top-0 max-w-[2.25rem] truncate text-center text-[6.5px] font-bold tabular-nums leading-none transition sm:text-[7px] ${
+                            on ? 'text-rose-200' : 'text-sigflo-muted/75 hover:text-rose-100/90'
+                          }`}
+                        >
+                          {pct}%
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
                 <div className="flex justify-between text-[8px] font-medium tabular-nums text-sigflo-muted/75">
                   <span>0% (entry)</span>
                   <span>{SL_PCT_SLIDER_MAX}% max</span>
@@ -742,21 +971,67 @@ export function OrderInputsCard(props: {
                     {tpEnabled ? `+${tpSliderPct}%` : '—'}
                   </span>
                 </div>
-                <input
-                  type="range"
-                  min={TP_PCT_SLIDER_MIN}
-                  max={TP_PCT_SLIDER_MAX}
-                  step={1}
-                  disabled={!tpEnabled}
-                  value={tpSliderPct}
-                  aria-label="Take profit percent from entry on favorable side"
-                  onChange={(e) => {
-                    const pct = Number(e.target.value);
-                    setTpEnabled(true);
-                    onTakeProfitInputChange(formatQuoteNumber(takeProfitPriceFromBps(entryNum, side, distancePctToBps(pct))));
-                  }}
-                  className="sigflo-level-slider sigflo-level-slider--emerald w-full cursor-pointer disabled:cursor-not-allowed disabled:opacity-40"
-                />
+                <div className="relative w-full">
+                  <input
+                    type="range"
+                    min={0}
+                    max={LEVEL_SLIDER_STEPS}
+                    step={1}
+                    disabled={!tpEnabled}
+                    value={tpSliderLinearSteps}
+                    aria-label="Take profit percent from entry on favorable side"
+                    onChange={(e) => {
+                      const rawPct = tpPctFromLinearSteps(Number(e.target.value));
+                      const pct = nearestSnapPct(rawPct, TP_SNAP_PCTS);
+                      setTpEnabled(true);
+                      onTakeProfitInputChange(
+                        formatQuoteNumber(takeProfitPriceFromBps(entryNum, side, distancePctToBps(pct))),
+                      );
+                    }}
+                    className="sigflo-level-slider sigflo-level-slider--emerald relative z-[1] w-full cursor-pointer disabled:cursor-not-allowed disabled:opacity-40"
+                  />
+                  <div
+                    className="pointer-events-none relative mt-px h-1.5 w-full shrink-0"
+                    aria-hidden
+                  >
+                    {TP_SNAP_PCTS.map((pct, i) => {
+                      const norm = tpChipLayoutNorm(i);
+                      return (
+                        <span
+                          key={`tp-tick-${pct}`}
+                          className="pointer-events-none"
+                          style={levelThumbAlignedStyle(norm, 'tickBelow')}
+                        />
+                      );
+                    })}
+                  </div>
+                  <div className="relative z-[1] mt-1 h-5 w-full">
+                    {TP_SNAP_PCTS.map((pct, i) => {
+                      const on = tpEnabled && tpSliderPct === pct;
+                      const norm = tpChipLayoutNorm(i);
+                      return (
+                        <button
+                          key={`tp-m-${pct}`}
+                          type="button"
+                          onClick={() => {
+                            if (entryNum == null || !onTakeProfitInputChange) return;
+                            setTpEnabled(true);
+                            onTakeProfitInputChange(
+                              formatQuoteNumber(takeProfitPriceFromBps(entryNum, side, distancePctToBps(pct))),
+                            );
+                          }}
+                          title={`${pct}% favorable`}
+                          style={levelThumbAlignedStyle(norm)}
+                          className={`absolute top-0 max-w-[2.25rem] truncate text-center text-[6.5px] font-bold tabular-nums leading-none transition sm:text-[7px] ${
+                            on ? 'text-emerald-200' : 'text-sigflo-muted/75 hover:text-emerald-100/90'
+                          }`}
+                        >
+                          {pct}%
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
                 <div className="flex justify-between text-[8px] font-medium tabular-nums text-sigflo-muted/75">
                   <span>{TP_PCT_SLIDER_MIN}%</span>
                   <span>{TP_PCT_SLIDER_MAX}%</span>

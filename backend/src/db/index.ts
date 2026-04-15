@@ -47,7 +47,29 @@ function pgSslOption(): { rejectUnauthorized: boolean } | undefined {
 const ssl = pgSslOption();
 const connectionString = stripSslQueryParams(env.DATABASE_URL);
 
+const looksLocal = /(^|@)(localhost|127\.0\.0\.1)(:|\/)/.test(env.DATABASE_URL);
+
+/**
+ * Supabase / PgBouncer (e.g. port 6543) often closes idle TCP sessions; without a listener, `pg-pool`
+ * emits `error` on the pool and Node treats it as fatal (`Unhandled 'error' event`).
+ */
 export const db = new Pool({
   connectionString,
   ...(ssl ? { ssl } : {}),
+  // Reduce surprise pooler disconnects; still handle `pool.on('error')` below.
+  ...(!looksLocal
+    ? {
+        keepAlive: true,
+        keepAliveInitialDelayMillis: 10_000,
+        // Recycle clients periodically — transaction poolers prefer short-lived server-side sessions.
+        maxUses: 750,
+      }
+    : {}),
+});
+
+db.on('error', (err) => {
+  console.error(
+    '[db] Idle pool client error (server may have closed the connection — next query will open a new one):',
+    err instanceof Error ? err.message : err,
+  );
 });

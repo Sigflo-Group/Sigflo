@@ -211,6 +211,8 @@ export function buildExitAiCoPilotModel(input: {
   target: number;
   /** Optional micro-insight from tape */
   contextLine?: string | null;
+  /** Bot personality / agent style — keeps Exit AI from feeling like a black box */
+  personalityExitNote?: string | null;
 }): ExitAiCoPilotModel {
   const g = input.flow?.effective ?? null;
   const primaryStatus = computeExitAiPrimaryStatus({
@@ -229,13 +231,15 @@ export function buildExitAiCoPilotModel(input: {
     target: input.target,
   });
 
+  const mergedContext = [input.contextLine?.trim(), input.personalityExitNote?.trim()].filter(Boolean).join(' — ');
+
   return {
     primaryStatus,
     statusTitle: statusTitleFor(primaryStatus),
     intentLine: buildIntentLine(primaryStatus, input.mode, g),
     confidenceLine: buildConfidenceLine(primaryStatus, input.mode, g),
     actionPreview,
-    contextLine: input.contextLine?.trim() || undefined,
+    contextLine: mergedContext || undefined,
     panelToneClass: panelToneFor(primaryStatus),
   };
 }

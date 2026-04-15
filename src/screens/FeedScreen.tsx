@@ -121,7 +121,7 @@ export function FeedScreen() {
         <button
           type="button"
           onClick={() => setNewsScanOpen(true)}
-          className="flex w-full items-center justify-between gap-3 rounded-2xl border border-white/[0.08] bg-white/[0.03] px-3 py-2.5 text-left transition hover:border-cyan-400/22 hover:bg-white/[0.05]"
+          className="flex w-full items-center justify-between gap-3 rounded-2xl border border-white/[0.08] bg-sigflo-elevated px-3 py-2.5 text-left transition hover:border-cyan-400/22 hover:bg-[#1a1b22]"
         >
           <div>
             <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-cyan-200/85">Market pulse</p>
@@ -146,8 +146,8 @@ export function FeedScreen() {
                 onClick={() => setFilter(chip.id)}
                 className={`rounded-full px-4 py-1.5 text-xs font-semibold transition ${
                   active
-                    ? 'bg-sigflo-accent/15 text-sigflo-accent ring-1 ring-sigflo-accent/30'
-                    : 'border border-white/[0.06] bg-white/[0.03] text-sigflo-muted hover:text-sigflo-text'
+                    ? 'bg-[#0f1f1a] text-sigflo-accent ring-1 ring-sigflo-accent/30'
+                    : 'border border-white/[0.06] bg-sigflo-elevated text-sigflo-muted hover:bg-[#1a1b22] hover:text-sigflo-text'
                 }`}
               >
                 {chip.label}
@@ -159,7 +159,7 @@ export function FeedScreen() {
         {/* Signal cards */}
         <div className="space-y-4">
           {!loading && signals.length === 0 ? (
-            <p className="rounded-xl border border-white/[0.06] bg-black/20 px-3 py-4 text-center text-[13px] text-sigflo-muted">
+            <p className="rounded-xl border border-white/[0.06] bg-sigflo-elevated px-3 py-4 text-center text-[13px] text-sigflo-muted">
               No live setups yet — the scanner is running; stronger structure will appear as the market produces it.
             </p>
           ) : null}

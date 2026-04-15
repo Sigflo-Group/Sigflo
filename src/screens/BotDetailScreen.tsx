@@ -5,6 +5,7 @@ import { useSignalEngine } from '@/hooks/useSignalEngine';
 import { baseBots, shortActionLabel, statusTone } from '@/lib/bots';
 import { deriveMarketStatus } from '@/lib/marketScannerRows';
 import { uiSignalStateClasses, uiSignalStateFromMarketStatus, uiSignalStateLabel } from '@/lib/signalState';
+import { feedActionablePath } from '@/config/appRoutes';
 import { buildTradeQueryString } from '@/lib/tradeNavigation';
 
 export default function BotDetailScreen() {
@@ -22,7 +23,7 @@ export default function BotDetailScreen() {
   if (!bot) {
     return (
       <div className="space-y-3 pt-4">
-        <div className="rounded-2xl border border-white/[0.06] bg-sigflo-surface p-4">
+        <div className="rounded-2xl border border-white/[0.06] bg-sigflo-surface sigflo-panel-texture p-4">
           <p className="text-sm text-sigflo-muted">Bot not found.</p>
           <Link to="/bots" className="mt-2 inline-flex text-sm font-semibold text-cyan-200">
             Back to Bots
@@ -55,7 +56,7 @@ export default function BotDetailScreen() {
   return (
     <div className="min-h-[100dvh] bg-sigflo-bg pb-6 pt-4">
       <div className="mx-auto w-full max-w-lg space-y-3 px-4">
-        <header className="rounded-2xl border border-white/[0.06] bg-sigflo-surface p-4">
+        <header className="rounded-2xl border border-white/[0.06] bg-sigflo-surface sigflo-panel-texture p-4">
           <p className="text-[11px] uppercase tracking-[0.14em] text-sigflo-muted">Agent</p>
           <h1 className="mt-1 text-2xl font-bold tracking-tight text-white">{bot.name}</h1>
           <p className="text-xs uppercase tracking-[0.12em] text-sigflo-muted">{bot.strategy}</p>
@@ -63,22 +64,30 @@ export default function BotDetailScreen() {
             <span className={`h-1.5 w-1.5 rounded-full ${status === 'paused' ? 'bg-slate-500' : stateStyle.dot}`} />
             {tone.label}
           </p>
-          <Link
-            to={`/bots/${bot.id}/focus`}
-            className="mt-3 inline-flex w-full items-center justify-center rounded-xl border border-[rgba(0,200,120,0.35)] bg-[rgba(0,200,120,0.08)] py-2.5 text-sm font-semibold text-[#00E08A] transition hover:border-[rgba(0,200,120,0.5)] hover:bg-[rgba(0,200,120,0.12)] active:scale-[0.99]"
-          >
-            Open focus cockpit
-          </Link>
+          <div className="mt-3 grid grid-cols-2 gap-2">
+            <Link
+              to={`/bots/${bot.id}/focus`}
+              className="inline-flex items-center justify-center rounded-xl border border-[rgba(0,200,120,0.35)] bg-[rgba(0,200,120,0.08)] py-2.5 text-sm font-semibold text-[#00E08A] transition hover:border-[rgba(0,200,120,0.5)] hover:bg-[rgba(0,200,120,0.12)] active:scale-[0.99]"
+            >
+              Focus
+            </Link>
+            <Link
+              to={`/bots/${bot.id}/settings`}
+              className="inline-flex items-center justify-center rounded-xl border border-white/[0.12] bg-white/[0.04] py-2.5 text-sm font-semibold text-cyan-100/95 transition hover:border-white/[0.18] active:scale-[0.99]"
+            >
+              Settings
+            </Link>
+          </div>
         </header>
 
-        <section className="rounded-2xl border border-white/[0.06] bg-sigflo-surface p-3 text-xs text-sigflo-muted">
+        <section className="rounded-2xl border border-white/[0.06] bg-sigflo-surface sigflo-panel-texture p-3 text-xs text-sigflo-muted">
           <p>Markets watched: {bot.watchedPairs.join(', ')}</p>
           <p className="mt-1">Last action: {hasSignal ? shortActionLabel(signal) : 'Waiting for live signals'}</p>
           <p className="mt-1">Current focus: {focusPair}</p>
           <p className="mt-1">Risk mode: {bot.riskMode}</p>
         </section>
 
-        <section className="rounded-2xl border border-white/[0.06] bg-sigflo-surface p-3">
+        <section className="rounded-2xl border border-white/[0.06] bg-sigflo-surface sigflo-panel-texture p-3">
           <p className="text-xs font-semibold uppercase tracking-[0.12em] text-sigflo-muted">Recent activity</p>
           <div className="mt-2 space-y-1.5">
             {recent.map((item) => (
@@ -89,7 +98,7 @@ export default function BotDetailScreen() {
           </div>
         </section>
 
-        <section className={`rounded-2xl border bg-sigflo-surface p-3 ${hasSignal ? stateStyle.card : 'border-white/[0.06]'}`}>
+        <section className={`rounded-2xl border bg-sigflo-surface sigflo-panel-texture p-3 ${hasSignal ? stateStyle.card : 'border-white/[0.06]'}`}>
           <p className="text-xs font-semibold uppercase tracking-[0.12em] text-sigflo-muted">Current setup</p>
           {hasSignal ? (
             <>
@@ -109,7 +118,7 @@ export default function BotDetailScreen() {
           )}
         </section>
 
-        <section className="rounded-2xl border border-white/[0.06] bg-sigflo-surface p-3">
+        <section className="rounded-2xl border border-white/[0.06] bg-sigflo-surface sigflo-panel-texture p-3">
           <p className="text-xs font-semibold uppercase tracking-[0.12em] text-sigflo-muted">Controls</p>
           <div className="mt-2 flex items-center gap-2">
             <button
@@ -136,8 +145,8 @@ export default function BotDetailScreen() {
         <section className="grid grid-cols-2 gap-2">
           <button
             type="button"
-            onClick={() => navigate('/feed?filter=actionable')}
-            className="rounded-2xl border border-white/15 bg-sigflo-surface px-3 py-2 text-sm font-semibold text-sigflo-text"
+            onClick={() => navigate(feedActionablePath())}
+            className="rounded-2xl border border-white/15 bg-sigflo-surface sigflo-panel-texture px-3 py-2 text-sm font-semibold text-sigflo-text"
           >
             View active setup
           </button>

@@ -40,7 +40,7 @@ Backend uses `FRONTEND_ORIGIN` from env and supports comma-separated origins.
 Example:
 
 ```env
-FRONTEND_ORIGIN=https://sigflo.group,https://sigflo.netlify.app,http://localhost:3999,http://localhost:5173
+FRONTEND_ORIGIN=https://app.sigflo.group,https://sigflo.group,https://sigflo.netlify.app,http://localhost:3999,http://localhost:5173
 ```
 
 Where to set:

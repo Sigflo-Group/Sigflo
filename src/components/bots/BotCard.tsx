@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import {
   botCardStatusMeta,
+  botPersonality,
   formatBotPrice,
   setupTypeFromSignal,
   type BotAgent,
@@ -8,6 +9,7 @@ import {
   type BotMarketContext,
 } from '@/lib/bots';
 import { deriveMarketStatus } from '@/lib/marketScannerRows';
+import type { BotCardExchangeStats } from '@/lib/portfolioBotAttribution';
 import { uiSignalStateFromMarketStatus, uiSignalStateLabel } from '@/lib/signalState';
 import type { CryptoSignal } from '@/types/signal';
 
@@ -15,6 +17,8 @@ export type BotCardProps = {
   bot: BotAgent;
   signal: CryptoSignal | null;
   cardStatus: BotCardStatus;
+  /** When set (exchange connected), footer uses closed trades attributed to this bot’s markets. */
+  exchangeFooter?: BotCardExchangeStats;
   /** Strong amber focal glow — at most one card per screen. */
   isSpotlight?: boolean;
   expanded: boolean;
@@ -58,7 +62,7 @@ function BotAvatar({ name }: { name: string }) {
   const ch = initialsFromName(name);
   return (
     <div
-      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-[rgba(0,200,120,0.22)] bg-gradient-to-br from-[#171A20] to-[#0F1115] text-[12px] font-bold tracking-tight text-[#00E08A] shadow-[0_0_20px_-8px_rgba(0,200,120,0.45)]"
+      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-[rgba(0,200,120,0.16)] bg-gradient-to-br from-[#171A20] to-[#0F1115] text-[12px] font-bold tracking-tight text-[#00E08A] shadow-[0_0_12px_-6px_rgba(0,200,120,0.2)]"
       aria-hidden
     >
       {ch}
@@ -126,7 +130,7 @@ function MiniPlanVisual({
       <div className="absolute left-2 right-2" style={{ top: yPct(stop!) }}>
         <div className="flex items-center gap-2">
           <span className="w-7 shrink-0 text-[8px] font-bold uppercase tracking-wider text-rose-300/90">SL</span>
-          <div className="h-px flex-1 bg-rose-400/70 shadow-[0_0_8px_rgba(248,113,113,0.35)]" />
+          <div className="h-px flex-1 bg-rose-400/70 shadow-[0_0_4px_rgba(248,113,113,0.2)]" />
           <span className="shrink-0 font-mono text-[9px] text-rose-200/90">{formatBotPrice(stop)}</span>
         </div>
       </div>
@@ -134,7 +138,7 @@ function MiniPlanVisual({
       <div className="absolute left-2 right-2" style={{ top: yPct(entry!) }}>
         <div className="flex items-center gap-2">
           <span className="w-7 shrink-0 text-[8px] font-bold uppercase tracking-wider text-[#00E08A]">Entry</span>
-          <div className="h-0.5 flex-1 bg-[#00C878]/80 shadow-[0_0_10px_rgba(0,200,120,0.4)]" />
+          <div className="h-0.5 flex-1 bg-[#00C878]/80 shadow-[0_0_5px_rgba(0,200,120,0.22)]" />
           <span className="shrink-0 font-mono text-[9px] text-cyan-100">{formatBotPrice(entry)}</span>
         </div>
       </div>
@@ -142,7 +146,7 @@ function MiniPlanVisual({
       <div className="absolute left-2 right-2" style={{ top: yPct(target!) }}>
         <div className="flex items-center gap-2">
           <span className="w-7 shrink-0 text-[8px] font-bold uppercase tracking-wider text-emerald-300/90">TP</span>
-          <div className="h-px flex-1 bg-emerald-400/70 shadow-[0_0_8px_rgba(52,211,153,0.3)]" />
+          <div className="h-px flex-1 bg-emerald-400/70 shadow-[0_0_4px_rgba(52,211,153,0.18)]" />
           <span className="shrink-0 font-mono text-[9px] text-emerald-200/90">{formatBotPrice(target)}</span>
         </div>
       </div>
@@ -162,8 +166,10 @@ export function BotCard({
   onSettings,
   onViewChart,
   onAdjustRisk,
+  exchangeFooter,
 }: BotCardProps) {
   const meta = botCardStatusMeta(cardStatus);
+  const personality = botPersonality(bot.personalityId);
   const paused = cardStatus === 'paused';
   const highAlert = cardStatus === 'in_trade';
   const forming = cardStatus === 'setup_forming';
@@ -206,8 +212,17 @@ export function BotCard({
   const hasValidSetup =
     !bot.expandedSetupPending && levelsValid(merged.entry, merged.stop, merged.target);
 
-  const lastResult = bot.stats.lastResultPct;
-  const lastFmt = `${lastResult >= 0 ? '+' : ''}${lastResult.toFixed(1)}%`;
+  const lastDemo = bot.stats.lastResultPct;
+  const lastDemoFmt = `${lastDemo >= 0 ? '+' : ''}${lastDemo.toFixed(1)}%`;
+  const lastLive = exchangeFooter?.lastResultPct;
+  const lastFmt =
+    exchangeFooter != null
+      ? lastLive != null
+        ? `${lastLive >= 0 ? '+' : ''}${lastLive.toFixed(1)}%`
+        : '—'
+      : lastDemoFmt;
+  const lastPositive =
+    exchangeFooter != null ? (lastLive != null ? lastLive >= 0 : true) : lastDemo >= 0;
 
   const shellClass = [
     'rounded-2xl border text-left',
@@ -216,16 +231,21 @@ export function BotCard({
     paused
       ? 'border-white/[0.06] bg-[#171A20]/80 opacity-[0.72]'
       : highAlert
-        ? 'border-[rgba(0,200,120,0.42)] bg-[#171A20] shadow-[0_0_32px_-10px_rgba(0,200,120,0.5),inset_0_1px_0_0_rgba(255,255,255,0.05)] ring-1 ring-[rgba(0,200,120,0.22)]'
+        ? 'border-[rgba(0,200,120,0.32)] bg-[#171A20] shadow-[0_0_18px_-12px_rgba(0,200,120,0.22),inset_0_1px_0_0_rgba(255,255,255,0.04)] ring-1 ring-[rgba(0,200,120,0.14)]'
         : showSpotlight
-          ? 'border-amber-400/55 bg-gradient-to-b from-amber-500/[0.07] to-[#171A20] ring-2 ring-amber-400/35 sigflo-bot-card-spotlight'
+          ? 'border-amber-400/45 bg-gradient-to-b from-amber-500/[0.05] to-[#171A20] ring-1 ring-amber-400/22 sigflo-bot-card-spotlight'
           : forming
-            ? 'border-amber-400/30 bg-[#171A20] shadow-[0_0_30px_-14px_rgba(251,191,36,0.38)] ring-1 ring-amber-400/22 sigflo-bot-forming-pulse'
-            : 'border-[rgba(0,200,120,0.14)] bg-[#171A20] shadow-[0_0_28px_-18px_rgba(0,200,120,0.22)] hover:border-[rgba(0,200,120,0.22)]',
+            ? 'border-amber-400/25 bg-[#171A20] shadow-[0_0_16px_-12px_rgba(251,191,36,0.2)] ring-1 ring-amber-400/14 sigflo-bot-forming-pulse'
+            : 'border-[rgba(0,200,120,0.11)] bg-[#171A20] shadow-[0_0_14px_-12px_rgba(0,200,120,0.12)] hover:border-[rgba(0,200,120,0.18)]',
   ].join(' ');
 
   return (
     <article className={shellClass}>
+      {/*
+        Clip inner surfaces to the card radius so the bottom border / ring stay visible (expanded
+        `#0F1115` layer was painting square corners and visually “breaking” the outline).
+      */}
+      <div className="overflow-hidden rounded-2xl">
       {/* ——— Header + collapsed body (tap to expand) ——— */}
       <button
         type="button"
@@ -241,6 +261,9 @@ export function BotCard({
                 <p className="truncate text-base font-bold tracking-tight text-white">{bot.name}</p>
                 <p className="mt-0.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-sigflo-muted">
                   {bot.strategy}
+                </p>
+                <p className="mt-1.5 inline-flex max-w-full items-center rounded-full border border-[rgba(0,200,120,0.22)] bg-[rgba(0,200,120,0.06)] px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-[#7ee8d3]/95">
+                  {personality.label}
                 </p>
               </div>
               <div className="flex shrink-0 items-center gap-1.5">
@@ -288,16 +311,34 @@ export function BotCard({
 
             <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-white/[0.06] pt-2.5 text-[10px] text-sigflo-muted">
               <span>
-                <span className="font-semibold text-white/90">{bot.stats.signalsToday}</span> signals today
+                <span className="font-semibold text-white/90">
+                  {exchangeFooter != null ? exchangeFooter.tradesToday : bot.stats.signalsToday}
+                </span>{' '}
+                {exchangeFooter != null ? 'trades today' : 'signals today'}
               </span>
               <span className="text-white/15">·</span>
               <span>
-                <span className="font-semibold text-emerald-200/90">{bot.stats.winRatePct}%</span> win rate
+                {exchangeFooter != null && exchangeFooter.winRatePct == null ? (
+                  <span className="font-semibold text-white/45">—</span>
+                ) : (
+                  <span className="font-semibold text-emerald-200/90">
+                    {exchangeFooter != null ? exchangeFooter.winRatePct : bot.stats.winRatePct}%
+                  </span>
+                )}{' '}
+                win rate
               </span>
               <span className="text-white/15">·</span>
               <span>
                 Last:{' '}
-                <span className={lastResult >= 0 ? 'font-semibold text-emerald-300/90' : 'font-semibold text-rose-300/90'}>
+                <span
+                  className={
+                    exchangeFooter != null && lastLive == null
+                      ? 'font-semibold text-white/45'
+                      : lastPositive
+                        ? 'font-semibold text-emerald-300/90'
+                        : 'font-semibold text-rose-300/90'
+                  }
+                >
                   {lastFmt}
                 </span>
               </span>
@@ -408,17 +449,23 @@ export function BotCard({
                   </div>
                   <p className="text-[9px] font-semibold uppercase tracking-wider text-sigflo-muted">Plan levels</p>
                   <div className="grid grid-cols-3 gap-1.5 text-center">
-                    <div className="rounded-lg border border-white/[0.05] bg-black/30 py-2">
-                      <p className="text-[8px] uppercase tracking-wider text-sigflo-muted">Entry</p>
-                      <p className="mt-0.5 font-mono text-[11px] font-semibold text-white">{formatBotPrice(merged.entry)}</p>
+                    <div className="sigflo-panel-texture rounded-lg border border-white/[0.06] bg-sigflo-elevated py-2">
+                      <p className="relative z-[1] text-[8px] uppercase tracking-wider text-sigflo-muted">Entry</p>
+                      <p className="relative z-[1] mt-0.5 font-mono text-[11px] font-semibold text-white">
+                        {formatBotPrice(merged.entry)}
+                      </p>
                     </div>
-                    <div className="rounded-lg border border-white/[0.05] bg-black/30 py-2">
-                      <p className="text-[8px] uppercase tracking-wider text-sigflo-muted">Stop</p>
-                      <p className="mt-0.5 font-mono text-[11px] font-semibold text-rose-200/90">{formatBotPrice(merged.stop)}</p>
+                    <div className="sigflo-panel-texture rounded-lg border border-white/[0.06] bg-sigflo-elevated py-2">
+                      <p className="relative z-[1] text-[8px] uppercase tracking-wider text-sigflo-muted">Stop</p>
+                      <p className="relative z-[1] mt-0.5 font-mono text-[11px] font-semibold text-rose-200/90">
+                        {formatBotPrice(merged.stop)}
+                      </p>
                     </div>
-                    <div className="rounded-lg border border-white/[0.05] bg-black/30 py-2">
-                      <p className="text-[8px] uppercase tracking-wider text-sigflo-muted">Target</p>
-                      <p className="mt-0.5 font-mono text-[11px] font-semibold text-emerald-200/90">{formatBotPrice(merged.target)}</p>
+                    <div className="sigflo-panel-texture rounded-lg border border-white/[0.06] bg-sigflo-elevated py-2">
+                      <p className="relative z-[1] text-[8px] uppercase tracking-wider text-sigflo-muted">Target</p>
+                      <p className="relative z-[1] mt-0.5 font-mono text-[11px] font-semibold text-emerald-200/90">
+                        {formatBotPrice(merged.target)}
+                      </p>
                     </div>
                   </div>
                 </div>
@@ -453,8 +500,9 @@ export function BotCard({
                 }}
                 disabled={!onViewChart}
                 className="rounded-lg border border-white/[0.1] bg-white/[0.04] px-2.5 py-1.5 text-[10px] font-semibold text-cyan-100/90 transition enabled:hover:border-[rgba(0,200,120,0.3)] enabled:active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40"
+                aria-label="View in chart"
               >
-                View on chart
+                View in chart
               </button>
               <button
                 type="button"
@@ -480,6 +528,7 @@ export function BotCard({
             </section>
           </div>
         </div>
+      </div>
       </div>
     </article>
   );

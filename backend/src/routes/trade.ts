@@ -6,6 +6,7 @@ import { decryptText } from '../security/crypto.js';
 import { listIntegrations } from '../repositories/integrationsRepo.js';
 import { log } from '../lib/logger.js';
 import { formatZodIssuesForApi } from '../lib/formatZodError.js';
+import { isBybitTradingStopNoopError } from '../lib/bybitNoopErrors.js';
 
 export const tradeRouter = Router();
 
@@ -168,6 +169,14 @@ tradeRouter.post('/bybit/linear-trading-stop', async (req: AuthedRequest, res) =
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Trading stop failed';
+    if (isBybitTradingStopNoopError(msg)) {
+      res.json({
+        ok: true,
+        exchange: 'bybit',
+        note: 'TP/SL already matched on Bybit — no update needed.',
+      });
+      return;
+    }
     log('warn', 'Bybit trading-stop failed.', { error: msg });
     res.status(400).json({ error: msg });
   }

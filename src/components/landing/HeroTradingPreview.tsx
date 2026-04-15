@@ -84,7 +84,7 @@ export function HeroTradingPreview() {
             </div>
           </div>
 
-          <div className="flex items-center justify-between rounded-xl border border-white/[0.08] bg-landing-surface/60 px-3 py-2.5">
+          <div className="flex items-center justify-between rounded-xl border border-white/[0.08] bg-landing-surface/60 landing-panel-texture px-3 py-2.5">
             <span className="text-xs text-landing-muted opacity-90">Bias</span>
             <div className="flex items-center gap-2">
               <span className="rounded-md bg-emerald-500/15 px-2 py-0.5 text-[11px] font-semibold text-emerald-400">

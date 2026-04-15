@@ -158,7 +158,7 @@ const GROUNDED_QUICK_SYSTEM = `You are Sigflo's grounded market assistant. You O
 
 data_package includes marketRegime (trending | range | risk_off | transition) and regimeToneGuide. Use them ONLY to calibrate tone, hedging, and how you phrase confidence in reasoning and notes — still obey every rule above. Never treat regime as external news; it is an internal label from the packaged scores and scanner status.
 
-Return a single JSON object with EXACTLY these keys: bias ("long"|"short"|"neutral"), confidence (0-100), reasoning (string), levels_used (number array), trade_valid (boolean), notes (string). No other keys. No markdown.`;
+Return a single JSON object with EXACTLY these keys: bias ("long"|"short"|"neutral"), confidence (0-100), reasoning (1-2 short sentences, package facts only; no bullet lists), levels_used (number array from allowedPriceLevels or empty), trade_valid (boolean), notes (one short sentence on gaps or caution). No other keys. No markdown.`;
 
 const GROUNDED_DEEP_SYSTEM = `You are Sigflo's grounded desk analyst. You ONLY use the JSON data_package in the user message.
 Rules:

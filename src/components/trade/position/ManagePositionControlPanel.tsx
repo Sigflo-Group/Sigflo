@@ -54,6 +54,9 @@ export type ManagePositionControlPanelProps = {
   onMoveStopBreakeven: () => void;
   onTightenStop: () => void;
   onAddToPosition: () => void;
+  onAdjustRisk?: () => void;
+  /** Zoom chart to entry / stop / target (same Trade screen). */
+  onViewSetupOnChart?: () => void;
   timeline: string[];
   actionsDisabled: boolean;
   canMoveStops: boolean;
@@ -75,6 +78,8 @@ export function ManagePositionControlPanel({
   onMoveStopBreakeven,
   onTightenStop,
   onAddToPosition,
+  onAdjustRisk,
+  onViewSetupOnChart,
   timeline,
   actionsDisabled,
   canMoveStops,
@@ -94,8 +99,8 @@ export function ManagePositionControlPanel({
       <section
         className={`rounded-2xl border px-3 py-3 ${
           winning
-            ? 'border-landing-accent/20 bg-landing-surface/95'
-            : 'border-rose-400/20 bg-rose-950/[0.18]'
+            ? 'border-landing-accent/20 bg-landing-surface sigflo-panel-texture'
+            : 'border-rose-400/25 bg-[#1a0c10]'
         }`}
       >
         <div className="flex items-start justify-between gap-2">
@@ -185,10 +190,30 @@ export function ManagePositionControlPanel({
             ? 'Chart shows your planned stop and target; updates sync to the exchange when you apply TP/SL.'
             : 'AI exit uses assisted automation — trims and exits follow your safeguards. Target on chart is a reference, not a fixed take-profit.'}
         </p>
+        {onViewSetupOnChart ? (
+          <button
+            type="button"
+            disabled={actionsDisabled}
+            onClick={onViewSetupOnChart}
+            className="mt-2 w-full rounded-lg border border-cyan-400/25 bg-cyan-500/[0.08] py-2 text-[10px] font-bold uppercase tracking-[0.1em] text-cyan-100/95 transition hover:border-cyan-400/40 hover:bg-cyan-500/14 active:scale-[0.99] disabled:opacity-45"
+          >
+            View on chart
+          </button>
+        ) : null}
       </section>
 
       <section>
         <p className="mb-1.5 text-[9px] font-bold uppercase tracking-[0.16em] text-landing-muted">Quick actions</p>
+        {onAdjustRisk ? (
+          <button
+            type="button"
+            disabled={actionsDisabled}
+            onClick={onAdjustRisk}
+            className="mb-2 w-full rounded-xl border border-landing-accent/35 bg-landing-accent-dim/40 py-2.5 text-[11px] font-bold text-landing-accent-hi transition hover:border-landing-accent/50 active:scale-[0.99] disabled:opacity-45"
+          >
+            Adjust risk
+          </button>
+        ) : null}
         <div className="grid grid-cols-2 gap-2">
           <button
             type="button"
@@ -202,7 +227,7 @@ export function ManagePositionControlPanel({
             type="button"
             disabled={actionsDisabled}
             onClick={onPartialOpen}
-            className="rounded-xl border border-white/[0.1] bg-landing-surface py-2.5 text-[11px] font-bold text-landing-text transition hover:border-landing-accent/30 active:scale-[0.99] disabled:opacity-45"
+            className="rounded-xl border border-white/[0.1] bg-landing-surface landing-panel-texture py-2.5 text-[11px] font-bold text-landing-text transition hover:border-landing-accent/30 active:scale-[0.99] disabled:opacity-45"
           >
             Partial close
           </button>
@@ -210,7 +235,7 @@ export function ManagePositionControlPanel({
             type="button"
             disabled={actionsDisabled || !canMoveStops || !isFutures}
             onClick={onMoveStopBreakeven}
-            className="rounded-xl border border-white/[0.1] bg-landing-surface py-2.5 text-[11px] font-bold text-landing-text transition hover:border-landing-accent/30 active:scale-[0.99] disabled:opacity-45"
+            className="rounded-xl border border-white/[0.1] bg-landing-surface landing-panel-texture py-2.5 text-[11px] font-bold text-landing-text transition hover:border-landing-accent/30 active:scale-[0.99] disabled:opacity-45"
           >
             Stop → breakeven
           </button>
@@ -218,7 +243,7 @@ export function ManagePositionControlPanel({
             type="button"
             disabled={actionsDisabled || !canMoveStops || !isFutures}
             onClick={onTightenStop}
-            className="rounded-xl border border-white/[0.1] bg-landing-surface py-2.5 text-[11px] font-bold text-landing-text transition hover:border-landing-accent/30 active:scale-[0.99] disabled:opacity-45"
+            className="rounded-xl border border-white/[0.1] bg-landing-surface landing-panel-texture py-2.5 text-[11px] font-bold text-landing-text transition hover:border-landing-accent/30 active:scale-[0.99] disabled:opacity-45"
           >
             Tighten stop
           </button>

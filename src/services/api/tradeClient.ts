@@ -1,5 +1,74 @@
 import { apiJson } from './http';
 
+export type ExitAutomationWatchApi = {
+  id: string;
+  exchange: string;
+  market: string;
+  enabled: boolean;
+  symbol: string;
+  side: 'long' | 'short';
+  positionIdx: number;
+  stopPrice: number;
+  targetPrice: number;
+  trendAlignment: number;
+  momentumQuality: number;
+  strategyPreset: 'protect_profit' | 'trend_follow' | 'tight_risk' | 'custom';
+  customStrategyThresholds: Record<string, number> | null;
+  safeguards: {
+    maxLossPct: number;
+    minProfitBeforeTrimPct: number;
+    allowPartialExits: boolean;
+    allowFullAutoClose: boolean;
+  };
+  lastGuidanceState: 'hold' | 'trim' | 'exit';
+  lastError: string | null;
+  lastCheckedAt: string | null;
+  lastActionAt: string | null;
+  updatedAt: string;
+};
+
+export type PutExitAutomationWatchBody = {
+  enabled: boolean;
+  symbol: string;
+  side: 'long' | 'short';
+  positionIdx?: number;
+  stopPrice: number;
+  targetPrice: number;
+  trendAlignment: number;
+  momentumQuality: number;
+  strategyPreset: ExitAutomationWatchApi['strategyPreset'];
+  customStrategyThresholds: Record<string, number> | null;
+  safeguards: ExitAutomationWatchApi['safeguards'];
+  lastGuidanceState?: ExitAutomationWatchApi['lastGuidanceState'];
+  exchange?: 'bybit';
+  market?: 'linear';
+};
+
+export async function listExitAutomationWatches(): Promise<{ watches: ExitAutomationWatchApi[] }> {
+  return apiJson<{ watches: ExitAutomationWatchApi[] }>('/exit-watch');
+}
+
+export async function putExitAutomationWatch(body: PutExitAutomationWatchBody): Promise<{ watch: ExitAutomationWatchApi }> {
+  return apiJson<{ watch: ExitAutomationWatchApi }>('/exit-watch', {
+    method: 'PUT',
+    body: JSON.stringify(body),
+  });
+}
+
+export async function deleteExitAutomationWatch(params: {
+  symbol: string;
+  side: 'long' | 'short';
+  positionIdx?: number;
+}): Promise<void> {
+  const q = new URLSearchParams({
+    exchange: 'bybit',
+    symbol: params.symbol,
+    side: params.side,
+    positionIdx: String(params.positionIdx ?? 0),
+  });
+  await apiJson<void>(`/exit-watch?${q.toString()}`, { method: 'DELETE' });
+}
+
 export type BybitLinearOrderResponse = {
   ok: true;
   exchange: string;

@@ -1,7 +1,6 @@
 import { motion } from 'framer-motion';
 import { type FormEvent, useState } from 'react';
 import { LandingPrimaryCta } from '@/components/landing/LandingCta';
-import { LandingSectionPixelField } from '@/components/landing/effects/LandingSectionPixelField';
 import { LandingSectionBackdrop } from '@/components/landing/LandingSectionBackdrop';
 import { LANDING_SECTIONS } from '@/components/landing/landingSections';
 import { ScrollReveal } from '@/components/landing/ScrollReveal';
@@ -20,7 +19,6 @@ export function LandingFinalCta() {
       className="relative scroll-mt-24 overflow-hidden bg-landing-bg px-4 pb-20 pt-6 sm:px-6 sm:pb-28 sm:pt-8 lg:px-8 lg:pb-32"
     >
       <LandingSectionBackdrop variant="finalCta" />
-      <LandingSectionPixelField count={120} />
       <ScrollReveal className="relative z-[2] mx-auto max-w-4xl">
         <div
           className="relative overflow-hidden rounded-3xl border border-white/[0.12] px-6 py-14 shadow-[0_0_64px_-28px_rgba(0,200,120,0.16)] sm:px-10 sm:py-16"

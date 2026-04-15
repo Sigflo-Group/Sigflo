@@ -13,7 +13,7 @@ export type TradeChartPanelProps = ChartHeaderProps & {
  */
 export function TradeChartPanel({ liveStrip, className = '', ...chartProps }: TradeChartPanelProps) {
   return (
-    <div className={`space-y-0 ${className}`}>
+    <div className={`flex min-h-0 w-full min-w-0 flex-col space-y-0 ${className}`}>
       {liveStrip ? <LiveMarketStrip {...liveStrip} /> : null}
       <ChartHeader {...chartProps} />
     </div>

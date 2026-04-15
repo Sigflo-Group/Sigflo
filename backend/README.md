@@ -47,7 +47,7 @@ See **`.env.example`** for the full list. Important fields:
 
 | Variable | Role |
 |----------|------|
-| `FRONTEND_ORIGIN` | Comma-separated browser origins allowed by CORS (e.g. `https://sigflo.group,http://localhost:5173`). |
+| `FRONTEND_ORIGIN` | Comma-separated browser origins allowed by CORS (e.g. `https://app.sigflo.group,https://sigflo.group,http://localhost:5173`). |
 | `DATABASE_URL` | Postgres connection string. |
 | `CREDENTIAL_ENCRYPTION_KEY` | 64-char hex; encrypts stored API secrets. |
 | `SUPABASE_JWT_SECRET` | Verifies `Authorization: Bearer` from the SPA (Supabase session). |

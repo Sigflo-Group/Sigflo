@@ -40,7 +40,7 @@ export function TradingViewChartCard({ symbol, interval }: Props) {
   }, [src]);
 
   return (
-    <Card className="overflow-hidden p-2">
+    <Card panelTexture={false} className="overflow-hidden p-2">
       <div className="mb-2 flex items-center justify-between px-2">
         <h2 className="text-sm font-semibold text-white">TradingView</h2>
         <span className="text-[11px] text-sigflo-muted">{tvSymbol}</span>

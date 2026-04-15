@@ -18,12 +18,33 @@ export function PreTradeWarningCard(props: {
   primaryMessage: string;
   warnings: string[];
 }) {
-  const { walletUsedPct, tradeScore, primaryMessage, warnings, setupTradeConflictMessage, walletImpactLabel, leverage } = props;
+  const {
+    walletUsedPct,
+    tradeScore,
+    primaryMessage,
+    warnings,
+    setupTradeConflictMessage,
+    walletImpactLabel,
+    leverage,
+    riskLevel,
+  } = props;
+
+  const highRiskPulse = riskLevel === 'High' || tradeScore < 45;
 
   return (
-    <div className="rounded-2xl border border-white/[0.08] bg-gradient-to-b from-white/[0.03] to-sigflo-surface/90 p-3 space-y-2 backdrop-blur-sm">
+    <div
+      className={`rounded-2xl border p-3 space-y-2 backdrop-blur-sm ${
+        highRiskPulse
+          ? 'sigflo-high-risk-panel-pulse border-rose-400/40 bg-gradient-to-b from-rose-950/35 via-rose-950/20 to-sigflo-surface/90'
+          : 'border-white/[0.08] bg-gradient-to-b from-white/[0.03] to-sigflo-surface/90'
+      }`}
+    >
       <div className="flex items-start justify-between gap-2">
-        <span className="text-sm font-bold leading-snug text-white">{actionHint(tradeScore)}</span>
+        <span
+          className={`text-sm font-bold leading-snug ${highRiskPulse ? 'text-rose-100' : 'text-white'}`}
+        >
+          {actionHint(tradeScore)}
+        </span>
         <span className="shrink-0 text-[10px] font-semibold tabular-nums text-sigflo-muted">Score {tradeScore}</span>
       </div>
 

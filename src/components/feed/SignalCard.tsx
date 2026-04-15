@@ -11,6 +11,7 @@ import {
   uiSignalStateFromMarketStatus,
   uiSignalStateLabel,
 } from '@/lib/signalState';
+import { TriggeredFireMark } from '@/components/ui/TriggeredFireMark';
 import type { CryptoSignal } from '@/types/signal';
 import type { Candle } from '@/types/market';
 
@@ -105,8 +106,8 @@ export function SignalCard({
         : 'group-hover:ring-2 group-hover:ring-slate-400/20 group-hover:border-slate-300/24';
   const sideChipClass =
     signal.side === 'long'
-      ? 'border-emerald-400/30 bg-emerald-500/12 text-emerald-300'
-      : 'border-rose-400/30 bg-rose-500/12 text-rose-300';
+      ? 'border-emerald-400/30 bg-[#14241c] text-emerald-300'
+      : 'border-rose-400/30 bg-[#24181c] text-rose-300';
   const entryValue =
     miniCandles && miniCandles.length > 0
       ? miniCandles[miniCandles.length - 1].close
@@ -151,7 +152,7 @@ export function SignalCard({
       aria-label={`Open trade for ${signal.pair}`}
     >
       <div
-        className={`relative overflow-hidden rounded-2xl border bg-sigflo-surface p-5 transition-all active:scale-[0.98] ${
+        className={`relative overflow-hidden rounded-2xl border bg-sigflo-surface sigflo-panel-texture p-5 transition-all active:scale-[0.98] ${
           isTriggered
             ? isFreshTriggered
               ? 'scale-[1.01] border-[rgba(34,211,238,0.44)] shadow-[0_14px_34px_-18px_rgba(34,211,238,0.6)] ring-1 ring-[rgba(34,211,238,0.2)]'
@@ -163,6 +164,7 @@ export function SignalCard({
         <div className="flex items-start justify-between gap-2">
           <div className="flex shrink-0 flex-col gap-1">
             <div className="flex items-center gap-2">
+              {isTriggered ? <TriggeredFireMark hot={justTriggered || isFreshTriggered} /> : null}
               <h2 className="text-base font-bold tracking-tight text-white">{signal.pair}/USDT</h2>
               <span className="text-[11px] text-sigflo-muted">{intervalLabel}</span>
             </div>
@@ -173,7 +175,7 @@ export function SignalCard({
             </span>
           </div>
           <div className="mx-1 min-w-0 flex-1">
-            <div className="overflow-hidden rounded-md border border-white/[0.05] bg-black/20 px-1.5 py-1">
+            <div className="overflow-hidden rounded-md border border-white/[0.05] bg-[#08090d] px-1.5 py-1">
               <svg viewBox={`0 0 ${chartW} ${chartH}`} className="h-[60px] w-full" aria-hidden>
                 <defs>
                   <linearGradient id={`sigflo-area-${signal.id}`} x1="0" y1="0" x2="0" y2="1">
@@ -234,7 +236,7 @@ export function SignalCard({
         {/* CTA */}
         <button
           type="button"
-          className="mt-4 w-full rounded-xl bg-sigflo-accent/10 py-2.5 text-sm font-bold text-sigflo-accent transition hover:bg-sigflo-accent/15"
+          className="mt-4 w-full rounded-xl border border-sigflo-accent/22 bg-[#0f1c18] py-2.5 text-sm font-bold text-sigflo-accent transition hover:border-sigflo-accent/35 hover:bg-[#132a22]"
         >
           Open Signal
         </button>

@@ -1,4 +1,5 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react';
+import { feedBrowserPath } from '@/config/appRoutes';
 
 type Props = { children: ReactNode };
 
@@ -25,7 +26,7 @@ export class ErrorBoundary extends Component<Props, State> {
           </pre>
           <button
             type="button"
-            onClick={() => window.location.assign('/feed')}
+            onClick={() => window.location.assign(feedBrowserPath())}
             className="mt-8 rounded-2xl bg-gradient-to-r from-emerald-500 to-cyan-500 px-6 py-3 text-sm font-bold text-sigflo-bg"
           >
             Back to feed

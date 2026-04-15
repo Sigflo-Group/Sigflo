@@ -8,7 +8,7 @@ type BotHeaderProps = {
 
 export function BotHeader({ pair, freshness, statusLabel, statusTextClass, statusDotClass }: BotHeaderProps) {
   return (
-    <header className="rounded-2xl border border-white/[0.07] bg-sigflo-surface p-4">
+    <header className="rounded-2xl border border-white/[0.07] bg-sigflo-surface sigflo-panel-texture p-4">
       <div className="flex items-start justify-between">
         <div>
           <h1 className="text-lg font-bold text-white">{pair} / USDT</h1>

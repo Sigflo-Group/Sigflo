@@ -1518,9 +1518,10 @@ export function TradeScreen() {
           }
           flashTradeToast('Order submitted — syncing account…');
           const snapshotsAfter = await refreshAccountSnapshots({ silent: false });
-          if (market === 'futures' && !isManageMode) {
-            const preAttach = linearTpSlStringsForOpen(nextSide, entryMark, targetParsed, stopParsed);
-            if (preAttach.tpSl.takeProfit || preAttach.tpSl.stopLoss) {
+          const hasUserTpSl =
+            (Number.isFinite(targetParsed) && targetParsed > 0) ||
+            (Number.isFinite(stopParsed) && stopParsed > 0);
+          if (market === 'futures' && !isManageMode && hasUserTpSl) {
               const pos = findBybitLinearOpenLeg(snapshotsAfter, orderSymbol, nextSide);
               if (pos && Number.isFinite(pos.entryPrice) && pos.entryPrice > 0) {
                 const synced = linearTpSlStringsForOpen(nextSide, pos.entryPrice, targetParsed, stopParsed);
@@ -1544,7 +1545,6 @@ export function TradeScreen() {
                   await refreshAccountSnapshots({ silent: true });
                 }
               }
-            }
           }
         } catch (e) {
           flashTradeToast(formatBybitTradeErrorMessage(e, 'Order failed'), 5200);
@@ -1798,7 +1798,7 @@ export function TradeScreen() {
       return;
     }
     if (exitAuto.mode !== 'auto') {
-      prevAutoStateRef.current = exitFlow.effective.state;
+      prevAutoStateRef.current = null;
       return;
     }
     const curr = exitFlow.effective.state;

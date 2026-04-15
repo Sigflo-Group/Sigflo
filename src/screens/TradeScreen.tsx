@@ -252,7 +252,33 @@ export function TradeScreen() {
 
   const selectedSignal = useMemo(() => {
     const fromQuery = buildSignalContextFromQuery(params, signalId);
-    if (fromQuery) return fromQuery;
+    if (fromQuery) {
+      const qPair = fromQuery.pair.trim().toUpperCase().replace(/\s*\/\s*/g, '');
+      const liveMatch = liveSignals.find((s) => {
+        const lp = s.pair.trim().toUpperCase().replace(/\s*\/\s*/g, '');
+        return lp === qPair || lp === qPair.replace(/USDT$/i, '');
+      });
+      if (liveMatch) {
+        return {
+          ...fromQuery,
+          setupScore: liveMatch.setupScore,
+          setupScoreLabel: liveMatch.setupScoreLabel,
+          scoreBreakdown: liveMatch.scoreBreakdown,
+          setupType: liveMatch.setupType,
+          setupTags: liveMatch.setupTags,
+          riskTag: liveMatch.riskTag,
+          side: liveMatch.side,
+          biasLabel: liveMatch.biasLabel,
+          aiExplanation: liveMatch.aiExplanation,
+          watchCue: liveMatch.watchCue ?? fromQuery.watchCue,
+          watchNext: liveMatch.watchNext ?? fromQuery.watchNext,
+          plannedEntry: liveMatch.plannedEntry ?? fromQuery.plannedEntry,
+          plannedStop: liveMatch.plannedStop ?? fromQuery.plannedStop,
+          plannedTarget: liveMatch.plannedTarget ?? fromQuery.plannedTarget,
+        };
+      }
+      return fromQuery;
+    }
     const direct = liveSignals.find((s) => s.id === signalId);
     if (direct) return direct;
     const legacy = resolveShellSignalForLegacyId(signalId, liveSignals);

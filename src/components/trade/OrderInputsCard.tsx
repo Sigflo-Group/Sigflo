@@ -223,9 +223,35 @@ export function OrderInputsCard(props: {
     onAmountChange(clampAmount(amountUsdRef.current - amountInputStep));
   });
 
-  const [slEnabled, setSlEnabled] = useState(false);
-  const [tpEnabled, setTpEnabled] = useState(false);
+  const [slEnabled, setSlEnabled] = useState(() => {
+    if (stopInput != null && stopInput !== '') {
+      const n = parseFloat(String(stopInput).replace(/,/g, ''));
+      return Number.isFinite(n) && n > 0;
+    }
+    return false;
+  });
+  const [tpEnabled, setTpEnabled] = useState(() => {
+    if (takeProfitInput != null && takeProfitInput !== '') {
+      const n = parseFloat(String(takeProfitInput).replace(/,/g, ''));
+      return Number.isFinite(n) && n > 0;
+    }
+    return false;
+  });
   const [marginMode, setMarginMode] = useState<'cross' | 'isolated'>('cross');
+
+  useEffect(() => {
+    if (stopInput != null && stopInput !== '') {
+      const n = parseFloat(String(stopInput).replace(/,/g, ''));
+      if (Number.isFinite(n) && n > 0) setSlEnabled(true);
+    }
+  }, [stopInput]);
+
+  useEffect(() => {
+    if (takeProfitInput != null && takeProfitInput !== '') {
+      const n = parseFloat(String(takeProfitInput).replace(/,/g, ''));
+      if (Number.isFinite(n) && n > 0) setTpEnabled(true);
+    }
+  }, [takeProfitInput]);
 
   const riskColor = liquidationRisk === 'High' ? 'text-rose-400' : liquidationRisk === 'Medium' ? 'text-amber-300' : 'text-emerald-400';
 

@@ -136,6 +136,8 @@ export type ExitAutomationControlsProps = {
   activity: ExitAutomationActivityEntry[];
   onClearActivity?: () => void;
   compactActivity?: boolean;
+  /** When false, shows a hint that exit actions require an open position. */
+  hasOpenPosition?: boolean;
 };
 
 export function ExitAutomationControls(props: ExitAutomationControlsProps) {
@@ -152,6 +154,7 @@ export function ExitAutomationControls(props: ExitAutomationControlsProps) {
     activity,
     onClearActivity,
     compactActivity,
+    hasOpenPosition,
   } = props;
   const [safeguardsOpen, setSafeguardsOpen] = useState(false);
   const [customSensitivityOpen, setCustomSensitivityOpen] = useState(false);
@@ -230,6 +233,11 @@ export function ExitAutomationControls(props: ExitAutomationControlsProps) {
               })}
             </div>
             <p className="text-[10px] leading-snug text-sigflo-muted/95 sm:text-[11px]">{EXIT_AI_MODE_HELPER[mode]}</p>
+            {mode !== 'manual' && hasOpenPosition === false ? (
+              <p className="rounded-lg border border-amber-500/20 bg-amber-500/[0.06] px-2 py-1.5 text-[10px] leading-snug text-amber-200/90">
+                Open a position first — exit actions activate once a trade is live.
+              </p>
+            ) : null}
 
             {mode !== 'manual' ? (
               <div className="space-y-0.5">

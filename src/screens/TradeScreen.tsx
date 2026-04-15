@@ -2360,6 +2360,7 @@ export function TradeScreen() {
                 activity={exitAuto.activity}
                 onClearActivity={exitAuto.clearActivity}
                 compactActivity={!isManageMode}
+                hasOpenPosition={hasActiveTradePosition || isManageMode}
               />
             </ExitModePanel>
           </div>

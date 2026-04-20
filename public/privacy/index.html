@@ -1,77 +1,378 @@
 <!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Privacy Policy — Sigflo</title>
-  <style>
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      background: #050505;
-      color: #E5E7EB;
-      line-height: 1.6;
-      padding: 40px;
-      max-width: 800px;
-      margin: auto;
-    }
-    h1, h2 { margin-top: 32px; }
-    h1 { font-size: 32px; color: #00ffc8; }
-    h2 { font-size: 20px; color: #ffffff; }
-    p { margin-top: 12px; }
-  </style>
-</head>
-<body>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Sigflo Privacy Policy</title>
+    <style>
+      :root {
+        --bg: #050505;
+        --panel: #0d0d0d;
+        --panel-2: rgba(255, 255, 255, 0.03);
+        --border: rgba(255, 255, 255, 0.08);
+        --text: rgba(255, 255, 255, 0.92);
+        --muted: rgba(255, 255, 255, 0.62);
+        --accent: #00ffc8;
+        --max: 1180px;
+        --content: 760px;
+        --radius: 22px;
+      }
 
-<h1>Privacy Policy — Sigflo</h1>
-<p><strong>Last updated:</strong> 14/04/2026</p>
+      * { box-sizing: border-box; }
+      html { scroll-behavior: smooth; }
+      body {
+        margin: 0;
+        background: radial-gradient(circle at top, rgba(0, 255, 200, 0.08), transparent 28%), var(--bg);
+        color: var(--text);
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        line-height: 1.7;
+      }
 
-<h2>Overview</h2>
-<p>Sigflo is a trading interface that provides AI-assisted signals, market analysis, and execution tools. This Privacy Policy explains how we collect, use, and protect your information.</p>
+      a { color: var(--accent); text-decoration: none; }
+      a:hover { opacity: 0.92; }
 
-<h2>Information We Collect</h2>
-<p>We may collect:</p>
-<ul>
-  <li>Email address and account details</li>
-  <li>Usage data and interactions within the app</li>
-  <li>Device and technical information (IP, browser, device type)</li>
-</ul>
+      .page {
+        width: min(calc(100% - 32px), var(--max));
+        margin: 0 auto;
+        padding: 32px 0 72px;
+      }
 
-<h2>Trading & Financial Data</h2>
-<p>If you connect Sigflo to third-party services (such as cryptocurrency exchanges):</p>
-<ul>
-  <li>We may access account data such as balances, positions, and market activity</li>
-  <li>Access is limited to permissions granted via API keys</li>
-  <li>We do not store withdrawal permissions</li>
-</ul>
+      .hero {
+        padding: 72px 32px;
+        border: 1px solid var(--border);
+        border-radius: 32px;
+        background: linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.015));
+        box-shadow: 0 20px 80px rgba(0,0,0,0.45);
+      }
 
-<h2>How We Use Information</h2>
-<p>We use your data to:</p>
-<ul>
-  <li>Provide trading insights and signals</li>
-  <li>Improve platform performance and features</li>
-  <li>Maintain security and prevent abuse</li>
-  <li>Communicate updates and product information</li>
-</ul>
+      .eyebrow {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 14px;
+        border-radius: 999px;
+        border: 1px solid rgba(0,255,200,0.16);
+        background: rgba(0,255,200,0.07);
+        color: var(--accent);
+        font-size: 12px;
+        font-weight: 600;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+.hero h1 {
 
-<h2>Financial Disclaimer</h2>
-<p>Sigflo does not provide financial advice. All signals, insights, and tools are for informational purposes only. Users are responsible for their own trading decisions and risk management.</p>
+      .layout {
+        display: grid;
+        grid-template-columns: 250px minmax(0, 1fr);
+        gap: 28px;
+        margin-top: 28px;
+      }
 
-<h2>Data Sharing</h2>
-<p>We do not sell your personal data. We may share limited data with:</p>
-<ul>
-  <li>Infrastructure providers (hosting, analytics)</li>
-  <li>Authentication providers</li>
-  <li>Third-party APIs (e.g. exchange integrations)</li>
-</ul>
+      .toc {
+        position: sticky;
+        top: 24px;
+        align-self: start;
+        padding: 20px;
+        border: 1px solid var(--border);
+        border-radius: 24px;
+        background: var(--panel-2);
+        backdrop-filter: blur(12px);
+      }
 
-<h2>Security</h2>
-<p>We implement security measures including encrypted connections and restricted access controls. However, no system is completely secure.</p>
+      .toc h2 {
+        margin: 0 0 14px;
+        font-size: 13px;
+        color: var(--muted);
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+      }
 
-<h2>Your Rights</h2>
-<p>You may request access, correction, or deletion of your data by contacting us.</p>
+      .toc ul {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+      }
 
-<h2>Contact</h2>
-<p>Email: support@sigflo.group</p>
+      .toc li + li { margin-top: 10px; }
+      .toc a { color: rgba(255,255,255,0.78); font-size: 14px; }
 
-</body>
+      .content { max-width: var(--content); }
+
+      .intro, .section, .callout, .note {
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        background: linear-gradient(180deg, rgba(255,255,255,0.025), rgba(255,255,255,0.015));
+        padding: 28px;
+        box-shadow: 0 10px 40px rgba(0,0,0,0.28);
+      }
+ .section, .callout, .note { margin-top: 18px; }
+
+      .intro p, .section p, .callout p, .note p {
+        margin: 0;
+        color: rgba(255,255,255,0.86);
+      }
+
+      .section h2 {
+        margin: 0 0 14px;
+        font-size: 24px;
+        line-height: 1.2;
+        letter-spacing: -0.02em;
+      }
+
+      .section h2 span { color: var(--accent); }
+
+      .section p + p,
+      .section ul,
+      .section ol,
+      .intro p + p {
+        margin-top: 14px;
+      }
+
+      .section ul, .section ol {
+        padding-left: 20px;
+        color: rgba(255,255,255,0.86);
+      }
+
+      .section li + li { margin-top: 10px; }
+
+      .callout {
+        background: linear-gradient(180deg, rgba(0,255,200,0.09), rgba(255,255,255,0.015));
+      }
+
+      .links {
+        margin-top: 28px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+      }
+
+      .links a {
+        display: inline-flex;
+        align-items: center;
+        padding: 12px 16px;
+        border-radius: 999px;
+        border: 1px solid var(--border);
+        background: rgba(255,255,255,0.03);
+        color: rgba(255,255,255,0.86);
+        font-size: 14px;
+      }
+ @media (max-width: 980px) {
+          padding-top: 16px;
+        }
+        .hero {
+          padding: 32px 20px;
+          border-radius: 24px;
+        }
+        .intro, .section, .callout, .note, .toc {
+          padding: 20px;
+          border-radius: 18px;
+        }
+        .hero h1 { font-size: 38px; }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="page">
+      <section class="hero">
+        <div class="eyebrow">
+  <img src="/sigflo-mark.png" style="height:16px; margin-right:6px;" />
+  Sigflo Legal
+</div>
+        <h1>Privacy Policy</h1>
+        <p>
+          This Privacy Policy explains how Sigflo collects, uses, stores, and protects your information when you use the platform.
+        </p>
+        <p class="hero-meta">Last updated: April 15, 2026</p>
+      </section>
+
+      <div class="layout">
+        <aside class="toc" aria-label="Table of contents">
+          <h2>On this page</h2>
+          <ul>
+            <li><a href="#intro">Overview</a></li>
+            <li><a href="#information-we-collect">Information We Collect</a></li>
+            <li><a href="#how-we-use">How We Use Information</a></li>
+            <li><a href="#broker-data">Broker and Integration Data</a></li>
+            <li><a href="#sharing">When We Share Information</a></li>
+            <li><a href="#retention">Data Retention</a></li>
+            <li><a href="#security">Security</a></li>
+            <li><a href="#international">International Transfers</a></li>
+            <li><a href="#your-rights">Your Rights and Choices</a></li>
+            <li><a href="#cookies">Cookies and Analytics</a></li>
+            <li><a href="#children">Children’s Privacy</a></li>
+            <li><a href="#changes">Changes to This Policy</a></li>
+            <li><a href="#contact">Contact</a></li>
+          </ul>
+        </aside>
+  <section class="content">
+            </p>
+            <p>
+              We aim to collect only what is reasonably necessary to operate, secure, improve, and support the platform.
+            </p>
+          </div>
+
+          <section id="information-we-collect" class="section">
+            <h2><span>1.</span> Information We Collect</h2>
+            <p>We may collect several categories of information depending on how you use Sigflo.</p>
+            <ul>
+              <li><strong>Account information:</strong> such as your name, username, email address, login details, and profile information.</li>
+              <li><strong>Technical information:</strong> such as device type, browser type, IP address, operating system, app version, and log data.</li>
+              <li><strong>Usage information:</strong> such as pages visited, features used, interactions with signals or alerts, and session activity.</li>
+              <li><strong>Support information:</strong> such as messages, screenshots, attachments, and issue reports you submit to support.</li>
+              <li><strong>Transaction or subscription information:</strong> such as plan status, billing metadata, and payment-related records from payment providers, where applicable.</li>
+              <li><strong>Connected account data:</strong> if you connect a broker, exchange, or other third-party service, we may receive limited account or integration-related data needed to provide the service.</li>
+            </ul>
+          </section>
+
+          <section id="how-we-use" class="section">
+            <h2><span>2.</span> How We Use Information</h2>
+            <p>We may use your information to operate and improve Sigflo, including to:</p>
+            <ul>
+              <li>create and manage your account</li>
+              <li>authenticate users and secure access</li>
+              <li>deliver platform features, alerts, analytics, and support</li>
+              <li>maintain performance, reliability, and platform security</li>
+              <li>investigate bugs, abuse, fraud, or misuse</li>
+              <li>understand product usage and improve the user experience</li>
+              <li>communicate with you about support, account activity, product changes, or legal updates</li>
+              <li>process subscriptions, billing events, or operational notifications where relevant</li>
+            </ul>
+          </section>
+
+          <section id="broker-data" class="section">
+            <h2><span>3.</span> Broker, Exchange, and Integration Data</h2>
+            <p>
+              If you connect Sigflo to a broker, exchange, or another third-party platform, we may process certain integration data necessary to enable connected features.
+            </p>
+            <p>This may include things like:</p>
+            <ul>
+              <li>account identifiers</li>
+              <li>connection status</li>
+              <li>portfolio or balance information</li>
+              <li>open positions or order-related metadata</li>
+              <li>API-related status information</li>
+            </ul>
+            <p>
+              We only intend to use such data as needed to support the product experience, integrations, and related functionality.
+            </p>
+          </section>
+<section id="sharing" class="section">
+            <h2><span>4.</span> When We Share Information</h2>
+            <p>We do not sell your personal information in the ordinary sense of selling user data for unrelated third-party marketing.</p>
+            <p>We may share information in limited circumstances, such as:</p>
+            <ul>
+              <li>with service providers who help us operate the platform, such as hosting, analytics, customer support, authentication, or payment providers</li>
+              <li>with connected third-party services when you choose to link them to your account</li>
+              <li>where required by law, regulation, legal process, or lawful government request</li>
+              <li>to enforce our terms, protect rights, investigate misuse, or address fraud and security issues</li>
+              <li>as part of a merger, acquisition, restructuring, financing, or sale of assets, subject to applicable legal requirements</li>
+            </ul>
+          </section>
+
+          <section id="retention" class="section">
+            <h2><span>5.</span> Data Retention</h2>
+            <p>
+              We retain information for as long as reasonably necessary to provide the platform, comply with legal obligations, resolve disputes, enforce agreements, and maintain operational records.
+            </p>
+            <p>
+              Retention periods may vary depending on the type of data, the nature of your relationship with Sigflo, and applicable legal or regulatory requirements.
+            </p>
+          </section>
+
+          <section id="security" class="section">
+            <h2><span>6.</span> Security</h2>
+            <p>
+              We take reasonable steps to help protect information from unauthorized access, misuse, loss, alteration, or disclosure.
+            </p>
+            <p>
+              However, no method of transmission or storage is completely secure, and we cannot guarantee absolute security.
+            </p>
+          </section>
+
+          <section id="international" class="section">
+            <h2><span>7.</span> International Transfers</h2>
+            <p>
+              Depending on how Sigflo is operated and hosted, your information may be processed or stored in jurisdictions outside your own.
+            </p>
+            <p>
+              By using the platform, you understand that data may be transferred to and processed in locations where privacy laws may differ from those in your jurisdiction.
+            </p>
+          </section>
+
+          <section id="your-rights" class="section">
+            <h2><span>8.</span> Your Rights and Choices</h2>
+            <p>Depending on your location and applicable law, you may have rights relating to your personal information, such as the right to:</p>
+            <ul>
+              <li>request access to personal information we hold about you</li>
+              <li>request correction of inaccurate or incomplete information</li>
+              <li>request deletion of certain information</li>
+              <li>object to or restrict certain processing in some circumstances</li>
+              <li>request a copy of certain information in a portable form where applicable</li>
+              <li>opt out of certain non-essential communications</li>
+            </ul>
+            <p>
+              These rights are not absolute and may depend on the laws that apply to you.
+            </p>
+          </section>
+<section id="cookies" class="section">
+            <h2><span>9.</span> Cookies and Analytics</h2>
+            <p>
+              Sigflo may use cookies, local storage, analytics tools, and similar technologies to keep the platform functioning, remember preferences, understand usage patterns, improve performance, and support security.
+            </p>
+            <p>
+              Some of these technologies may be necessary for the platform to work properly, while others may help with measurement and improvement.
+            </p>
+          </section>
+
+          <section id="children" class="section">
+            <h2><span>10.</span> Children’s Privacy</h2>
+            <p>
+              Sigflo is not intended for children, and we do not knowingly collect personal information from children where prohibited by law.
+            </p>
+            <p>
+              If you believe information has been provided by a child inappropriately, please contact us so we can review and take appropriate steps.
+            </p>
+          </section>
+
+          <section id="changes" class="section">
+            <h2><span>11.</span> Changes to This Policy</h2>
+            <p>
+              We may update this Privacy Policy from time to time. When we do, we may revise the “Last updated” date at the top of the page.
+            </p>
+            <p>
+              Your continued use of Sigflo after an updated policy becomes effective may constitute acceptance of the revised policy, subject to applicable law.
+            </p>
+          </section>
+
+          <section id="contact" class="section">
+            <h2><span>12.</span> Contact</h2>
+            <p>
+              If you have questions about this Privacy Policy or wish to make a privacy-related request, please contact Sigflo through the support page or your designated privacy contact method.
+            </p>
+            <p>
+              Email: <a href="mailto:support@sigflo.com">support@sigflo.group</a>
+            </p>
+          </section>
+
+          <div class="note">
+            <p>
+              You should review this Privacy Policy alongside Sigflo’s Terms of Use, Risk Disclosure, and Beta Disclaimer.
+            </p>
+          </div>
+
+          <div class="callout">
+            <p>
+              <strong>Privacy matters.</strong> We aim to handle information carefully, use it responsibly, and keep the platform as secure and trustworthy as reasonably possible.
+            </p>
+          </div>
+
+          <div class="links">
+            <a href="/terms">Terms of Use</a>
+            <a href="/disclosure">Risk Disclosure</a>
+            <a href="/beta">Beta Disclaimer</a>
+            <a href="/support">Support</a>
+          </div>
+        </section>
+      </div>
+    </main>
+  </body>
 </html>

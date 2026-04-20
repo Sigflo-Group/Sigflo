@@ -1,6 +1,8 @@
 import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { SigfloMobileLoader } from '@/components/layout/SigfloMobileLoader';
 import { getFeedRoute } from '@/config/appRoutes';
+import { SIGFLO_MOBILE_LOADER_AUTH_STATUSES } from '@/config/sigfloMobileLoaderStatuses';
 import { useAuth } from '@/context/AuthContext';
 
 /**
@@ -24,9 +26,6 @@ export default function AuthCallbackScreen() {
   }, [authMode, loading, navigate, user]);
 
   return (
-    <div className="flex min-h-[100dvh] flex-col items-center justify-center bg-[#0F1115] px-6">
-      <div className="h-28 w-28 rounded-full bg-[#00C878]/[0.1] blur-3xl sigflo-splash-glow-pulse" aria-hidden />
-      <p className="relative -mt-16 text-sm font-medium text-[rgba(245,247,250,0.72)]">Finishing sign-in…</p>
-    </div>
+    <SigfloMobileLoader statuses={SIGFLO_MOBILE_LOADER_AUTH_STATUSES} intervalMs={1800} />
   );
 }

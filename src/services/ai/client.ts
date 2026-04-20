@@ -13,6 +13,7 @@ import type {
 } from '@/types/aiGrounded';
 import type { MarketRowStatus } from '@/types/markets';
 import { resolveAppApiPath } from '@/lib/appBasePath';
+import { emitGlobalAnnouncement } from '@/lib/globalAnnouncements';
 import type { CryptoSignal } from '@/types/signal';
 
 export type AssistantAction = AiQuickAction;
@@ -116,6 +117,20 @@ function validateAndBuildRemoteQuickResponse(
   return { structured, headline, body, source: 'remote' };
 }
 
+function announceAssistantResult(req: AssistantRequest, out: AssistantResponseGrounded) {
+  try {
+    const bias = out.structured?.bias ?? '—';
+    emitGlobalAnnouncement({
+      id: `ai-asst-${Date.now()}`,
+      kind: 'ai_action',
+      title: 'AI insight',
+      subtitle: `${req.signal.pair.trim()} · ${req.action} · ${bias} (${out.source})`,
+    });
+  } catch {
+    /* ignore */
+  }
+}
+
 export async function requestAssistantSuggestion(req: AssistantRequest): Promise<AssistantResponseGrounded> {
   const local = buildLocalStructuredAnalysis(req.action, req.signal, req.status, req.tradeScore, req.context);
 
@@ -184,32 +199,37 @@ export async function requestAssistantSuggestion(req: AssistantRequest): Promise
     }
   };
 
-  try {
-    const { res, data } = await runQuickFetch(buildQuickPayload(false, '', null));
-    if (!res.ok || !data) return local;
+  const run = async (): Promise<AssistantResponseGrounded> => {
+    try {
+      const { res, data } = await runQuickFetch(buildQuickPayload(false, '', null));
+      if (!res.ok || !data) return local;
 
-    let structured = extractStructuredFromRemotePayload(data);
-    let remote = structured ? validateAndBuildRemoteQuickResponse(req, structured) : null;
-    if (remote) return remote;
+      let structured = extractStructuredFromRemotePayload(data);
+      let remote = structured ? validateAndBuildRemoteQuickResponse(req, structured) : null;
+      if (remote) return remote;
 
-    if (!allowGroundedValidationRetry) return local;
+      if (!allowGroundedValidationRetry) return local;
 
-    let failReason = 'missing_or_invalid_json';
-    if (structured != null) {
-      const vQuick = validateGroundedStructuredAnalysis(structured, req.context);
-      if (!vQuick.ok) failReason = vQuick.reason;
+      let failReason = 'missing_or_invalid_json';
+      if (structured != null) {
+        const vQuick = validateGroundedStructuredAnalysis(structured, req.context);
+        if (!vQuick.ok) failReason = vQuick.reason;
+      }
+      const previousForRetry = structured ?? null;
+      const { res: res2, data: data2 } = await runQuickFetch(
+        buildQuickPayload(true, failReason, previousForRetry),
+      );
+      if (!res2.ok || !data2) return local;
+      structured = extractStructuredFromRemotePayload(data2);
+      remote = structured ? validateAndBuildRemoteQuickResponse(req, structured) : null;
+      return remote ?? local;
+    } catch {
+      return local;
     }
-    const previousForRetry = structured ?? null;
-    const { res: res2, data: data2 } = await runQuickFetch(
-      buildQuickPayload(true, failReason, previousForRetry),
-    );
-    if (!res2.ok || !data2) return local;
-    structured = extractStructuredFromRemotePayload(data2);
-    remote = structured ? validateAndBuildRemoteQuickResponse(req, structured) : null;
-    return remote ?? local;
-  } catch {
-    return local;
-  }
+  };
+  const out = await run();
+  announceAssistantResult(req, out);
+  return out;
 }
 
 export type DeepAnalysisRequest = {
@@ -385,30 +405,44 @@ export async function requestDeepMarketAnalysis(req: DeepAnalysisRequest): Promi
     }
   };
 
-  try {
-    const { res, data } = await runDeepFetch(buildDeepPayload(false, '', null));
-    if (!res.ok || !data) return localWrap();
+  const run = async (): Promise<DeepAnalysisResponse> => {
+    try {
+      const { res, data } = await runDeepFetch(buildDeepPayload(false, '', null));
+      if (!res.ok || !data) return localWrap();
 
-    let parsed = coerceDeepRemotePayload(data);
-    let failReason = 'missing_or_invalid_json';
-    if (parsed) {
-      const v = validateDeepMarkdownGrounded(parsed.body, req.context);
-      if (v.ok) return { headline: parsed.headline, body: parsed.body, source: 'remote' };
-      failReason = v.reason;
+      let parsed = coerceDeepRemotePayload(data);
+      let failReason = 'missing_or_invalid_json';
+      if (parsed) {
+        const v = validateDeepMarkdownGrounded(parsed.body, req.context);
+        if (v.ok) return { headline: parsed.headline, body: parsed.body, source: 'remote' };
+        failReason = v.reason;
+      }
+
+      if (!allowGroundedValidationRetry) return localWrap();
+
+      const { res: res2, data: data2 } = await runDeepFetch(
+        buildDeepPayload(true, failReason, parsed),
+      );
+      if (!res2.ok || !data2) return localWrap();
+      parsed = coerceDeepRemotePayload(data2);
+      if (!parsed) return localWrap();
+      const v2 = validateDeepMarkdownGrounded(parsed.body, req.context);
+      if (!v2.ok) return localWrap();
+      return { headline: parsed.headline, body: parsed.body, source: 'remote' };
+    } catch {
+      return localWrap();
     }
-
-    if (!allowGroundedValidationRetry) return localWrap();
-
-    const { res: res2, data: data2 } = await runDeepFetch(
-      buildDeepPayload(true, failReason, parsed),
-    );
-    if (!res2.ok || !data2) return localWrap();
-    parsed = coerceDeepRemotePayload(data2);
-    if (!parsed) return localWrap();
-    const v2 = validateDeepMarkdownGrounded(parsed.body, req.context);
-    if (!v2.ok) return localWrap();
-    return { headline: parsed.headline, body: parsed.body, source: 'remote' };
+  };
+  const out = await run();
+  try {
+    emitGlobalAnnouncement({
+      id: `ai-deep-${Date.now()}`,
+      kind: 'ai_action',
+      title: 'Deep analysis',
+      subtitle: `${req.signal.pair.trim()} · ${out.headline.slice(0, 140)}`,
+    });
   } catch {
-    return localWrap();
+    /* ignore */
   }
+  return out;
 }

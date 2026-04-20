@@ -51,15 +51,21 @@ export async function fetchTickers(symbols?: string[]): Promise<SymbolTicker[]> 
   const symbolSet = symbols ? new Set(symbols) : undefined;
   return data.result.list
     .filter((x) => (symbolSet ? symbolSet.has(String(x.symbol ?? '')) : true))
-    .map((x) => ({
-      symbol: String(x.symbol ?? ''),
-      lastPrice: toNum(x.lastPrice),
-      high24h: toNum(x.highPrice24h),
-      low24h: toNum(x.lowPrice24h),
-      volume24h: toNum(x.volume24h),
-      turnover24h: toNum(x.turnover24h),
-      price24hPcnt: toNum(x.price24hPcnt),
-    }));
+    .map((x) => {
+      const markRaw = toNum(x.markPrice);
+      const indexRaw = toNum(x.indexPrice);
+      return {
+        symbol: String(x.symbol ?? ''),
+        lastPrice: toNum(x.lastPrice),
+        ...(Number.isFinite(markRaw) && markRaw > 0 ? { markPrice: markRaw } : {}),
+        ...(Number.isFinite(indexRaw) && indexRaw > 0 ? { indexPrice: indexRaw } : {}),
+        high24h: toNum(x.highPrice24h),
+        low24h: toNum(x.lowPrice24h),
+        volume24h: toNum(x.volume24h),
+        turnover24h: toNum(x.turnover24h),
+        price24hPcnt: toNum(x.price24hPcnt),
+      };
+    });
 }
 
 export function rankLiquidUniverse(tickers: SymbolTicker[], minCount: number, maxCount: number): SymbolUniverseItem[] {

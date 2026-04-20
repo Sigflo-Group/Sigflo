@@ -33,6 +33,9 @@ export function ExitAiCoPilotBlock({
         <div className="min-w-0">
           <p className={`${titleSz} font-bold uppercase tracking-[0.16em] text-landing-muted`}>Exit AI</p>
           <p className="mt-1 text-sm font-bold tracking-tight text-landing-text">{model.statusTitle}</p>
+          <p className="mt-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-landing-accent-hi/90">
+            {model.directionLine}
+          </p>
         </div>
         {aiOn ? (
           <span className="shrink-0 rounded-full border border-landing-accent/35 bg-landing-accent-dim/80 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-landing-accent-hi">

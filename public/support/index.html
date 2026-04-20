@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Sigflo Support</title>
+    <style>
+      :root {
+        --bg: #050505;
+        --border: rgba(255,255,255,0.08);
+        --text: rgba(255,255,255,0.92);
+        --muted: rgba(255,255,255,0.62);
+        --accent: #00ffc8;
+        --max: 1180px;
+        --content: 880px;
+        --radius: 22px;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        background: radial-gradient(circle at top, rgba(0,255,200,0.08), transparent 28%), var(--bg);
+        color: var(--text);
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        line-height: 1.7;
+      }
+      a { color: var(--accent); text-decoration: none; }
+      .page { width: min(calc(100% - 32px), var(--max)); margin: 0 auto; padding: 32px 0 72px; }
+      .hero, .panel {
+        border: 1px solid var(--border);
+        background: linear-gradient(180deg, rgba(255,255,255,0.025), rgba(255,255,255,0.015));
+        box-shadow: 0 10px 40px rgba(0,0,0,0.28);
+      }
+      .hero { padding: 72px 32px; border-radius: 32px; }
+      .eyebrow {
+        display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px;
+        border-radius: 999px; border: 1px solid rgba(0,255,200,0.16);
+        background: rgba(0,255,200,0.07); color: var(--accent);
+        font-size: 12px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase;
+}
+      .hero h1 { margin: 18px 0 14px; font-size: clamp(40px, 7vw, 64px); line-height: 1.05; letter-spacing: -0.04em; }
+      .hero p { margin: 0; max-width: 760px; color: var(--muted); font-size: 17px; }
+      .grid { display: grid; grid-template-columns: 1.1fr 0.9fr; gap: 18px; margin-top: 28px; }
+      .panel { padding: 28px; border-radius: var(--radius); }
+      .panel h2 { margin: 0 0 12px; font-size: 24px; letter-spacing: -0.02em; }
+      .panel p { margin: 0; color: rgba(255,255,255,0.86); }
+      .panel p + p, .panel ul, .faq { margin-top: 14px; }
+      .panel ul { padding-left: 20px; color: rgba(255,255,255,0.86); }
+      .panel li + li { margin-top: 10px; }
+      .stack { display: grid; gap: 18px; margin-top: 18px; }
+      .contact-card {
+        padding: 18px; border-radius: 18px; border: 1px solid rgba(255,255,255,0.08);
+        background: rgba(255,255,255,0.025);
+      }
+      .contact-card strong { display: block; margin-bottom: 6px; }
+      .form-preview {
+        display: grid; gap: 12px; margin-top: 16px;
+      }
+      .field {
+        min-height: 48px; display: flex; align-items: center; padding: 0 14px;
+        border-radius: 14px; border: 1px solid rgba(255,255,255,0.08); background: rgba(255,255,255,0.02);
+        color: rgba(255,255,255,0.5); font-size: 14px;
+      }
+      .field.textarea { min-height: 128px; align-items: flex-start; padding-top: 14px; }
+      .button {
+        display: inline-flex; align-items: center; justify-content: center; min-height: 46px; padding: 0 18px;
+        border-radius: 999px; border: 1px solid rgba(0,255,200,0.18);
+        background: linear-gradient(180deg, rgba(0,255,200,0.2), rgba(0,255,200,0.1));
+        color: #03110d; font-weight: 700; width: fit-content; margin-top: 6px;
+      }
+.faq-item + .faq-item {
+        margin-top: 14px; padding-top: 14px; border-top: 1px solid rgba(255,255,255,0.08);
+      }
+      .links { margin-top: 28px; display: flex; flex-wrap: wrap; gap: 12px; }
+      .links a {
+        display: inline-flex; align-items: center; padding: 12px 16px; border-radius: 999px;
+        border: 1px solid var(--border); background: rgba(255,255,255,0.03); color: rgba(255,255,255,0.86); font-size: 14px;
+      }
+      @media (max-width: 900px) {
+        .grid { grid-template-columns: 1fr; }
+      }
+      @media (max-width: 640px) {
+        .page { width: min(calc(100% - 20px), var(--max)); padding-top: 16px; }
+        .hero { padding: 32px 20px; border-radius: 24px; }
+        .panel { padding: 20px; border-radius: 18px; }
+        .hero h1 { font-size: 38px; }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="page">
+      <section class="hero">
+        <div class="eyebrow">
+  <img src="/sigflo-mark.png" style="height:16px; margin-right:6px;" />
+  Sigflo Support
+</div>
+        <h1>Support</h1>
+        <p>Need help with Sigflo? We’ll point you in the right direction.</p>
+      </section>
+<div class="grid">
+        <section class="panel">
+          <h2>How we can help</h2>
+          <p>Whether you’ve hit a bug, have a question about your account, or need help understanding how something works, this page is here to help.</p>
+          <p>We’re still early, so support may be lighter than a mature platform — but we want the experience to feel clear, calm, and responsive.</p>
+
+          <ul>
+            <li>Account access issues</li>
+            <li>Login or authentication problems</li>
+            <li>Broker connection problems</li>
+            <li>Bugs or technical issues</li>
+            <li>Questions about features or platform behavior</li>
+            <li>Billing questions, if applicable</li>
+            <li>General feedback during beta</li>
+          </ul>
+        </section>
+
+        <section class="panel">
+          <h2>Contact methods</h2>
+          <div class="stack">
+            <div class="contact-card">
+              <strong>Email support</strong>
+              <a href="mailto:support@sigflo.group">support@sigflo.group</a>
+            </div>
+            <div class="contact-card">
+              <strong>In-app support form</strong>
+              <span>Use the in-app support or feedback form for the fastest context, if available.</span>
+            </div>
+            <div class="contact-card">
+              <strong>Beta feedback</strong>
+              <span>If you’re reporting a bug or sharing an improvement idea, label it clearly so it can be triaged properly.</span>
+            </div>
+          </div>
+        </section>
+      </div>
+  <div class="grid" style="margin-top: 18px;">
+        <section class="panel">
+          <h2>Before you contact support</h2>
+          <p>The clearer the report, the easier it is to investigate.</p>
+          <ul>
+            <li>The email address associated with your account</li>
+            <li>The device and browser you were using</li>
+            <li>What you were trying to do</li>
+            <li>What happened instead</li>
+            <li>Screenshots, if relevant</li>
+            <li>Whether the issue is ongoing or intermittent</li>
+          </ul>
+        </section>
+
+        <section class="panel">
+          <h2>Important note</h2>
+          <p>Sigflo support can help with product and account issues, but we do <strong>not</strong> provide financial advice, trade recommendations, personal portfolio guidance, or legal and tax advice.</p>
+          <p>If your question relates to a trading decision, you should make your own assessment or speak with an appropriate licensed professional.</p>
+        </section>
+      </div>
+
+      <div class="grid" style="margin-top: 18px;">
+        <section class="panel">
+          <h2>Contact Support</h2>
+          <p>Tell us what’s going on and we’ll take a look.</p>
+          <div class="form-preview">
+            <div class="field">Name</div>
+            <div class="field">Email</div>
+            <div class="field">Category</div>
+            <div class="field">Subject</div>
+            <div class="field textarea">Message</div>
+            <div class="field">Screenshot / attachment (optional)</div>
+            <a class="button" href="mailto:support@sigflo.group">Send Request</a>
+          </div>
+        </section>
+  <section class="panel">
+          <h2>FAQ</h2>
+          <div class="faq">
+            <div class="faq-item">
+              <strong>How do I reset my password?</strong>
+              <p>Use the password reset option on the login screen, if enabled.</p>
+            </div>
+            <div class="faq-item">
+              <strong>Why is a signal or chart not updating?</strong>
+              <p>During beta, some data or UI elements may occasionally lag or fail to refresh correctly.</p>
+            </div>
+            <div class="faq-item">
+              <strong>Can support tell me whether to take a trade?</strong>
+              <p>No. Sigflo support cannot provide financial advice or trade recommendations.</p>
+            </div>
+            <div class="faq-item">
+              <strong>Can I report bugs?</strong>
+              <p>Yes — bug reports are especially helpful during beta.</p>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <section class="panel" style="margin-top: 18px; max-width: 100%;">
+        <h2>Response expectations</h2>
+        <p>We aim to review support requests as promptly as possible, but response times may vary, especially during beta.</p>
+        <p>Some issues may require additional investigation, and some feature requests may be noted for future improvement rather than resolved immediately.</p>
+      </section>
+  <div class="links">
+        <a href="/terms">Terms of Use</a>
+        <a href="/privacy">Privacy Policy</a>
+        <a href="/disclosure">Risk Disclosure</a>
+        <a href="/beta">Beta Disclaimer</a>
+      </div>
+    </main>
+  </body>
+</html>

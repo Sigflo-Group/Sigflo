@@ -7,6 +7,7 @@ import { describeAuthError } from '@/lib/supabaseAuthErrors';
 import { isSupabaseConfigured } from '@/lib/supabase';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const BETA_NOTICE_DISMISSED_KEY = 'sigflo:betaNoticeDismissed:v1';
 
 const inputClass =
   'w-full rounded-xl border border-white/[0.1] bg-[#171A20] px-4 py-3.5 text-base text-[#F5F7FA] outline-none transition placeholder:text-[rgba(245,247,250,0.35)] focus:border-[rgba(0,200,120,0.45)] focus:shadow-[0_0_0_3px_rgba(0,200,120,0.12)] disabled:opacity-50';
@@ -87,6 +88,13 @@ export default function LoginScreen() {
 
   const [googleBusy, setGoogleBusy] = useState(false);
   const [googleError, setGoogleError] = useState<string | null>(null);
+  const [betaNoticeOpen, setBetaNoticeOpen] = useState(() => {
+    try {
+      return window.localStorage.getItem(BETA_NOTICE_DISMISSED_KEY) !== '1';
+    } catch {
+      return true;
+    }
+  });
 
   const switchTab = useCallback((tab: AuthTab) => {
     setAuthTab(tab);
@@ -553,6 +561,42 @@ export default function LoginScreen() {
           </Link>
         </p>
       </div>
+      {betaNoticeOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-5 backdrop-blur-[2px]">
+          <div className="w-full max-w-md rounded-2xl border border-[#00C878]/28 bg-[#12161c] p-5 shadow-[0_24px_80px_-28px_rgba(0,200,120,0.55)]">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#8FFFD4]">Sigflo Beta Access</p>
+            <p className="mt-3 text-sm leading-relaxed text-[rgba(245,247,250,0.88)]">Sigflo is currently in beta.</p>
+            <p className="mt-3 text-sm leading-relaxed text-[rgba(245,247,250,0.78)]">
+              We provide AI-assisted signals and market insights - not financial advice.
+            </p>
+            <p className="mt-3 text-sm leading-relaxed text-[rgba(245,247,250,0.78)]">
+              Markets carry risk, and outcomes are never guaranteed.
+              <br />
+              During beta, data and features may be incomplete or inaccurate.
+            </p>
+            <p className="mt-3 text-sm leading-relaxed text-[rgba(245,247,250,0.86)]">
+              Trade thoughtfully. You are fully responsible for your decisions.
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                setBetaNoticeOpen(false);
+                try {
+                  window.localStorage.setItem(BETA_NOTICE_DISMISSED_KEY, '1');
+                } catch {
+                  // Ignore storage failures (private mode / blocked storage).
+                }
+              }}
+              className="mt-5 w-full rounded-xl bg-[#00C878] py-3 text-sm font-bold text-[#0F1115] shadow-[0_8px_28px_-8px_rgba(0,200,120,0.45)] transition hover:brightness-105 active:scale-[0.99]"
+            >
+              Enter Sigflo
+            </button>
+            <p className="mt-2 text-center text-[11px] leading-relaxed text-[rgba(245,247,250,0.6)]">
+              By continuing, you acknowledge the risks and accept our terms.
+            </p>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

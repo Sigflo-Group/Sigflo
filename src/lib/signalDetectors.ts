@@ -1,4 +1,5 @@
 import { calculateSetupScore, getSetupScoreLabel } from '@/lib/setupScore';
+import { evaluateTimingLifecycle, type CandidateLifecycle } from '@/lib/timingLifecycle';
 import { atr, ema, recentSwingHigh, recentSwingLow, rollingAvg, rsi } from '@/lib/indicators';
 import type { Candle, SymbolTicker } from '@/types/market';
 import type { CryptoSignal, SetupScoreBreakdown, SignalRiskTag, SignalSetupTag, SignalSide } from '@/types/signal';
@@ -346,7 +347,8 @@ export function buildSignalFromMarket(input: {
   ticker: SymbolTicker;
   candles15m: Candle[];
   regime?: MarketRegime;
-}): CryptoSignal | null {
+  previousLifecycle?: CandidateLifecycle;
+}): { signal: CryptoSignal; lifecycle: CandidateLifecycle } | null {
   const thresholds = thresholdsForRegime(input.regime ?? 'neutral');
   let best: { out: DetectorOutput; setupScore: number } | null = null;
   for (const detector of MARKET_DETECTORS) {
@@ -359,7 +361,14 @@ export function buildSignalFromMarket(input: {
   }
   if (!best) return null;
   const { out, setupScore } = best;
-  return {
+  const { lifecycle, diagnostics } = evaluateTimingLifecycle({
+    setupType: out.setupType,
+    side: out.side,
+    setupScore,
+    candles: input.candles15m,
+    previous: input.previousLifecycle,
+  });
+  const signal: CryptoSignal = {
     id: `live-${input.symbol}-${Date.now()}`,
     pair: input.symbol.replace('USDT', ''),
     side: out.side,
@@ -375,7 +384,22 @@ export function buildSignalFromMarket(input: {
     postedAgo: 'Live',
     aiExplanation: out.aiExplanation,
     whyThisMatters: out.whyThisMatters,
+    timingState: lifecycle.state,
+    timingScore: diagnostics.timingScore,
+    entryFreshnessScore: diagnostics.entryFreshnessScore,
+    roomToTargetScore: diagnostics.roomToTargetScore,
+    actionabilityScore: diagnostics.actionabilityScore,
+    triggerType: lifecycle.trigger.triggerType,
+    triggerReason: lifecycle.trigger.triggerReason,
+    idealEntryPrice: lifecycle.trigger.idealEntryPrice ?? undefined,
+    candlesSinceTrigger: lifecycle.candlesSinceTrigger ?? undefined,
+    candlesSincePeakTiming: lifecycle.candlesSincePeakTiming ?? undefined,
+    penaltyBreakdown: lifecycle.penalties,
+    positiveTimingFactors: lifecycle.positiveFactors,
+    scannerDiagnosticsNote:
+      'Timing now follows lifecycle memory (first trigger capture, peak tracking, and freshness decay) instead of a late static snapshot.',
   };
+  return { signal, lifecycle };
 }
 
 export function inferMarketRegime(input: { btc15m: Candle[]; eth15m: Candle[] }): MarketRegime {

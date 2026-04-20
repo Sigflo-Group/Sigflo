@@ -1,4 +1,11 @@
-import type { RiskLevel, RiskSummary, TradeSide, TradeViewModel } from '@/types/trade';
+import type {
+  ExecutionQuality,
+  RiskLevel,
+  RiskSummary,
+  SetupDisplayState,
+  TradeSide,
+  TradeViewModel,
+} from '@/types/trade';
 
 export interface TradeInputs {
   amountUsd: number;
@@ -6,6 +13,10 @@ export interface TradeInputs {
   side: TradeSide;
   market: 'futures' | 'spot';
   setupScore: number;
+  /** Subtracted from base trade score after risk/setup math (execution fill quality). */
+  executionTradeScorePenalty?: number;
+  executionQuality?: ExecutionQuality | null;
+  setupDisplayState?: SetupDisplayState;
 }
 
 export interface DerivedTradeMetrics {
@@ -63,6 +74,77 @@ function getPrimaryWarning(
   return 'Risk is controlled at this size.';
 }
 
+/**
+ * Explains how {@link getTradeScore} was derived — use while tuning (e.g. `console.debug(getTradeScoreBreakdown(...))`).
+ * Not wired into UI; safe to call from devtools or temporary logging.
+ */
+export type TradeScoreBreakdown = {
+  /** Neutral anchor before setup lift and penalties (not shown as a separate “base” in the formula comment below). */
+  baseScore: number;
+  /** Primary positive driver: better setup raises the score more than before. */
+  setupContribution: number;
+  /** Wallet usage drag — softened vs older formula so typical sizing does not dominate. */
+  walletPenalty: number;
+  /** Leverage drag — softened so moderate leverage is not harshly punished. */
+  leveragePenalty: number;
+  /** Tight liq buffer still hurts, but tier penalties are smaller than the old blunt values. */
+  liquidationPenalty: number;
+  /** Aggregate risk band (wallet + lev + liq context) — meaningful but not score-crushing by default. */
+  riskPenalty: number;
+  /** Extra hit when size exceeds setup-adjusted recommended usage. */
+  oversizePenalty: number;
+  /** Sum before clamp (unrounded). */
+  rawScore: number;
+  /** Rounded, clamped to [5, 98]. */
+  finalScore: number;
+};
+
+/**
+ * **Trade quality adjusted for risk and execution discipline** — not a pure “position aggressiveness” penalty.
+ * Setup quality is the main lift; wallet, leverage, liquidation buffer, risk band, and oversize are moderating penalties
+ * that should bite hardest only when several stack together (genuinely reckless profiles).
+ */
+export function getTradeScoreBreakdown(
+  walletUsedPct: number,
+  leverage: number,
+  riskLevel: RiskLevel,
+  setupScore: number,
+  oversizingRelativeToSetup: boolean,
+  liquidationBufferPct: number,
+): TradeScoreBreakdown {
+  const baseScore = 55;
+  // Setup is the primary positive driver (reference point 50, steeper slope than the old 60 / 0.55 curve).
+  const setupContribution = (setupScore - 50) * 0.9;
+  // Moderating penalties — softer than the legacy model so a decent setup + moderate risk does not collapse toward the floor.
+  const walletPenalty = walletUsedPct * 0.35;
+  const leveragePenalty = Math.max(0, leverage - 1) * 0.9;
+  const liquidationPenalty = liquidationBufferPct < 6 ? 12 : liquidationBufferPct < 10 ? 6 : 0;
+  const riskPenalty = riskLevel === 'High' ? 12 : riskLevel === 'Medium' ? 5 : 0;
+  const oversizePenalty = oversizingRelativeToSetup ? 8 : 0;
+
+  const rawScore =
+    baseScore +
+    setupContribution -
+    walletPenalty -
+    leveragePenalty -
+    liquidationPenalty -
+    riskPenalty -
+    oversizePenalty;
+  const finalScore = Math.round(clamp(rawScore, 5, 98));
+
+  return {
+    baseScore,
+    setupContribution,
+    walletPenalty,
+    leveragePenalty,
+    liquidationPenalty,
+    riskPenalty,
+    oversizePenalty,
+    rawScore,
+    finalScore,
+  };
+}
+
 function getTradeScore(
   walletUsedPct: number,
   leverage: number,
@@ -71,15 +153,14 @@ function getTradeScore(
   oversizingRelativeToSetup: boolean,
   liquidationBufferPct: number,
 ): number {
-  const setupContribution = (setupScore - 60) * 0.55;
-  const walletPenalty = walletUsedPct * 0.95;
-  const leveragePenalty = Math.max(0, leverage - 1) * 1.7;
-  const liquidationPenalty = liquidationBufferPct < 6 ? 16 : liquidationBufferPct < 10 ? 8 : 0;
-  const riskPenalty = riskLevel === 'High' ? 18 : riskLevel === 'Medium' ? 8 : 0;
-  const oversizePenalty = oversizingRelativeToSetup ? 12 : 0;
-  return Math.round(
-    clamp(72 + setupContribution - walletPenalty - leveragePenalty - liquidationPenalty - riskPenalty - oversizePenalty, 5, 98),
-  );
+  return getTradeScoreBreakdown(
+    walletUsedPct,
+    leverage,
+    riskLevel,
+    setupScore,
+    oversizingRelativeToSetup,
+    liquidationBufferPct,
+  ).finalScore;
 }
 
 export function deriveTradeMetrics(model: TradeViewModel, inputs: TradeInputs): DerivedTradeMetrics {
@@ -109,7 +190,7 @@ export function deriveTradeMetrics(model: TradeViewModel, inputs: TradeInputs): 
     inputs.setupScore,
     oversizingRelativeToSetup,
   );
-  const tradeScore = getTradeScore(
+  const baseTradeScore = getTradeScore(
     walletUsedPct,
     leverage,
     liquidationRisk,
@@ -117,6 +198,8 @@ export function deriveTradeMetrics(model: TradeViewModel, inputs: TradeInputs): 
     oversizingRelativeToSetup,
     liquidationBufferPct,
   );
+  const executionPenalty = Math.max(0, inputs.executionTradeScorePenalty ?? 0);
+  const tradeScore = Math.round(clamp(baseTradeScore - executionPenalty, 5, 98));
   const setupTradeConflictMessage =
     inputs.setupScore >= 70 && tradeScore < 65
       ? 'The setup is strong, but this position reduces trade quality.'
@@ -158,6 +241,9 @@ export function deriveTradeMetrics(model: TradeViewModel, inputs: TradeInputs): 
       liquidationRisk,
       riskMeterPct,
       tradeScore,
+      setupDisplayState: inputs.setupDisplayState,
+      executionQuality: inputs.executionQuality ?? null,
+      executionPenaltyApplied: executionPenalty > 0 ? executionPenalty : undefined,
       setupTradeConflictMessage,
       walletImpactLabel,
       primaryMessage,

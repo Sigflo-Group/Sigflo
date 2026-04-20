@@ -136,7 +136,7 @@ export function MarketCard({
       aria-label={`Open trade for ${row.symbol}`}
     >
       <div
-        className={`rounded-2xl border bg-sigflo-surface sigflo-panel-texture p-4 transition-all active:scale-[0.98] ${
+        className={`rounded-xl border bg-sigflo-surface sigflo-panel-texture p-3 transition-all active:scale-[0.98] sm:rounded-2xl sm:p-4 ${
           isTriggered
             ? `${uiStateStyle.card} sigflo-trigger-card-rest ${justTriggered ? 'sigflo-trigger-card-just' : ''} ${
                 isPrimaryTriggered
@@ -154,13 +154,13 @@ export function MarketCard({
           pressed ? 'scale-[0.985] shadow-[0_0_24px_-8px_rgba(0,255,200,0.75)]' : ''
         } group-hover:-translate-y-[1px] group-hover:shadow-[0_14px_28px_-20px_rgba(0,0,0,0.6)] active:shadow-[0_0_24px_-10px_rgba(0,255,200,0.55)]`}
       >
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 sm:gap-3">
           {/* Left: pair + status */}
           <div className="flex flex-col gap-0.5">
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2.5 sm:gap-3">
               <div className="flex items-center gap-1.5">
                 {isTriggered ? <TriggeredFireMark hot={justTriggered || showJustTriggered} /> : null}
-                <h3 className="text-base font-bold tracking-tight text-white">{row.pair}</h3>
+                <h3 className="text-[15px] font-bold tracking-tight text-white sm:text-base">{row.pair}</h3>
               </div>
               <span className={`inline-flex items-center gap-1.5 text-[11px] font-semibold ${uiStateStyle.text}`}>
                 <span className={`relative flex ${isTriggered ? 'h-2 w-2' : 'h-1.5 w-1.5'}`}>

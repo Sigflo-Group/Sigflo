@@ -18,6 +18,10 @@ export type BybitWsKline = {
 export type BybitWsTicker = {
   symbol: string;
   lastPrice: number;
+  /** Fair mark when the stream includes it (linear). */
+  markPrice: number;
+  /** Index price when the stream includes it (linear). */
+  indexPrice?: number;
   high24h: number;
   low24h: number;
   volume24h: number;
@@ -201,9 +205,13 @@ export class BybitWsClient {
     const symbol = topic.split('.')[1] ?? '';
     const row = (Array.isArray(data) ? data[0] : data) as Record<string, unknown> | undefined;
     if (!row) return;
+    const markPx = toNum(row.markPrice);
+    const indexPx = toNum(row.indexPrice);
     this.options.onTicker?.({
       symbol,
       lastPrice: toNum(row.lastPrice),
+      markPrice: Number.isFinite(markPx) && markPx > 0 ? markPx : 0,
+      ...(Number.isFinite(indexPx) && indexPx > 0 ? { indexPrice: indexPx } : {}),
       high24h: toNum(row.highPrice24h),
       low24h: toNum(row.lowPrice24h),
       volume24h: toNum(row.volume24h),

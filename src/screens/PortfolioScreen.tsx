@@ -16,6 +16,7 @@ import {
   utcDayStartMs,
 } from '@/lib/portfolioBotAttribution';
 import { derivePositionAiExitStatus, positionAiExitMeta } from '@/lib/portfolioPositionAi';
+import { positionBiasForLinearSymbol } from '@/lib/positionBiasStat';
 import { positionMicroInsight } from '@/lib/positionMicroInsight';
 import { symbolToPair } from '@/lib/marketScannerRows';
 import { buildPortfolioPositionTradeQuery } from '@/lib/tradeNavigation';
@@ -229,7 +230,7 @@ function CardShell({
 export default function PortfolioScreen() {
   const navigate = useNavigate();
   const { items: snapshots, closedTrades, loading } = useAccountSnapshot({ pollMs: 12_000 });
-  const { liveTickersBySymbol } = useSignalEngine();
+  const { liveTickersBySymbol, signals: scannerSignals } = useSignalEngine();
   const { mergeBot } = useBotUserConfig();
   const { statusMap } = useBotStatuses();
 
@@ -460,6 +461,7 @@ export default function PortfolioScreen() {
                 });
 
                 const pairKey = symbolToPair(p.symbol).toUpperCase();
+                const positionBiasStat = positionBiasForLinearSymbol(p.symbol, p.side, scannerSignals);
                 const liveCloses = candleCloses(miniCandles[pairKey]);
                 const hasLiveMini = liveCloses.length >= 2;
                 const positionSparkSeries = hasLiveMini
@@ -473,7 +475,7 @@ export default function PortfolioScreen() {
                   <CardShell
                     key={`${p.exchange}-${p.symbol}-${index}`}
                     glow={up && pnlPct >= 0.5}
-                    className={`border-white/[0.07] ${up ? 'ring-1 ring-[#00C878]/15' : 'ring-1 ring-rose-500/10'}`}
+                    className={`!p-3 border-white/[0.07] ${up ? 'ring-1 ring-[#00C878]/15' : 'ring-1 ring-rose-500/10'}`}
                   >
                     <button
                       type="button"
@@ -482,79 +484,119 @@ export default function PortfolioScreen() {
                     >
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0 flex-1">
-                          <p className="text-lg font-bold tracking-tight text-white">{pairLabel(p.symbol)}</p>
-                          <p className="mt-0.5 text-[10px] font-medium uppercase tracking-wider text-white/35">
+                          <p className="text-base font-bold tracking-tight text-white">{pairLabel(p.symbol)}</p>
+                          <p className="mt-0 text-[10px] font-medium uppercase tracking-wider text-white/35">
                             {p.exchange}
                           </p>
+                          {notional >= 1 ? (
+                            <p className="mt-1 text-[11px] text-white/50">
+                              Size{' '}
+                              <span className="font-semibold text-white/85">
+                                ${Math.round(notional).toLocaleString('en-US')}
+                              </span>
+                            </p>
+                          ) : null}
+                          <div className="mt-1">
+                            <p
+                              className={`font-mono text-2xl font-bold tabular-nums tracking-tight ${up ? '' : 'text-rose-300'}`}
+                              style={{ color: up ? ACCENT : undefined }}
+                            >
+                              {fmtSignedUsd(pnl)}
+                            </p>
+                            <p className={`mt-0.5 font-mono text-base font-semibold tabular-nums text-white/70`}>
+                              {fmtSignedPct(pnlPct)} live
+                            </p>
+                          </div>
+                          <p className="mt-1 text-[11px] text-white/45">
+                            {formatQuoteNumber(p.entryPrice)} → {formatQuoteNumber(current)}
+                          </p>
                         </div>
-                        <div className="flex shrink-0 items-start gap-2">
-                          <MiniPortfolioSpark
-                            series={positionSparkSeries}
-                            positive={positionSparkPositive}
-                            w={132}
-                            h={46}
-                          />
-                          <span
-                            className={`shrink-0 rounded-lg px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider ${
-                              p.side === 'long'
-                                ? 'bg-emerald-500/20 text-emerald-200'
-                                : 'bg-rose-500/20 text-rose-200'
-                            }`}
-                          >
-                            {p.side === 'long' ? 'Long' : 'Short'}
-                          </span>
-                        </div>
+                        {positionBiasStat ? (
+                          <div className="ml-auto flex w-fit max-w-[min(100%,15rem)] shrink-0 flex-col items-stretch gap-1.5 rounded-lg border border-white/[0.06] bg-black/25 px-2 py-1.5">
+                            <div className="flex items-center justify-end gap-1.5">
+                              <MiniPortfolioSpark
+                                series={positionSparkSeries}
+                                positive={positionSparkPositive}
+                                w={120}
+                                h={40}
+                              />
+                              <span
+                                className={`shrink-0 self-center rounded-md px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
+                                  p.side === 'long'
+                                    ? 'bg-emerald-500/20 text-emerald-200'
+                                    : 'bg-rose-500/20 text-rose-200'
+                                }`}
+                              >
+                                {p.side === 'long' ? 'Long' : 'Short'}
+                              </span>
+                            </div>
+                            <div className="flex flex-col items-end border-t border-white/[0.08] pt-1.5 text-right">
+                              <div className="flex items-baseline justify-end gap-1.5">
+                                <span className="shrink-0 text-[9px] font-bold uppercase tracking-wider text-white/35">
+                                  Bias
+                                </span>
+                                <p
+                                  className={`min-w-0 text-[11px] font-bold leading-none ${
+                                    positionBiasStat.variant === 'aligned'
+                                      ? 'text-emerald-200/95'
+                                      : positionBiasStat.variant === 'counter'
+                                        ? 'text-amber-200/95'
+                                        : 'text-white/75'
+                                  }`}
+                                >
+                                  {positionBiasStat.title}
+                                </p>
+                              </div>
+                              <p className="mt-0.5 max-w-full text-[10px] leading-snug text-white/45">
+                                {positionBiasStat.subtitle}
+                              </p>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="flex shrink-0 items-start gap-1.5">
+                            <MiniPortfolioSpark
+                              series={positionSparkSeries}
+                              positive={positionSparkPositive}
+                              w={120}
+                              h={40}
+                            />
+                            <span
+                              className={`shrink-0 rounded-md px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
+                                p.side === 'long'
+                                  ? 'bg-emerald-500/20 text-emerald-200'
+                                  : 'bg-rose-500/20 text-rose-200'
+                              }`}
+                            >
+                              {p.side === 'long' ? 'Long' : 'Short'}
+                            </span>
+                          </div>
+                        )}
                       </div>
-
-                      {notional >= 1 ? (
-                        <p className="mt-3 text-[12px] text-white/50">
-                          Size{' '}
-                          <span className="font-semibold text-white/85">
-                            ${Math.round(notional).toLocaleString('en-US')}
-                          </span>
-                        </p>
-                      ) : null}
-
-                      <div className="mt-3">
-                        <p
-                          className={`font-mono text-3xl font-bold tabular-nums tracking-tight ${up ? '' : 'text-rose-300'}`}
-                          style={{ color: up ? ACCENT : undefined }}
-                        >
-                          {fmtSignedUsd(pnl)}
-                        </p>
-                        <p className={`mt-1 font-mono text-lg font-semibold tabular-nums text-white/70`}>
-                          {fmtSignedPct(pnlPct)} live
-                        </p>
-                      </div>
-
-                      <p className="mt-2 text-[11px] text-white/45">
-                        {formatQuoteNumber(p.entryPrice)} → {formatQuoteNumber(current)}
-                      </p>
                     </button>
 
-                    <div className="mt-4 rounded-xl border px-3 py-2.5" style={{ borderColor: 'rgba(255,255,255,0.08)' }}>
+                    <div className="mt-1.5 rounded-xl border px-2.5 py-2" style={{ borderColor: 'rgba(255,255,255,0.08)' }}>
                       <div className="flex items-center justify-between gap-2">
                         <span className={`rounded-md border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${aiMeta.className}`}>
                           {aiMeta.label}
                         </span>
                         <span className="text-[10px] font-medium uppercase tracking-wider text-white/35">AI read</span>
                       </div>
-                      <p className="mt-2 text-[12px] font-medium leading-snug text-cyan-100/90">{insight}</p>
-                      <p className="mt-1 text-[11px] leading-snug text-white/40">{aiMeta.short}</p>
+                      <p className="mt-1.5 text-[11px] font-medium leading-snug text-cyan-100/90">{insight}</p>
+                      <p className="mt-0.5 text-[10px] leading-snug text-white/40">{aiMeta.short}</p>
                     </div>
 
-                    <div className="mt-4 grid grid-cols-3 gap-2">
+                    <div className="mt-2 grid grid-cols-3 gap-1.5">
                       <button
                         type="button"
                         onClick={() => navigate(`/trade?${baseQuery}`)}
-                        className="rounded-xl border border-white/[0.1] bg-white/[0.04] py-2.5 text-[11px] font-bold text-white transition hover:bg-white/[0.07]"
+                        className="rounded-xl border border-white/[0.1] bg-white/[0.04] py-2 text-[11px] font-bold text-white transition hover:bg-white/[0.07]"
                       >
                         View
                       </button>
                       <button
                         type="button"
                         onClick={() => navigate(`/trade?${adjustQuery}`)}
-                        className="rounded-xl border py-2.5 text-[11px] font-bold transition"
+                        className="rounded-xl border py-2 text-[11px] font-bold transition"
                         style={{
                           borderColor: `${ACCENT}55`,
                           color: ACCENT,
@@ -566,7 +608,7 @@ export default function PortfolioScreen() {
                       <button
                         type="button"
                         onClick={() => navigate(`/trade?${closeQuery}`)}
-                        className="rounded-xl border border-rose-400/25 bg-rose-500/10 py-2.5 text-[11px] font-bold text-rose-200 transition hover:bg-rose-500/15"
+                        className="rounded-xl border border-rose-400/25 bg-rose-500/10 py-2 text-[11px] font-bold text-rose-200 transition hover:bg-rose-500/15"
                       >
                         Close
                       </button>

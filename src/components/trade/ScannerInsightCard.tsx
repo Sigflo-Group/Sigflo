@@ -4,10 +4,20 @@ import { MarketNewsScanSheet } from '@/components/news/MarketNewsScanSheet';
 import { StatusChip } from '@/components/trade/StatusChip';
 import { requestAssistantSuggestion } from '@/services/ai/client';
 import { spotBaseAssetFromOrderSymbol } from '@/lib/spotSymbol';
-import { tradeTimingChipProps } from '@/lib/tradeTimingChip';
+import { buildTradeTimingUiModel } from '@/lib/tradeSetupExecutionModel';
 import type { AiStructuredAnalysis, GroundedMarketContext } from '@/types/aiGrounded';
 import type { MarketRowStatus } from '@/types/markets';
 import type { CryptoSignal } from '@/types/signal';
+import type { ExecutionQuality } from '@/types/trade';
+
+/** Scanner “action” line when already in a trade — descriptive feedback only, not instructions. */
+function inPositionFeedbackLine(executionQuality: ExecutionQuality | null): string {
+  if (executionQuality === 'strong') return 'Fill is close to plan entry — execution reads strong.';
+  if (executionQuality === 'okay') return 'Fill is within an acceptable range vs plan entry.';
+  if (executionQuality === 'weak')
+    return 'Fill is wider vs optimal entry — the score reflects that execution cost.';
+  return 'Position is open — scores blend the setup with how entry matched the plan.';
+}
 
 function setupTone(score: number): string {
   if (score >= 80) return 'Strong';
@@ -54,12 +64,19 @@ function watchFor(signal: CryptoSignal): string {
   return 'continuation or rollover';
 }
 
-function actionFor(signal: CryptoSignal, status: MarketRowStatus, tradeScore: number): string {
+function actionFor(
+  signal: CryptoSignal,
+  status: MarketRowStatus,
+  tradeScore: number,
+  hasOpenPosition: boolean,
+  executionQuality: ExecutionQuality | null,
+): string {
+  if (hasOpenPosition) return inPositionFeedbackLine(executionQuality);
   const highSetupRisk = signal.riskTag === 'High Risk';
   const weakTiming = tradeScore < 45;
-  if (highSetupRisk && weakTiming) return 'High setup risk and weak entry timing — reduce size';
+  if (highSetupRisk && weakTiming) return 'High setup risk and weak readiness — reduce size';
   if (highSetupRisk) return 'High setup risk — reduce size';
-  if (weakTiming) return 'Weak entry timing — reduce size';
+  if (weakTiming) return 'Readiness is soft — wait for trigger or reduce size';
   if (status === 'overextended') return 'Avoid chasing';
   if (status === 'developing') return 'Wait for confirmation';
   if (status === 'triggered' && tradeScore >= 65) return 'Entry active';
@@ -93,11 +110,15 @@ export function ScannerInsightCard({
   status,
   tradeScore,
   groundedContext,
+  hasOpenPosition = false,
+  executionQuality = null,
 }: {
   signal: CryptoSignal;
   status: MarketRowStatus;
   tradeScore: number;
   groundedContext: GroundedMarketContext;
+  hasOpenPosition?: boolean;
+  executionQuality?: ExecutionQuality | null;
 }) {
   const [aiResult, setAiResult] = useState<{
     headline: string;
@@ -116,8 +137,12 @@ export function ScannerInsightCard({
     setNewsScanOpen(false);
   }, [signal.id]);
   const bullets = useMemo(() => previewBullets(signal, status), [signal, status]);
-  const timingChip = tradeTimingChipProps(status, tradeScore);
-  const action = actionFor(signal, status, tradeScore);
+  const timingUi = buildTradeTimingUiModel({
+    inPosition: hasOpenPosition,
+    marketStatus: status,
+    executionQuality: executionQuality ?? null,
+  });
+  const action = actionFor(signal, status, tradeScore, hasOpenPosition, executionQuality ?? null);
   const sideChipClass =
     signal.side === 'long'
       ? 'border-emerald-400/30 bg-emerald-500/12 text-emerald-300'
@@ -208,26 +233,30 @@ export function ScannerInsightCard({
         ))}
       </ul>
 
-      <div className="mt-2.5 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-white/[0.08] bg-black/35 px-2 py-1.5 ring-1 ring-white/[0.04]">
-        <span
-          className="text-[9px] font-bold uppercase tracking-[0.16em] text-sigflo-muted"
-          title="Entry timing vs trigger — not the same as setup risk tag (Low/Medium/High)"
-        >
-          Entry timing
-        </span>
-        <div className="flex min-w-0 flex-1 items-center justify-end gap-2 sm:flex-initial">
-          <StatusChip
-            label={timingChip.state === 'developing' ? 'Building' : timingChip.label}
-            state={timingChip.state}
-            compact
-          />
+      <div className="mt-2.5 rounded-lg border border-white/[0.08] bg-black/35 px-2 py-1.5 ring-1 ring-white/[0.04]">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <span
-            className="shrink-0 font-mono text-[9px] font-semibold tabular-nums text-cyan-200/75"
-            title="Trade readiness score (timing/quality for pressing the button — separate from risk tag)"
+            className="text-[9px] font-bold uppercase tracking-[0.16em] text-sigflo-muted"
+            title="Entry timing vs trigger — not the same as setup risk tag (Low/Medium/High)"
           >
-            {Math.round(tradeScore)}
+            Entry timing
           </span>
+          <div className="flex min-w-0 flex-1 items-center justify-end gap-2 sm:flex-initial">
+            <StatusChip label={timingUi.chipLabel} state={timingUi.chipState} compact />
+            <span
+              className="shrink-0 font-mono text-[9px] font-semibold tabular-nums text-cyan-200/75"
+              title="Trade readiness score (timing/quality for pressing the button — separate from risk tag)"
+            >
+              {Math.round(tradeScore)}
+            </span>
+          </div>
         </div>
+        {timingUi.helperText ? (
+          <p className="mt-1 text-[9px] leading-snug text-sigflo-muted/90">{timingUi.helperText}</p>
+        ) : null}
+        {timingUi.executionLabel ? (
+          <p className="mt-0.5 text-[9px] leading-snug text-white/70">{timingUi.executionLabel}</p>
+        ) : null}
       </div>
 
       <button

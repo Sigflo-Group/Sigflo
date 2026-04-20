@@ -17,7 +17,7 @@ import type {
   ExitStrategyPreset,
   ExitStrategyThresholds,
 } from '@/types/aiExitAutomation';
-import type { TradeSide } from '@/types/trade';
+import type { ExecutionQuality, TradeSide } from '@/types/trade';
 
 const ACCENT = '#00ffc8';
 const CONF_HIGH = '#00ffc8';
@@ -155,6 +155,8 @@ export type TradeChartScenarioStripTradeProps = {
   scannerStatus: MarketRowStatus;
   lastPrice: number;
   hasOpenPosition: boolean;
+  /** After open — drives entry guidance execution line (separate from setup timing). */
+  executionQuality?: ExecutionQuality | null;
 };
 
 export type TradeChartScenarioStripManageProps = {
@@ -259,6 +261,7 @@ export function TradeChartScenarioStrip(props: TradeChartScenarioStripProps) {
         lastPrice: props.lastPrice,
         planEntry: props.entry,
         hasOpenPosition: props.hasOpenPosition,
+        executionQuality: props.executionQuality ?? null,
       });
     }
     return computeTradeEntryGuidance({
@@ -279,6 +282,7 @@ export function TradeChartScenarioStrip(props: TradeChartScenarioStripProps) {
     props.entry,
     props.mode === 'trade' ? props.lastPrice : props.mark,
     props.mode === 'trade' ? props.hasOpenPosition : true,
+    props.mode === 'trade' ? props.executionQuality ?? null : null,
   ]);
 
   const prevExitRef = useRef<ExitState | undefined>(undefined);
@@ -681,6 +685,12 @@ function EntryGuidanceExpandedBlock({ g }: { g: EntryGuidance }) {
       <p className="mb-1 text-[9px] font-semibold leading-tight" style={{ color: stroke }}>
         Timing: {g.timingLabel}
       </p>
+      {g.timingHelperText ? (
+        <p className="mb-1 text-[9px] leading-snug text-sigflo-muted/90">{g.timingHelperText}</p>
+      ) : null}
+      {g.executionSummary ? (
+        <p className="mb-1 text-[9px] leading-snug text-white/80">{g.executionSummary}</p>
+      ) : null}
       <dl className="space-y-1 text-[10px] leading-snug text-white">
         <div>
           <dt className="text-[8px] uppercase tracking-wider text-sigflo-muted">Suggested action</dt>

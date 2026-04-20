@@ -2,6 +2,7 @@ import { OrderInputsCard } from '@/components/trade/OrderInputsCard';
 import { PreTradeWarningCard } from '@/components/trade/PreTradeWarningCard';
 import { formatQuoteNumber } from '@/lib/formatQuote';
 import type { ManageTradePositionContext } from '@/lib/manageTradeContext';
+import type { BybitTpSlTriggerBy } from '@/lib/bybitTpSlTrigger';
 import type { DerivedTradeMetrics } from '@/lib/tradeRisk';
 import type { MarketMode, TradeSide, TradeViewModel } from '@/types/trade';
 
@@ -74,9 +75,27 @@ export type TradeControlsProps = {
     canApply: boolean;
     pending: boolean;
     onApply: () => void;
+    canApplyAll: boolean;
+    onApplyAll: () => void;
+    hasPendingChanges: boolean;
   } | null;
   /** When true, hide the legacy manage PnL + position card (replaced by Position control panel). */
   suppressLegacyManageHero?: boolean;
+  /** Futures: Bybit mark for SL/TP % basis (distinct from last/entry). */
+  quoteMarkPrice?: number | null;
+  /** Futures: Bybit index for SL/TP % basis (basket index). */
+  quoteIndexPrice?: number | null;
+  /** Futures: Bybit TP/SL trigger price type (mark / last / index). */
+  futuresTpSlTriggerBy?: BybitTpSlTriggerBy;
+  onFuturesTpSlTriggerByChange?: (t: BybitTpSlTriggerBy) => void;
+  /**
+   * When set (open exchange leg), SL/TP "% from entry" uses this average fill instead of `mergedModel.entry`
+   * (plan/anchor), so Entry vs Mark bases are not identical noise.
+   */
+  slTpPercentEntryAnchor?: number | null;
+  /** Under Take profit: one-tap scale-out % of open exchange leg (futures reduce / spot sell fraction). */
+  onPartialPositionScaleOut?: (fraction: number) => void;
+  partialPositionScaleOutBusy?: boolean;
 };
 
 export function TradeControls(props: TradeControlsProps) {
@@ -119,9 +138,23 @@ export function TradeControls(props: TradeControlsProps) {
     assetTransferHref,
     manageFuturesTpSl,
     suppressLegacyManageHero = false,
+    quoteMarkPrice,
+    quoteIndexPrice,
+    futuresTpSlTriggerBy,
+    onFuturesTpSlTriggerByChange,
+    slTpPercentEntryAnchor,
+    onPartialPositionScaleOut,
+    partialPositionScaleOutBusy = false,
   } = props;
 
   const passLevelsToOrderCard = !isManageMode || (isManageMode && market === 'futures');
+
+  const slTpEntryChipForCard: 'entry' | 'avg' =
+    slTpPercentEntryAnchor != null &&
+    Number.isFinite(slTpPercentEntryAnchor) &&
+    slTpPercentEntryAnchor > 0
+      ? 'avg'
+      : 'entry';
 
   return (
     <div className="mx-auto flex w-full max-w-lg flex-col space-y-1 px-3 pb-4 pt-0">
@@ -256,8 +289,16 @@ export function TradeControls(props: TradeControlsProps) {
         panelTitle={isManageMode ? 'Margin (add / reduce)' : 'Position size'}
         hideLiquidationFooter={isManageMode}
         quoteLastPrice={mergedModel.lastPrice}
+        quoteMarkPrice={quoteMarkPrice ?? undefined}
+        quoteIndexPrice={quoteIndexPrice ?? undefined}
         quotePair={mergedModel.pair}
-        referenceEntryPrice={mergedModel.entry}
+        referenceEntryPrice={
+          slTpPercentEntryAnchor != null &&
+          Number.isFinite(slTpPercentEntryAnchor) &&
+          slTpPercentEntryAnchor > 0
+            ? slTpPercentEntryAnchor
+            : mergedModel.entry
+        }
         balanceLabel={balanceLabel}
         balanceHelper={balanceHelper}
         fundingBalanceUsd={fundingBalanceUsd}
@@ -274,6 +315,8 @@ export function TradeControls(props: TradeControlsProps) {
         takeProfitInput={passLevelsToOrderCard ? targetStr : undefined}
         onStopInputChange={passLevelsToOrderCard ? onStopStrChange : undefined}
         onTakeProfitInputChange={passLevelsToOrderCard ? onTargetStrChange : undefined}
+        futuresTpSlTriggerBy={market === 'futures' ? futuresTpSlTriggerBy : undefined}
+        onFuturesTpSlTriggerByChange={market === 'futures' ? onFuturesTpSlTriggerByChange : undefined}
         compactStats={
           !isManageMode
             ? {
@@ -285,22 +328,43 @@ export function TradeControls(props: TradeControlsProps) {
               }
             : undefined
         }
+        onPartialPositionScaleOut={onPartialPositionScaleOut}
+        partialPositionScaleOutBusy={partialPositionScaleOutBusy}
+        slTpEntryChip={slTpEntryChipForCard}
       />
 
       {manageFuturesTpSl ? (
         <div className="rounded-xl border border-white/[0.08] bg-black/22 px-3 py-2.5">
           <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-sigflo-muted">Exchange TP / SL</p>
           <p className="mt-1 text-[10px] leading-snug text-sigflo-muted/90">
-            Full-position triggers on Bybit (market, last price). Empty fields clear that leg. Confirm on the exchange.
+            Full-position TP/SL on Bybit uses the trigger you pick in Position size (Mark / Last / Index). Empty fields
+            clear that leg. Confirm on the exchange.
           </p>
+          <button
+            type="button"
+            disabled={!manageFuturesTpSl.canApplyAll || manageFuturesTpSl.pending}
+            onClick={manageFuturesTpSl.onApplyAll}
+            className="mt-2.5 w-full rounded-xl border border-[#00ffc8]/35 bg-[#00ffc8]/12 py-2.5 text-xs font-bold text-[#00ffc8] transition hover:bg-[#00ffc8]/18 disabled:cursor-not-allowed disabled:opacity-45"
+          >
+            {manageFuturesTpSl.pending ? 'Applying…' : 'Apply all changes on exchange'}
+          </button>
           <button
             type="button"
             disabled={!manageFuturesTpSl.canApply || manageFuturesTpSl.pending}
             onClick={manageFuturesTpSl.onApply}
-            className="mt-2.5 w-full rounded-xl border border-[#00ffc8]/35 bg-[#00ffc8]/12 py-2.5 text-xs font-bold text-[#00ffc8] transition hover:bg-[#00ffc8]/18 disabled:cursor-not-allowed disabled:opacity-45"
+            className="mt-1.5 w-full rounded-xl border border-white/[0.12] bg-white/[0.03] py-2 text-[11px] font-semibold text-sigflo-muted transition hover:bg-white/[0.06] hover:text-white disabled:cursor-not-allowed disabled:opacity-45"
           >
-            {manageFuturesTpSl.pending ? 'Updating…' : 'Apply TP / SL on exchange'}
+            {manageFuturesTpSl.pending ? 'Updating…' : 'Apply TP / SL only'}
           </button>
+          {manageFuturesTpSl.hasPendingChanges ? (
+            <p className="mt-1 text-[10px] text-sigflo-muted/90">
+              Pending manage edits detected. Apply all will execute size changes as a real market order, then sync TP/SL.
+            </p>
+          ) : (
+            <p className="mt-1 text-[10px] text-sigflo-muted/70">
+              No pending edits in manage controls.
+            </p>
+          )}
         </div>
       ) : null}
 

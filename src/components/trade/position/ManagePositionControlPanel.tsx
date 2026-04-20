@@ -1,9 +1,12 @@
 import type { ExitAiMode } from '@/types/aiExitAutomation';
 import type { ManageTradePositionContext } from '@/lib/manageTradeContext';
+import type { PositionBiasStat } from '@/lib/positionBiasStat';
 import type { PositionHealthResult } from '@/lib/positionHealth';
 import type { ExitAiCoPilotModel } from '@/lib/exitAiCoPilot';
 import { ExitAiCoPilotBlock } from '@/components/trade/exit/ExitAiCoPilotBlock';
 import { formatQuoteNumber } from '@/lib/formatQuote';
+import type { TradeSide } from '@/types/trade';
+import type { CSSProperties } from 'react';
 
 function fmtSignedUsd(n: number): string {
   const sign = n >= 0 ? '+' : '−';
@@ -23,18 +26,56 @@ function sizeSummary(ctx: ManageTradePositionContext): string {
   return `≈ $${Math.round(ctx.positionUsd).toLocaleString('en-US')} notional`;
 }
 
-function healthStyles(status: PositionHealthResult['status']): string {
-  switch (status) {
+function healthStyles(status: PositionHealthResult['status'], label?: string): string {
+  const normalizedStatus = String(status ?? '').trim().toLowerCase();
+  const normalizedLabel = String(label ?? '').trim().toLowerCase();
+  const key =
+    normalizedStatus ||
+    (normalizedLabel.includes('near invalidation')
+      ? 'near_invalidation'
+      : normalizedLabel.includes('losing momentum')
+        ? 'losing_momentum'
+        : normalizedLabel.includes('risk')
+          ? 'at_risk'
+          : 'healthy');
+
+  switch (key) {
     case 'healthy':
-      return 'border-landing-accent/25 bg-landing-accent-dim/50 text-landing-accent-hi';
+      return 'border-emerald-300/50 ring-1 ring-emerald-200/20 text-emerald-50';
     case 'at_risk':
-      return 'border-amber-400/30 bg-amber-500/10 text-amber-100';
+      return 'border-amber-200/60 ring-1 ring-amber-100/30 text-amber-50';
     case 'losing_momentum':
-      return 'border-orange-400/28 bg-orange-500/10 text-orange-100';
+      return 'border-orange-200/65 ring-1 ring-orange-100/25 text-orange-50';
     case 'near_invalidation':
-      return 'border-rose-400/35 bg-rose-500/12 text-rose-100';
+      return 'border-rose-200/70 ring-1 ring-rose-100/30 text-rose-50';
     default:
       return 'border-white/[0.08] bg-black/25 text-landing-text';
+  }
+}
+
+function healthSurfaceStyle(status: PositionHealthResult['status'], label?: string): CSSProperties {
+  const normalizedStatus = String(status ?? '').trim().toLowerCase();
+  const normalizedLabel = String(label ?? '').trim().toLowerCase();
+  const key =
+    normalizedStatus ||
+    (normalizedLabel.includes('near invalidation')
+      ? 'near_invalidation'
+      : normalizedLabel.includes('losing momentum')
+        ? 'losing_momentum'
+        : normalizedLabel.includes('risk')
+          ? 'at_risk'
+          : 'healthy');
+  switch (key) {
+    case 'healthy':
+      return { backgroundColor: 'rgba(16, 185, 129, 0.24)' };
+    case 'at_risk':
+      return { backgroundColor: 'rgba(245, 158, 11, 0.28)' };
+    case 'losing_momentum':
+      return { backgroundColor: 'rgba(249, 115, 22, 0.30)' };
+    case 'near_invalidation':
+      return { backgroundColor: 'rgba(244, 63, 94, 0.36)' };
+    default:
+      return {};
   }
 }
 
@@ -45,7 +86,11 @@ export type ManagePositionControlPanelProps = {
   mark: number;
   leverageLabel: string;
   isFutures: boolean;
+  /** When set (e.g. live Bybit leg), Long/Short chip follows the exchange instead of URL `manageCtx.side`. */
+  exchangeLegSide?: TradeSide | null;
   health: PositionHealthResult;
+  /** Open leg vs scanner bias for the same pair; omit to hide the row. */
+  positionBias?: PositionBiasStat | null;
   exitAiModel: ExitAiCoPilotModel;
   exitMode: ExitAiMode;
   onExitModeChange: (mode: ExitAiMode) => void;
@@ -54,6 +99,7 @@ export type ManagePositionControlPanelProps = {
   onMoveStopBreakeven: () => void;
   onTightenStop: () => void;
   onAddToPosition: () => void;
+  onReversePosition?: () => void;
   onAdjustRisk?: () => void;
   /** Zoom chart to entry / stop / target (same Trade screen). */
   onViewSetupOnChart?: () => void;
@@ -69,7 +115,9 @@ export function ManagePositionControlPanel({
   mark,
   leverageLabel,
   isFutures,
+  exchangeLegSide,
   health,
+  positionBias,
   exitAiModel,
   exitMode,
   onExitModeChange,
@@ -78,12 +126,15 @@ export function ManagePositionControlPanel({
   onMoveStopBreakeven,
   onTightenStop,
   onAddToPosition,
+  onReversePosition,
   onAdjustRisk,
   onViewSetupOnChart,
   timeline,
   actionsDisabled,
   canMoveStops,
 }: ManagePositionControlPanelProps) {
+  const chipSide: TradeSide =
+    isFutures && (exchangeLegSide === 'long' || exchangeLegSide === 'short') ? exchangeLegSide : manageCtx.side;
   const winning = pnlUsd >= 0;
   const staticActive = exitMode === 'manual';
   const aiActive = exitMode !== 'manual';
@@ -119,12 +170,12 @@ export function ManagePositionControlPanel({
           </div>
           <span
             className={`shrink-0 rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide ${
-              manageCtx.side === 'long'
+              chipSide === 'long'
                 ? 'border-landing-accent/40 bg-landing-accent-dim text-landing-accent-hi'
                 : 'border-rose-400/35 bg-rose-500/15 text-rose-100'
             }`}
           >
-            {manageCtx.side === 'long' ? 'Long' : 'Short'}
+            {chipSide === 'long' ? 'Long' : 'Short'}
           </span>
         </div>
         <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-white/[0.06] pt-3 text-[11px]">
@@ -148,9 +199,103 @@ export function ManagePositionControlPanel({
         </dl>
       </section>
 
-      <section className={`rounded-2xl border px-3 py-2.5 ${healthStyles(health.status)}`}>
-        <p className="text-[9px] font-bold uppercase tracking-[0.16em] opacity-80">Position health</p>
-        <p className="mt-1 text-sm font-bold">{health.label}</p>
+      <section
+        className={`rounded-2xl border px-3 py-2.5 ${healthStyles(health.status, health.label)}`}
+        style={healthSurfaceStyle(health.status, health.label)}
+      >
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <p className="text-[9px] font-bold uppercase tracking-[0.16em] opacity-80">Position health</p>
+            <p className="mt-1 text-sm font-bold">{health.label}</p>
+          </div>
+          {positionBias ? (
+            <div className="min-w-0 shrink-0 border-l border-white/[0.14] pl-2.5 sm:pl-3">
+              <div className="ml-auto w-fit max-w-[min(100%,15rem)] rounded-lg border border-white/[0.1] bg-black/25 px-2 py-1.5 text-right">
+                <div className="flex items-baseline justify-end gap-1.5">
+                  <span className="shrink-0 text-[9px] font-bold uppercase tracking-[0.16em] opacity-75">Bias</span>
+                  <p
+                    className={`min-w-0 text-sm font-bold leading-none ${
+                      positionBias.variant === 'aligned'
+                        ? 'text-emerald-100'
+                        : positionBias.variant === 'counter'
+                          ? 'text-amber-100'
+                          : 'text-white/80'
+                    }`}
+                  >
+                    {positionBias.title}
+                  </p>
+                </div>
+                <p className="mt-1 text-[11px] leading-snug opacity-90">{positionBias.subtitle}</p>
+              </div>
+            </div>
+          ) : null}
+        </div>
+      </section>
+
+      <section>
+        <p className="mb-1.5 text-[9px] font-bold uppercase tracking-[0.16em] text-landing-muted">Quick actions</p>
+        {onAdjustRisk ? (
+          <button
+            type="button"
+            disabled={actionsDisabled}
+            onClick={onAdjustRisk}
+            className="mb-2 w-full rounded-xl border border-landing-accent/35 bg-landing-accent-dim/40 py-2.5 text-[11px] font-bold text-landing-accent-hi transition hover:border-landing-accent/50 active:scale-[0.99] disabled:opacity-45"
+          >
+            Adjust risk
+          </button>
+        ) : null}
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            disabled={actionsDisabled}
+            onClick={onCloseFull}
+            className="rounded-xl border border-rose-400/35 bg-rose-500/15 py-2.5 text-[11px] font-bold text-rose-100 transition hover:border-rose-300/65 hover:bg-rose-500/28 hover:text-rose-50 active:scale-[0.99] disabled:opacity-45"
+          >
+            Close position
+          </button>
+          <button
+            type="button"
+            disabled={actionsDisabled}
+            onClick={onPartialOpen}
+            className="rounded-xl border border-white/[0.1] bg-landing-surface landing-panel-texture py-2.5 text-[11px] font-bold text-landing-text transition hover:border-landing-accent/30 active:scale-[0.99] disabled:opacity-45"
+          >
+            Partial close
+          </button>
+          <button
+            type="button"
+            disabled={actionsDisabled || !canMoveStops || !isFutures}
+            onClick={onMoveStopBreakeven}
+            className="rounded-xl border border-white/[0.1] bg-landing-surface landing-panel-texture py-2.5 text-[11px] font-bold text-landing-text transition hover:border-landing-accent/30 active:scale-[0.99] disabled:opacity-45"
+          >
+            Stop → breakeven
+          </button>
+          <button
+            type="button"
+            disabled={actionsDisabled || !canMoveStops || !isFutures}
+            onClick={onTightenStop}
+            className="rounded-xl border border-white/[0.1] bg-landing-surface landing-panel-texture py-2.5 text-[11px] font-bold text-landing-text transition hover:border-landing-accent/30 active:scale-[0.99] disabled:opacity-45"
+          >
+            Tighten stop
+          </button>
+          {onReversePosition ? (
+            <button
+              type="button"
+              disabled={actionsDisabled || !isFutures}
+              onClick={onReversePosition}
+              className="col-span-2 rounded-xl border border-amber-300/35 bg-amber-500/12 py-2.5 text-[11px] font-bold text-amber-100 transition hover:border-amber-200/65 hover:bg-amber-500/24 hover:text-amber-50 active:scale-[0.99] disabled:opacity-45"
+            >
+              Reverse position
+            </button>
+          ) : null}
+        </div>
+        <button
+          type="button"
+          disabled={actionsDisabled}
+          onClick={onAddToPosition}
+          className="mt-2 w-full rounded-xl bg-landing-accent py-3 text-sm font-bold text-landing-bg shadow-landing-glow-sm transition hover:brightness-110 active:scale-[0.99] disabled:opacity-45"
+        >
+          Add to position
+        </button>
       </section>
 
       <ExitAiCoPilotBlock
@@ -200,62 +345,6 @@ export function ManagePositionControlPanel({
             View on chart
           </button>
         ) : null}
-      </section>
-
-      <section>
-        <p className="mb-1.5 text-[9px] font-bold uppercase tracking-[0.16em] text-landing-muted">Quick actions</p>
-        {onAdjustRisk ? (
-          <button
-            type="button"
-            disabled={actionsDisabled}
-            onClick={onAdjustRisk}
-            className="mb-2 w-full rounded-xl border border-landing-accent/35 bg-landing-accent-dim/40 py-2.5 text-[11px] font-bold text-landing-accent-hi transition hover:border-landing-accent/50 active:scale-[0.99] disabled:opacity-45"
-          >
-            Adjust risk
-          </button>
-        ) : null}
-        <div className="grid grid-cols-2 gap-2">
-          <button
-            type="button"
-            disabled={actionsDisabled}
-            onClick={onCloseFull}
-            className="rounded-xl border border-rose-400/35 bg-rose-500/15 py-2.5 text-[11px] font-bold text-rose-100 transition hover:bg-rose-500/22 active:scale-[0.99] disabled:opacity-45"
-          >
-            Close position
-          </button>
-          <button
-            type="button"
-            disabled={actionsDisabled}
-            onClick={onPartialOpen}
-            className="rounded-xl border border-white/[0.1] bg-landing-surface landing-panel-texture py-2.5 text-[11px] font-bold text-landing-text transition hover:border-landing-accent/30 active:scale-[0.99] disabled:opacity-45"
-          >
-            Partial close
-          </button>
-          <button
-            type="button"
-            disabled={actionsDisabled || !canMoveStops || !isFutures}
-            onClick={onMoveStopBreakeven}
-            className="rounded-xl border border-white/[0.1] bg-landing-surface landing-panel-texture py-2.5 text-[11px] font-bold text-landing-text transition hover:border-landing-accent/30 active:scale-[0.99] disabled:opacity-45"
-          >
-            Stop → breakeven
-          </button>
-          <button
-            type="button"
-            disabled={actionsDisabled || !canMoveStops || !isFutures}
-            onClick={onTightenStop}
-            className="rounded-xl border border-white/[0.1] bg-landing-surface landing-panel-texture py-2.5 text-[11px] font-bold text-landing-text transition hover:border-landing-accent/30 active:scale-[0.99] disabled:opacity-45"
-          >
-            Tighten stop
-          </button>
-        </div>
-        <button
-          type="button"
-          disabled={actionsDisabled}
-          onClick={onAddToPosition}
-          className="mt-2 w-full rounded-xl bg-landing-accent py-3 text-sm font-bold text-landing-bg shadow-landing-glow-sm transition hover:brightness-110 active:scale-[0.99] disabled:opacity-45"
-        >
-          Add to position
-        </button>
       </section>
 
       {timeline.length > 0 ? (

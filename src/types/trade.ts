@@ -4,6 +4,12 @@ export type TradeTrend = 'Bullish' | 'Bearish' | 'Neutral';
 export type TradeMomentum = 'Strong' | 'Building' | 'Weak';
 export type RiskLevel = 'Low' | 'Medium' | 'High';
 
+/** Pre-entry / in-trade lifecycle — separate from {@link ExecutionQuality}. */
+export type SetupDisplayState = 'building' | 'triggered' | 'in_position';
+
+/** Post-fill quality only; never used as a “timing” label before entry. */
+export type ExecutionQuality = 'strong' | 'okay' | 'weak';
+
 export interface TradeChartCandle {
   ts: number;
   open: number;
@@ -30,6 +36,12 @@ export interface RiskSummary {
   liquidationRisk: RiskLevel;
   riskMeterPct: number;
   tradeScore: number;
+  /** Setup lifecycle label for diagnostics / future UI (Building | Triggered | In position). */
+  setupDisplayState?: SetupDisplayState;
+  /** Set when a position is open; orthogonal to timing chip before entry. */
+  executionQuality?: ExecutionQuality | null;
+  /** Points subtracted from base trade score (0 / 3 / 8). */
+  executionPenaltyApplied?: number;
   setupTradeConflictMessage?: string;
   walletImpactLabel: string;
   primaryMessage: string;

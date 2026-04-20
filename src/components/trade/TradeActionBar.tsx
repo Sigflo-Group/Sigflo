@@ -56,6 +56,154 @@ export function ChartDockScoreGrid({ dockMeta }: { dockMeta: ChartDockDecisionMe
   );
 }
 
+function dockTradeSetupDerived(dockMeta: ChartDockDecisionMeta) {
+  const dockTealGlow =
+    'font-semibold text-cyan-200/95 [text-shadow:0_0_6px_rgba(0,255,200,0.55),0_0_14px_rgba(0,255,200,0.3)]';
+  const setupShown =
+    dockMeta.setupQualityLabel === 'Developing'
+      ? 'Building'
+      : setupBandDockCompactLabel(dockMeta.setupQualityLabel);
+  return { dockTealGlow, setupShown };
+}
+
+/** Compact Trade | Setup score pair (e.g. chart dock header between timing chip and partial). */
+export function ChartDockTradeSetupPair({
+  dockMeta,
+  compact = false,
+  /** When true with `compact`, use a narrower max width so a long timing chip (e.g. Developing) fits on one row. */
+  reserveSpaceForLongTiming = false,
+  className = '',
+}: {
+  dockMeta: ChartDockDecisionMeta;
+  compact?: boolean;
+  reserveSpaceForLongTiming?: boolean;
+  className?: string;
+}) {
+  const { dockTealGlow, setupShown } = dockTradeSetupDerived(dockMeta);
+  const h = compact ? 'min-h-[26px] sm:min-h-[28px]' : 'min-h-[34px] sm:min-h-[36px]';
+  const labelCls = compact
+    ? 'text-[4px] font-extrabold uppercase tracking-[0.1em] text-sigflo-muted/90 sm:text-[5px]'
+    : 'text-[5px] font-extrabold uppercase tracking-[0.12em] text-sigflo-muted/90 sm:text-[6px]';
+  const valCls = compact
+    ? 'min-w-0 truncate text-center text-[7px] tabular-nums leading-tight sm:text-[8px]'
+    : 'min-w-0 truncate text-center text-[8px] tabular-nums leading-tight sm:text-[9px]';
+  const compactMax =
+    compact && reserveSpaceForLongTiming
+      ? 'max-w-[4.35rem] sm:max-w-[4.65rem]'
+      : compact
+        ? 'max-w-[5.1rem] sm:max-w-[5.4rem]'
+        : 'w-full max-w-none';
+
+  return (
+    <div
+      className={`grid shrink-0 grid-cols-2 gap-px overflow-hidden rounded-md border border-white/[0.12] bg-black/30 transition-[max-width] duration-200 ease-out ${compactMax} ${className}`}
+      title={`Trade score ${dockMeta.confidenceLabel} (readiness). Setup tier ${dockMeta.setupQualityLabel} (signal structure).`}
+    >
+      <div
+        className={`flex min-w-0 flex-col justify-center border-r border-white/[0.08] bg-black/20 px-0.5 py-px ${h}`}
+      >
+        <span className={labelCls}>Trade</span>
+        <span className={`${valCls} ${dockTealGlow}`}>{dockMeta.confidenceLabel}</span>
+      </div>
+      <div className={`flex min-w-0 flex-col justify-center bg-black/20 px-0.5 py-px ${h}`}>
+        <span className={labelCls}>Setup</span>
+        <span className={`${valCls} ${setupBandDockEmphasisClass(dockMeta.setupQualityLabel)}`}>
+          {setupShown}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+/** Dock row: Close position | Close all (live position). Trade/setup scores live in the chart header row. */
+export function ChartDockCloseRow({
+  disabled = false,
+  partialClosePct,
+  onClosePosition,
+  onCloseAll,
+}: {
+  disabled?: boolean;
+  partialClosePct: number;
+  onClosePosition: () => void;
+  onCloseAll: () => void;
+}) {
+  const closePrimaryBtnClass =
+    'flex min-h-[34px] min-w-0 items-center justify-center rounded-lg bg-gradient-to-b from-rose-500/95 to-rose-600/95 px-1 text-center text-[9px] font-bold leading-tight text-white shadow-[0_0_14px_-6px_rgba(248,113,113,0.45)] ring-1 ring-rose-300/20 transition hover:from-rose-400/95 hover:to-rose-500/95 hover:ring-rose-200/45 hover:shadow-[0_0_20px_-6px_rgba(248,113,113,0.62)] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-45 sm:min-h-[36px] sm:px-1.5 sm:text-[10px]';
+  const closeAllBtnClass =
+    'flex min-h-[34px] min-w-0 items-center justify-center rounded-lg border border-rose-500/40 bg-rose-950/40 px-1 text-[8px] font-bold uppercase tracking-wide text-rose-100/90 transition hover:bg-rose-950/55 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-45 sm:min-h-[36px] sm:text-[10px]';
+
+  return (
+    <div className="grid w-full min-w-0 grid-cols-2 gap-1" role="group" aria-label="Close position actions">
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={onClosePosition}
+        aria-label={
+          partialClosePct >= 100
+            ? 'Close full position'
+            : `Close position: submit ${partialClosePct} percent scale-out`
+        }
+        className={closePrimaryBtnClass}
+      >
+        Close position
+      </button>
+      <button type="button" disabled={disabled} onClick={onCloseAll} className={closeAllBtnClass}>
+        Close all
+      </button>
+    </div>
+  );
+}
+
+/**
+ * Flat-account dock: **Short | Long** (or Sell/Buy) as two equal columns so both actions use the
+ * full chart-dock row width (in-position row above stays three-column: manage | adjust | reverse).
+ */
+export function DockSplitEntryButtons({
+  market,
+  canExecute,
+  onOpenShort,
+  onOpenLong,
+  flashSide,
+  signalBias = null,
+}: ChartTradeQuickActions & { signalBias?: 'long' | 'short' | null }) {
+  const isSpot = market === 'spot';
+  const shortLabel = isSpot ? 'Sell' : 'Short';
+  const longLabel = isSpot ? 'Buy' : 'Long';
+  const disabledHint = !canExecute ? 'Set a position size and ensure balance is available' : undefined;
+
+  const btnRow =
+    'flex min-h-[28px] min-w-0 w-full items-center justify-center rounded-lg px-2 text-[9px] font-bold uppercase tracking-[0.08em] transition enabled:active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-40 sm:min-h-[30px] sm:px-3 sm:text-[10px]';
+
+  const shortDim = signalBias === 'long' ? 'opacity-[0.72] brightness-[0.92] saturate-[0.92]' : '';
+  const longDim = signalBias === 'short' ? 'opacity-[0.72] brightness-[0.92] saturate-[0.92]' : '';
+  const shortGlow =
+    signalBias === 'short'
+      ? 'shadow-[0_0_22px_-4px_rgba(248,113,113,0.55)] ring-1 ring-rose-200/45'
+      : flashSide === 'short'
+        ? 'ring-1 ring-red-200/80'
+        : 'ring-1 ring-rose-400/25';
+  const longGlow =
+    signalBias === 'long'
+      ? 'shadow-[0_0_22px_-4px_rgba(52,211,153,0.5)] ring-1 ring-emerald-200/50'
+      : flashSide === 'long'
+        ? 'ring-1 ring-emerald-200/80'
+        : 'ring-1 ring-emerald-400/25';
+
+  const shortBtn = `bg-gradient-to-b from-rose-500/95 to-rose-600 text-white shadow-[0_0_14px_-5px_rgba(239,68,68,0.45)] enabled:hover:brightness-110 ${btnRow} ${shortDim} ${shortGlow}`;
+  const longBtn = `bg-gradient-to-b from-emerald-500/95 to-emerald-600 text-white shadow-[0_0_14px_-5px_rgba(34,197,94,0.4)] enabled:hover:brightness-110 ${btnRow} ${longDim} ${longGlow}`;
+
+  return (
+    <div className="grid min-w-0 w-full grid-cols-2 gap-1.5 sm:gap-2" role="group" aria-label="Open trade">
+      <button type="button" disabled={!canExecute} title={disabledHint} onClick={onOpenShort} className={shortBtn}>
+        {shortLabel}
+      </button>
+      <button type="button" disabled={!canExecute} title={disabledHint} onClick={onOpenLong} className={longBtn}>
+        {longLabel}
+      </button>
+    </div>
+  );
+}
+
 type ChartInlineTradeButtonsProps = ChartTradeQuickActions & {
   /** Tighter pills for the sticky price-chart dock row. */
   variant?: 'default' | 'dock';
@@ -63,7 +211,10 @@ type ChartInlineTradeButtonsProps = ChartTradeQuickActions & {
   signalBias?: 'long' | 'short' | null;
   /** Micro copy under dock buttons (confidence, setup quality, timing chip). */
   dockMeta?: ChartDockDecisionMeta | null;
-  /** When true, timing `StatusChip` is not rendered here (e.g. parent places it under Price chart). */
+  /**
+   * When true, timing + Trade/Setup scores are not rendered in this row (parent shows them in the Price Chart
+   * strip). Only Sell/Buy (or Short/Long) buttons render here — same dock shape for futures + spot.
+   */
   omitDockTimingChip?: boolean;
 };
 
@@ -132,8 +283,9 @@ export function ChartInlineTradeButtons({
     </div>
   );
 
-  if (variant === 'dock' && dockMeta) {
-    const showTimingHere = !omitDockTimingChip && dockMeta.timing.state !== 'developing';
+  if (variant === 'dock' && dockMeta && !omitDockTimingChip) {
+    // Always show setup timing in dock (Building uses chip state `developing` for visuals — still user-facing).
+    const showTimingHere = true;
     return (
       <div
         className={`grid w-full min-w-0 items-center gap-x-1 sm:gap-x-1.5 ${

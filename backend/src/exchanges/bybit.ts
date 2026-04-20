@@ -239,6 +239,8 @@ async function fetchLotSizeFilter(category: 'linear' | 'spot', symbol: string): 
   }
 }
 
+export type BybitTpSlTriggerBy = 'MarkPrice' | 'LastPrice' | 'IndexPrice';
+
 export type BybitLinearOrderParams = {
   symbol: string;
   side: 'Buy' | 'Sell';
@@ -251,6 +253,9 @@ export type BybitLinearOrderParams = {
   /** Attached TP/SL for linear perps (`/v5/order/create`). Omit when empty. Not valid with reduceOnly. */
   takeProfit?: string;
   stopLoss?: string;
+  /** When TP/SL attached; defaults to LastPrice if omitted (legacy). */
+  tpTriggerBy?: BybitTpSlTriggerBy;
+  slTriggerBy?: BybitTpSlTriggerBy;
 };
 
 export type BybitSpotOrderParams = {
@@ -753,6 +758,8 @@ export class BybitAdapter implements ExchangeAdapter {
       positionIdx: number;
       takeProfit: string;
       stopLoss: string;
+      tpTriggerBy?: BybitTpSlTriggerBy;
+      slTriggerBy?: BybitTpSlTriggerBy;
     },
   ): Promise<void> {
     const sym = params.symbol.toUpperCase();
@@ -763,8 +770,8 @@ export class BybitAdapter implements ExchangeAdapter {
       tpslMode: 'Full',
       tpOrderType: 'Market',
       slOrderType: 'Market',
-      tpTriggerBy: 'LastPrice',
-      slTriggerBy: 'LastPrice',
+      tpTriggerBy: params.tpTriggerBy ?? 'LastPrice',
+      slTriggerBy: params.slTriggerBy ?? 'LastPrice',
       takeProfit: params.takeProfit.trim(),
       stopLoss: params.stopLoss.trim(),
     };
@@ -819,8 +826,8 @@ export class BybitAdapter implements ExchangeAdapter {
       body.tpslMode = 'Full';
       body.tpOrderType = 'Market';
       body.slOrderType = 'Market';
-      body.tpTriggerBy = 'LastPrice';
-      body.slTriggerBy = 'LastPrice';
+      body.tpTriggerBy = params.tpTriggerBy ?? 'LastPrice';
+      body.slTriggerBy = params.slTriggerBy ?? 'LastPrice';
     }
 
     return privatePost<{ orderId: string; orderLinkId?: string }>('/v5/order/create', body, input);

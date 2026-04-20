@@ -1,7 +1,7 @@
 import type { CryptoSignal } from '@/types/signal';
 
 /** Scanner UI state for a tracked perpetual. */
-export type MarketRowStatus = 'idle' | 'developing' | 'triggered' | 'overextended';
+export type MarketRowStatus = 'idle' | 'developing' | 'triggered' | 'extended' | 'overextended';
 
 /** vs last scanner refresh (setup score). */
 export type MarketScoreTrend = 'up' | 'down' | 'flat' | null;

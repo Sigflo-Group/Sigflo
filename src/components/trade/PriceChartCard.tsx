@@ -428,14 +428,14 @@ export function PriceChartCard({
   const premiumZonesVisible =
     usePremiumTradeZones && (visibleLevels.entry || visibleLevels.stop || visibleLevels.target);
 
-  /** When HTML zones render, hide LC last price on the axis so it does not stack on tick labels / overlap the gutter. */
+  /** Keep the live last-price line visible; only hide the axis value chip when premium zones are active. */
   useEffect(() => {
     const candle = candleRef.current;
     const line = lineRef.current;
     if (!candle || !line) return;
-    const showLastOnScale = !premiumZonesVisible;
-    candle.applyOptions({ lastValueVisible: showLastOnScale, priceLineVisible: showLastOnScale });
-    line.applyOptions({ lastValueVisible: showLastOnScale, priceLineVisible: showLastOnScale });
+    const showLastValueOnScale = !premiumZonesVisible;
+    candle.applyOptions({ lastValueVisible: showLastValueOnScale, priceLineVisible: true });
+    line.applyOptions({ lastValueVisible: showLastValueOnScale, priceLineVisible: true });
   }, [premiumZonesVisible]);
 
   const useTimedSetupOverlays = setupControlled && setupMode && tradeTimingState != null;
@@ -1475,14 +1475,83 @@ export function PriceChartCard({
       <div className="flex min-w-0 max-w-[min(100%,11.5rem)] shrink-0 items-center sm:max-w-[min(100%,16rem)] md:max-w-none">
         {pairTfHeroTfChips}
       </div>
+      {chartInnerChromeToggle && !exchangeStyleHero ? (
+        <button
+          type="button"
+          onClick={chartInnerChromeToggle.onToggle}
+          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-white/[0.12] bg-white/[0.05] text-sigflo-muted transition hover:border-cyan-400/35 hover:text-cyan-100 active:scale-[0.97] md:h-7 md:w-7"
+          aria-label={
+            chartInnerChromeToggle.variant === 'immersive'
+              ? chartInnerChromeToggle.expanded
+                ? 'Exit full chart'
+                : 'Expand to full chart'
+              : chartInnerChromeToggle.expanded
+                ? 'Minimize chart'
+                : 'Maximize chart'
+          }
+          title={
+            chartInnerChromeToggle.variant === 'immersive'
+              ? chartInnerChromeToggle.expanded
+                ? 'Exit full chart'
+                : 'Full chart'
+              : chartInnerChromeToggle.expanded
+                ? 'Minimize chart'
+                : 'Maximize chart'
+          }
+        >
+          {chartInnerChromeToggle.variant === 'immersive' ? (
+            chartInnerChromeToggle.expanded ? (
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" className="md:h-4 md:w-4" aria-hidden>
+                <path
+                  d="M9 9H5V5M15 9h4V5M9 15H5v4M15 15h4v4"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            ) : (
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" className="md:h-4 md:w-4" aria-hidden>
+                <path
+                  d="M9 3H5a2 2 0 00-2 2v4M21 8V5a2 2 0 00-2-2h-3M3 16v3a2 2 0 002 2h4m8 0h4a2 2 0 002-2v-3"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            )
+          ) : chartInnerChromeToggle.expanded ? (
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" className="md:h-4 md:w-4" aria-hidden>
+              <path
+                d="M9 9H5V5M15 9h4V5M9 15H5v4M15 15h4v4"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          ) : (
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" className="md:h-4 md:w-4" aria-hidden>
+              <path
+                d="M9 3H5a2 2 0 00-2 2v4M21 8V5a2 2 0 00-2-2h-3M3 16v3a2 2 0 002 2h4m8 0h4a2 2 0 002-2v-3"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          )}
+        </button>
+      ) : null}
     </div>
   );
 
   const pairTfHeroContent = showPairTfHero ? (
     <div
-      className={`flex w-full min-w-0 flex-col border-b border-white/[0.06] ${
+      className={`flex w-full min-w-0 flex-col border-b border-[#00ffc8]/28 ${
         headerDockedInPlotPanel
-          ? 'shrink-0 divide-y divide-white/[0.06] px-[4.5px] pb-0 pt-1 md:px-[5.5px] md:pt-1.5'
+          ? 'shrink-0 divide-y divide-[#00ffc8]/18 px-[4.5px] pb-0 pt-1 md:px-[5.5px] md:pt-1.5'
           : 'mb-0 gap-0 pb-px md:gap-0.5 md:pb-0.5'
       }`}
     >
@@ -1547,8 +1616,8 @@ export function PriceChartCard({
                 ? 'Exit full chart'
                 : 'Expand to full chart'
               : chartInnerChromeToggle.expanded
-                ? 'Collapse chart'
-                : 'Expand chart'
+                ? 'Minimize chart'
+                : 'Maximize chart'
           }
           title={
             chartInnerChromeToggle.variant === 'immersive'
@@ -1556,8 +1625,8 @@ export function PriceChartCard({
                 ? 'Exit full chart'
                 : 'Full chart'
               : chartInnerChromeToggle.expanded
-                ? 'Collapse chart'
-                : 'Expand chart'
+                ? 'Minimize chart'
+                : 'Maximize chart'
           }
         >
           {chartInnerChromeToggle.variant === 'immersive' ? (
@@ -1584,11 +1653,23 @@ export function PriceChartCard({
             )
           ) : chartInnerChromeToggle.expanded ? (
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" className="md:h-4 md:w-4" aria-hidden>
-              <path d="M6 15l6-6 6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+              <path
+                d="M9 9H5V5M15 9h4V5M9 15H5v4M15 15h4v4"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
             </svg>
           ) : (
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" className="md:h-4 md:w-4" aria-hidden>
-              <path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+              <path
+                d="M9 3H5a2 2 0 00-2 2v4M21 8V5a2 2 0 00-2-2h-3M3 16v3a2 2 0 002 2h4m8 0h4a2 2 0 002-2v-3"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
             </svg>
           )}
         </button>
@@ -1705,7 +1786,7 @@ export function PriceChartCard({
   return (
     <Card
       panelTexture={false}
-      className={`min-w-0 overflow-hidden border-white/[0.1] bg-gradient-to-b from-[#14141a] via-[#0e0e12] to-[#0c0c0f] shadow-[0_20px_50px_-28px_rgba(0,0,0,0.9)] ${
+      className={`min-w-0 overflow-hidden border-cyan-400/35 bg-gradient-to-b from-[#14141a] via-[#0e0e12] to-[#0c0c0f] shadow-[0_20px_50px_-28px_rgba(0,0,0,0.9)] ${
         immersiveTfHero ? 'px-1.5 pb-1.5 pt-1 md:px-2 md:pb-2 md:pt-1.5' : headerDockedInPlotPanel
           ? 'px-1.5 pb-1.5 pt-0 md:px-2 md:pb-2 md:pt-0'
           : 'p-1.5 md:p-2'

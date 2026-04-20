@@ -114,7 +114,8 @@ export default defineConfig(({ mode }) => {
         configureServer(server) {
           server.middlewares.use(async (req, res, next) => {
             const pathname = req.url?.split('?')[0] ?? '';
-            if (pathname !== '/api/ai/suggest' && pathname !== '/api/ai/news-scan') {
+            const isAdminBeta = pathname === '/api/admin/beta' || pathname.endsWith('/api/admin/beta');
+            if (pathname !== '/api/ai/suggest' && pathname !== '/api/ai/news-scan' && !isAdminBeta) {
               next();
               return;
             }
@@ -134,6 +135,25 @@ export default defineConfig(({ mode }) => {
 
             try {
               const body = await readBody(req as IncomingMessage);
+              if (isAdminBeta) {
+                const { runAdminBeta } = (await import(
+                  // @ts-expect-error TS7016 — untyped .mjs Netlify module
+                  './netlify/functions/lib/admin-beta-core.mjs'
+                )) as {
+                  runAdminBeta: (
+                    rawBody: string,
+                    authorizationHeader: string | undefined,
+                    env: NodeJS.ProcessEnv,
+                  ) => Promise<{ statusCode: number; body: Record<string, unknown> }>;
+                };
+                const authHeader =
+                  typeof req.headers.authorization === 'string' ? req.headers.authorization : undefined;
+                const result = await runAdminBeta(body, authHeader, devAiEnv());
+                out.setHeader('Content-Type', 'application/json');
+                out.statusCode = result.statusCode;
+                out.end(JSON.stringify(result.body));
+                return;
+              }
               if (pathname === '/api/ai/news-scan') {
                 // Netlify ESM helper — no .d.ts; keep dev parity with production function.
                 const { runMarketNewsScan } = (await import(

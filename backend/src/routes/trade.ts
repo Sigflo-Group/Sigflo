@@ -10,6 +10,8 @@ import { isBybitTradingStopNoopError } from '../lib/bybitNoopErrors.js';
 
 export const tradeRouter = Router();
 
+const bybitTriggerBySchema = z.enum(['MarkPrice', 'LastPrice', 'IndexPrice']);
+
 const linearOrderSchema = z.object({
   symbol: z.string().min(4).max(32),
   side: z.enum(['Buy', 'Sell']),
@@ -23,6 +25,8 @@ const linearOrderSchema = z.object({
   /** Bybit linear TP/SL on open (market exit when hit). Requires valid side vs entry on exchange. */
   takeProfit: z.string().min(1).max(48).optional(),
   stopLoss: z.string().min(1).max(48).optional(),
+  tpTriggerBy: bybitTriggerBySchema.optional(),
+  slTriggerBy: bybitTriggerBySchema.optional(),
 });
 
 const spotOrderSchema = z.object({
@@ -92,6 +96,8 @@ tradeRouter.post('/bybit/linear-order', async (req: AuthedRequest, res) => {
       positionIdx: p.positionIdx,
       takeProfit: p.takeProfit?.trim(),
       stopLoss: p.stopLoss?.trim(),
+      tpTriggerBy: p.tpTriggerBy,
+      slTriggerBy: p.slTriggerBy,
     });
 
     const tpSlNote =
@@ -119,6 +125,8 @@ const linearTradingStopSchema = z.object({
   takeProfit: z.string().min(1).max(48),
   /** Use `"0"` to clear SL on the position (Bybit convention). */
   stopLoss: z.string().min(1).max(48),
+  tpTriggerBy: bybitTriggerBySchema.optional(),
+  slTriggerBy: bybitTriggerBySchema.optional(),
 });
 
 tradeRouter.post('/bybit/linear-trading-stop', async (req: AuthedRequest, res) => {
@@ -161,6 +169,8 @@ tradeRouter.post('/bybit/linear-trading-stop', async (req: AuthedRequest, res) =
       positionIdx: p.positionIdx,
       takeProfit: p.takeProfit.trim(),
       stopLoss: p.stopLoss.trim(),
+      tpTriggerBy: p.tpTriggerBy,
+      slTriggerBy: p.slTriggerBy,
     });
     res.json({
       ok: true,
@@ -178,6 +188,60 @@ tradeRouter.post('/bybit/linear-trading-stop', async (req: AuthedRequest, res) =
       return;
     }
     log('warn', 'Bybit trading-stop failed.', { error: msg });
+    res.status(400).json({ error: msg });
+  }
+});
+
+const setLinearLeverageSchema = z.object({
+  symbol: z.string().min(4).max(32),
+  leverage: z.number().min(1).max(200),
+});
+
+/** Update isolated margin leverage for a linear symbol (applies to an open position on Bybit). */
+tradeRouter.post('/bybit/set-leverage', async (req: AuthedRequest, res) => {
+  if (!req.user) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+
+  const parsed = setLinearLeverageSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: formatZodIssuesForApi(parsed.error.issues) });
+    return;
+  }
+
+  const integrations = await listIntegrations(req.user.userId);
+  const row = integrations.find((i) => i.exchange === 'bybit');
+  if (!row) {
+    res.status(400).json({ error: 'Connect Bybit in Account first.' });
+    return;
+  }
+
+  const creds = {
+    apiKey: decryptText(row.encryptedKey),
+    apiSecret: decryptText(row.encryptedSecret),
+    passphrase: row.encryptedPassphrase ? decryptText(row.encryptedPassphrase) : undefined,
+  };
+
+  try {
+    await bybitAdapter.ensureTradeEnabled(creds);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : 'Trade not allowed for this key.';
+    res.status(403).json({ error: msg });
+    return;
+  }
+
+  const p = parsed.data;
+  try {
+    await bybitAdapter.setLinearLeverage(creds, p.symbol, p.leverage);
+    res.json({
+      ok: true,
+      exchange: 'bybit',
+      note: 'Leverage updated on Bybit for this symbol.',
+    });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : 'Set leverage failed';
+    log('warn', 'Bybit set-leverage failed.', { symbol: p.symbol, error: msg });
     res.status(400).json({ error: msg });
   }
 });

@@ -3,6 +3,14 @@ export type SignalSetupTag = 'Breakout' | 'Pullback' | 'Overextended';
 export type SignalRiskTag = 'Low Risk' | 'Medium Risk' | 'High Risk';
 export type SetupScoreLabel = 'Elite setup' | 'Strong setup' | 'Developing' | 'Low quality' | 'Avoid';
 export type SignalSetupType = 'breakout' | 'pullback' | 'overextended';
+export type SignalTimingState = 'developing' | 'ready' | 'triggered' | 'extended' | 'expired';
+export type SignalTriggerType =
+  | 'breakout_first_close'
+  | 'breakout_retest_hold'
+  | 'reclaim_first_close'
+  | 'pullback_bounce_confirmed'
+  | 'trend_continuation_resume'
+  | 'unknown';
 
 export interface SetupScoreBreakdown {
   trendAlignment: number; // 0-25
@@ -35,6 +43,26 @@ export interface CryptoSignal {
   postedAgo: string;
   aiExplanation: string;
   whyThisMatters: string;
+  timingState?: SignalTimingState;
+  timingScore?: number;
+  entryFreshnessScore?: number;
+  roomToTargetScore?: number;
+  actionabilityScore?: number;
+  triggerType?: SignalTriggerType;
+  triggerReason?: string;
+  idealEntryPrice?: number;
+  candlesSinceTrigger?: number;
+  candlesSincePeakTiming?: number;
+  penaltyBreakdown?: {
+    candlesLatePenalty: number;
+    atrExtensionPenalty: number;
+    percentExtensionPenalty: number;
+    postTriggerImpulsePenalty: number;
+    crowdedLevelPenalty: number;
+    rrCompressionPenalty: number;
+  };
+  positiveTimingFactors?: string[];
+  scannerDiagnosticsNote?: string;
   /** Optional one-line “what to watch” for UI; otherwise derived in `resolveWatchCue`. */
   watchCue?: string;
   /** Optional forward cue (“what happens next”); otherwise derived in `resolveWatchNextCue`. */

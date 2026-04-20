@@ -23,6 +23,10 @@ export interface Candle {
 export interface SymbolTicker {
   symbol: string;
   lastPrice: number;
+  /** Linear perps: Bybit mark price (fair basis for % SL/TP when distinct from last). */
+  markPrice?: number;
+  /** Linear perps: Bybit index price (external basket reference; MEXC-style “Index” trigger). */
+  indexPrice?: number;
   high24h: number;
   low24h: number;
   volume24h: number;

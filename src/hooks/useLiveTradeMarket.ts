@@ -10,6 +10,10 @@ const SUPPORTED_INTERVALS: TradeChartInterval[] = ['1', '5', '15', '60', '240', 
 
 export type LiveTradeTickSnapshot = {
   lastPrice: number;
+  /** Linear mark price when known (REST/WS); omitted on spot or before first tick. */
+  markPrice?: number;
+  /** Linear index price when known (REST/WS). */
+  indexPrice?: number;
   change24hPct: number;
   high24h: number;
   low24h: number;
@@ -21,6 +25,8 @@ type LiveTradeState = {
   /** Set when `lastPrice` / candles were produced for this Bybit linear symbol; used to mask stale rows after `symbol` prop changes. */
   dataSymbol?: string;
   lastPrice?: number;
+  markPrice?: number;
+  indexPrice?: number;
   change24hPct?: number;
   high24h?: number;
   low24h?: number;
@@ -142,6 +148,12 @@ export function useLiveTradeMarket(symbol: string, interval: TradeChartInterval)
         const next: LiveTradeState = { ...prev };
         if (uiDue) {
           next.lastPrice = snap.lastPrice;
+          if (snap.markPrice != null && Number.isFinite(snap.markPrice) && snap.markPrice > 0) {
+            next.markPrice = snap.markPrice;
+          }
+          if (snap.indexPrice != null && Number.isFinite(snap.indexPrice) && snap.indexPrice > 0) {
+            next.indexPrice = snap.indexPrice;
+          }
           next.change24hPct = snap.change24hPct;
           next.high24h = snap.high24h;
           next.low24h = snap.low24h;
@@ -184,6 +196,8 @@ export function useLiveTradeMarket(symbol: string, interval: TradeChartInterval)
       chartCandles: undefined,
       priceSeries: undefined,
       lastPrice: undefined,
+      markPrice: undefined,
+      indexPrice: undefined,
       change24hPct: undefined,
       high24h: undefined,
       low24h: undefined,
@@ -230,8 +244,14 @@ export function useLiveTradeMarket(symbol: string, interval: TradeChartInterval)
         }
         readyRef.current = true;
 
+        const markPx =
+          t.markPrice != null && Number.isFinite(t.markPrice) && t.markPrice > 0 ? t.markPrice : undefined;
+        const indexPx =
+          t.indexPrice != null && Number.isFinite(t.indexPrice) && t.indexPrice > 0 ? t.indexPrice : undefined;
         const snap: LiveTradeTickSnapshot = {
           lastPrice: t.lastPrice,
+          ...(markPx != null ? { markPrice: markPx } : {}),
+          ...(indexPx != null ? { indexPrice: indexPx } : {}),
           change24hPct: t.price24hPcnt * 100,
           high24h: t.high24h,
           low24h: t.low24h,
@@ -245,6 +265,8 @@ export function useLiveTradeMarket(symbol: string, interval: TradeChartInterval)
           ...prev,
           dataSymbol: symbol,
           lastPrice: snap.lastPrice,
+          ...(markPx != null ? { markPrice: markPx } : {}),
+          ...(indexPx != null ? { indexPrice: indexPx } : {}),
           change24hPct: snap.change24hPct,
           high24h: snap.high24h,
           low24h: snap.low24h,
@@ -306,8 +328,23 @@ export function useLiveTradeMarket(symbol: string, interval: TradeChartInterval)
       onTicker: (t) => {
         if (t.symbol !== symbol) return;
         const price = t.lastPrice;
+        const prev = tickSnapshotRef.current;
+        const markPx =
+          t.markPrice > 0
+            ? t.markPrice
+            : prev?.markPrice != null && prev.markPrice > 0
+              ? prev.markPrice
+              : undefined;
+        const indexPx =
+          t.indexPrice != null && t.indexPrice > 0
+            ? t.indexPrice
+            : prev?.indexPrice != null && prev.indexPrice > 0
+              ? prev.indexPrice
+              : undefined;
         const snap: LiveTradeTickSnapshot = {
           lastPrice: price,
+          ...(markPx != null ? { markPrice: markPx } : {}),
+          ...(indexPx != null ? { indexPrice: indexPx } : {}),
           change24hPct: t.price24hPcnt * 100,
           high24h: t.high24h,
           low24h: t.low24h,

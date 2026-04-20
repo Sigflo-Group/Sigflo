@@ -49,8 +49,9 @@ import {
   tradeChartIntervalShortLabel,
 } from '@/lib/tradeChartIntervalPreference';
 import { uiSignalStateFromMarketStatus } from '@/lib/signalState';
-import { formatBybitTradeErrorMessage } from '@/lib/bybitUserFacingError';
+import { resolveBybitTradeError } from '@/lib/bybitUserFacingError';
 import { linearTpSlStringsForOpen } from '@/lib/bybitLinearTpSl';
+import { DEFAULT_BYBIT_TPSL_TRIGGER } from '@/lib/bybitTpSlTrigger';
 import { applyOpenOrderNotionalBuffer, linearQtyFromNotionalUsd } from '@/lib/linearOrderQty';
 import { buildExitAiCoPilotModel, buildManageAiExitZoneAuxLines } from '@/lib/exitAiCoPilot';
 import { resolveExitGuidanceFlow } from '@/lib/tradeExitGuidanceFlow';
@@ -340,6 +341,7 @@ export default function BotFocusScreen() {
   const [execLive, setExecLive] = useState(false);
   const [execFillEntry, setExecFillEntry] = useState<number | null>(null);
   const [execNotionalUsd, setExecNotionalUsd] = useState(0);
+  const [execSideOverride, setExecSideOverride] = useState<TradeSide | null>(null);
   const { fullChartMode, setFullChartMode } = useBotFocusLayout();
   const { mode: tradingControlMode, meta: tradingModeMeta } = useTradingControlMode();
   const [insightDrawerOpen, setInsightDrawerOpen] = useState(false);
@@ -535,6 +537,29 @@ export default function BotFocusScreen() {
   }, [bot, chartModel, chartInterval, live.lastPrice]);
 
   const setupSideForExec: TradeSide = bot ? biasToSide(bot.detail.bias) : 'long';
+  const effectiveExecSide: TradeSide = execSideOverride ?? setupSideForExec;
+
+  useEffect(() => {
+    const open = bybitSnap?.positions?.filter((p) => p.symbol === linearSymbol && p.size > 0) ?? [];
+    if (open.length === 0) {
+      setExecLive(false);
+      setExecFillEntry(null);
+      setExecNotionalUsd(0);
+      setExecSideOverride(null);
+      return;
+    }
+    const pos = open.find((p) => p.side === setupSideForExec) ?? open[0]!;
+    const entry = Number.isFinite(pos.entryPrice) && pos.entryPrice > 0 ? pos.entryPrice : null;
+    const refPrice =
+      Number.isFinite(pos.markPrice) && (pos.markPrice as number) > 0
+        ? (pos.markPrice as number)
+        : entry ?? 0;
+    const notional = refPrice > 0 ? Math.max(0, pos.size * refPrice) : 0;
+    setExecFillEntry(entry);
+    setExecNotionalUsd(notional);
+    setExecSideOverride(pos.side);
+    setExecLive(true);
+  }, [bybitSnap, linearSymbol, setupSideForExec]);
 
   const chartModelForPlot = useMemo((): TradeViewModel | null => {
     if (!chartModel) return null;
@@ -556,7 +581,7 @@ export default function BotFocusScreen() {
     const entryPx = execFillEntry ?? chartModelForPlot.entry;
     if (!(markPx > 0) || !(entryPx > 0)) return null;
     const frac =
-      setupSideForExec === 'long'
+      effectiveExecSide === 'long'
         ? (markPx - entryPx) / entryPx
         : (entryPx - markPx) / entryPx;
     const u = execNotionalUsd * frac;
@@ -564,7 +589,7 @@ export default function BotFocusScreen() {
       u > 0 ? 'positive' : u < 0 ? 'negative' : 'neutral';
     const label = `${u >= 0 ? '+' : '−'}${Math.abs(u).toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 2 })} uPnL`;
     return { label, tone };
-  }, [execLive, execNotionalUsd, chartModelForPlot, live.lastPrice, execFillEntry, setupSideForExec]);
+  }, [effectiveExecSide, execLive, execNotionalUsd, chartModelForPlot, live.lastPrice, execFillEntry]);
 
   const exitAutomationScopeKey = bot ? `botFocus:${bot.id}:${linearSymbol}` : 'botFocus:none';
   const exitAuto = useExitAutomation(exitAutomationScopeKey);
@@ -587,14 +612,14 @@ export default function BotFocusScreen() {
       live.lastPrice != null && live.lastPrice > 0 ? live.lastPrice : chartModelForPlot.lastPrice ?? entryPx;
     if (!(entryPx > 0) || !(markPx > 0)) return null;
     const frac =
-      setupSideForExec === 'long' ? (markPx - entryPx) / entryPx : (entryPx - markPx) / entryPx;
+      effectiveExecSide === 'long' ? (markPx - entryPx) / entryPx : (entryPx - markPx) / entryPx;
     const pnlUsd = execNotionalUsd * frac;
     const stop = chartModelForPlot.stop;
     const target = chartModelForPlot.target;
     if (!(stop > 0) || !(target > 0)) return null;
     return {
       pairLabel: chartModelForPlot.pair,
-      side: setupSideForExec,
+      side: effectiveExecSide,
       positionNotionalUsd: execNotionalUsd,
       entryPrice: entryPx,
       markPrice: markPx,
@@ -608,7 +633,7 @@ export default function BotFocusScreen() {
     execLive,
     execNotionalUsd,
     live.lastPrice,
-    setupSideForExec,
+    effectiveExecSide,
   ]);
 
   const botExitFlow = useMemo(() => {
@@ -618,10 +643,10 @@ export default function BotFocusScreen() {
       live.lastPrice != null && live.lastPrice > 0 ? live.lastPrice : chartModelForPlot.lastPrice ?? entry;
     if (!(entry > 0) || !(mark > 0)) return null;
     const pnlPct =
-      setupSideForExec === 'long' ? ((mark - entry) / entry) * 100 : ((entry - mark) / entry) * 100;
+      effectiveExecSide === 'long' ? ((mark - entry) / entry) * 100 : ((entry - mark) / entry) * 100;
     return resolveExitGuidanceFlow({
       variant: 'manage',
-      side: setupSideForExec,
+      side: effectiveExecSide,
       entry,
       mark,
       stop: chartModelForPlot.stop,
@@ -644,7 +669,7 @@ export default function BotFocusScreen() {
     exitAuto.strategy,
     focusSignal,
     live.lastPrice,
-    setupSideForExec,
+    effectiveExecSide,
   ]);
 
   const botExitChartAux = useMemo(() => {
@@ -654,7 +679,7 @@ export default function BotFocusScreen() {
       live.lastPrice != null && live.lastPrice > 0 ? live.lastPrice : chartModelForPlot.lastPrice ?? entry;
     return buildManageAiExitZoneAuxLines({
       mode: exitAuto.mode,
-      side: setupSideForExec,
+      side: effectiveExecSide,
       entry,
       target: chartModelForPlot.target,
       stop: chartModelForPlot.stop,
@@ -668,13 +693,14 @@ export default function BotFocusScreen() {
     execLive,
     exitAuto.mode,
     live.lastPrice,
-    setupSideForExec,
+    effectiveExecSide,
   ]);
 
   const botExitAiModel = useMemo(
     () =>
       buildExitAiCoPilotModel({
         mode: exitAuto.mode,
+        side: effectiveExecSide,
         flow: botExitFlow,
         nextPlanned: botExitFlow?.nextPlanned ?? 'Automation watching trend and risk.',
         safeguards: exitAuto.safeguards,
@@ -693,12 +719,13 @@ export default function BotFocusScreen() {
       exitAuto.mode,
       exitAuto.safeguards,
       liveSetupCopy?.commentaryShort,
+      effectiveExecSide,
     ],
   );
 
   const navigateToTradeForExit = useCallback(() => {
     const connected = accountSnapshots.find((s) => s.exchange === 'bybit' && s.status === 'connected');
-    const pos = connected ? findBybitLinearOpenLeg([connected], linearSymbol, setupSideForExec) : null;
+    const pos = connected ? findBybitLinearOpenLeg([connected], linearSymbol, effectiveExecSide) : null;
     const mark =
       live.lastPrice != null && live.lastPrice > 0 ? live.lastPrice : chartModelForPlot?.lastPrice ?? 0;
     if (pos && mark > 0) {
@@ -721,7 +748,7 @@ export default function BotFocusScreen() {
     live.lastPrice,
     marketStatus,
     navigate,
-    setupSideForExec,
+    effectiveExecSide,
   ]);
 
   const executeTradeFromFocus = useCallback(
@@ -731,7 +758,7 @@ export default function BotFocusScreen() {
     }: {
       amountUsd: number;
       leverage: number;
-    }): Promise<{ ok: true } | { ok: false; message: string }> => {
+    }): Promise<{ ok: true } | { ok: false; message: string; cta?: { label: string; href: string } }> => {
       if (!chartModel || !focusSignal) {
         return { ok: false, message: 'Chart or signal not ready.' };
       }
@@ -774,6 +801,15 @@ export default function BotFocusScreen() {
       const { tpSl } = linearTpSlStringsForOpen(setupSideForExec, entryMark, chartModel.target, chartModel.stop);
 
       try {
+        const tpslBot =
+          tpSl.takeProfit || tpSl.stopLoss
+            ? {
+                ...(tpSl.takeProfit ? { takeProfit: tpSl.takeProfit } : {}),
+                ...(tpSl.stopLoss ? { stopLoss: tpSl.stopLoss } : {}),
+                tpTriggerBy: DEFAULT_BYBIT_TPSL_TRIGGER,
+                slTriggerBy: DEFAULT_BYBIT_TPSL_TRIGGER,
+              }
+            : {};
         await postBybitLinearOrder({
           symbol: linearSymbol,
           side: sideBybit,
@@ -781,8 +817,7 @@ export default function BotFocusScreen() {
           orderType: 'Market',
           leverage: lev,
           positionIdx: 0,
-          ...(tpSl.takeProfit ? { takeProfit: tpSl.takeProfit } : {}),
-          ...(tpSl.stopLoss ? { stopLoss: tpSl.stopLoss } : {}),
+          ...tpslBot,
         });
         const snapshotsAfter = await refreshAccountSnapshots({ silent: false });
         if (tpSl.takeProfit || tpSl.stopLoss) {
@@ -796,6 +831,8 @@ export default function BotFocusScreen() {
                   positionIdx: pos.positionIdx ?? 0,
                   takeProfit: synced.tpSl.takeProfit ?? '0',
                   stopLoss: synced.tpSl.stopLoss ?? '0',
+                  tpTriggerBy: DEFAULT_BYBIT_TPSL_TRIGGER,
+                  slTriggerBy: DEFAULT_BYBIT_TPSL_TRIGGER,
                 });
               } catch {
                 /* order live; TP/SL sync best-effort */
@@ -806,10 +843,12 @@ export default function BotFocusScreen() {
         await refreshAccountSnapshots({ silent: true });
         setExecFillEntry(entryMark);
         setExecNotionalUsd(orderNotionalUsd);
+        setExecSideOverride(setupSideForExec);
         setExecLive(true);
         return { ok: true };
       } catch (e) {
-        return { ok: false, message: formatBybitTradeErrorMessage(e, 'Order failed — retry') };
+        const tradeErr = resolveBybitTradeError(e, 'Order failed — retry');
+        return { ok: false, message: tradeErr.message, ...(tradeErr.cta ? { cta: tradeErr.cta } : {}) };
       }
     },
     [
@@ -1178,7 +1217,7 @@ export default function BotFocusScreen() {
                 }`}
                 style={{
                   flex: `1 1 ${BOT_FOCUS_FULL_CHART_FLEX_BASIS}`,
-                  minHeight: 0,
+                  minHeight: BOT_FOCUS_FULL_CHART_PLOT_FLEX_FILL ? 220 : 0,
                   paddingBottom: BOT_FOCUS_FULL_CHART_DOCK_GAP_PX,
                 }}
               >

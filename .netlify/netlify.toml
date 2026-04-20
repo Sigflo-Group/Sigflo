@@ -2,7 +2,6 @@ functionsDirectory = "C:\\dev\\Sigflo\\netlify\\functions"
 functionsDirectoryOrigin = "config-v1"
 headersOrigin = "config"
 redirectsOrigin = "config"
-plugins = []
 
 [build]
 publish = "C:\\dev\\Sigflo\\dist"
@@ -35,8 +34,18 @@ publish = "dist"
 
 [functions]
 
+[functions.emails]
+included_files = ["./emails/**"]
+
 [functions."*"]
 node_bundler = "esbuild"
+
+[[plugins]]
+origin = "ui"
+package = "@netlify/plugin-emails"
+pinned_version = "1"
+
+[plugins.inputs]
 
 [[headers]]
 for = "/assets/*"
@@ -78,6 +87,18 @@ force = true
 [redirects.headers]
 
 [[redirects]]
+from = "/api/admin/beta"
+to = "/.netlify/functions/admin-beta"
+status = 200.0
+force = true
+
+[redirects.query]
+
+[redirects.conditions]
+
+[redirects.headers]
+
+[[redirects]]
 from = "/feed/api/ai/suggest"
 to = "/.netlify/functions/ai-suggest"
 status = 200.0
@@ -92,6 +113,18 @@ force = true
 [[redirects]]
 from = "/feed/api/ai/news-scan"
 to = "/.netlify/functions/market-news-scan"
+status = 200.0
+force = true
+
+[redirects.query]
+
+[redirects.conditions]
+
+[redirects.headers]
+
+[[redirects]]
+from = "/feed/api/admin/beta"
+to = "/.netlify/functions/admin-beta"
 status = 200.0
 force = true
 

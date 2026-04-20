@@ -4,11 +4,13 @@ import {
   appendActivityEntry,
   parseActivityLogJson,
 } from '@/lib/aiExitAutomation';
+import { emitGlobalAnnouncement } from '@/lib/globalAnnouncements';
 import { DEFAULT_CUSTOM_STRATEGY_THRESHOLDS, sanitizeExitStrategyThresholds } from '@/lib/exitGuidance';
 import type {
   AutomationSafeguards,
   ExitAiMode,
   ExitAutomationActivityEntry,
+  ExitAutomationActivityKind,
   ExitStrategyPreset,
   ExitStrategyThresholds,
 } from '@/types/aiExitAutomation';
@@ -17,6 +19,13 @@ const LS_MODE = 'sigflo.exitAi.mode';
 const LS_STRATEGY = 'sigflo.exitAi.strategy';
 const LS_SAFEGUARDS = 'sigflo.exitAi.safeguards';
 const LS_CUSTOM_THRESHOLDS = 'sigflo.exitAi.customThresholds';
+
+const EXIT_AI_POPUP_KINDS: ReadonlySet<ExitAutomationActivityKind> = new Set([
+  'auto_trim',
+  'auto_close',
+  'safeguard',
+  'assisted_ready',
+]);
 
 function loadMode(): ExitAiMode {
   const v = window.localStorage.getItem(LS_MODE);
@@ -112,6 +121,17 @@ export function useExitAutomation(scopeKey: string) {
       setActivity((prev) => {
         const next = appendActivityEntry(prev, entry);
         persistActivity(next);
+        const added = next[next.length - 1];
+        if (added && EXIT_AI_POPUP_KINDS.has(added.kind)) {
+          queueMicrotask(() => {
+            emitGlobalAnnouncement({
+              id: added.id,
+              kind: 'ai_action',
+              title: 'Exit AI',
+              subtitle: added.message,
+            });
+          });
+        }
         return next;
       });
     },

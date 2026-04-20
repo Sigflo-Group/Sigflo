@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Card } from '@/components/ui/Card';
 import { runScannerDeterminismCheck } from '@/engine/scannerDeterminism';
@@ -47,11 +47,117 @@ function PassCard({ frame, title }: { frame: ScannerDeterminismFrame; title: str
   );
 }
 
+type ScannerDiagnosticRow = {
+  symbol: string;
+  setupType: string;
+  setupScore: number;
+  timingScore: number;
+  entryFreshnessScore: number;
+  roomToTargetScore: number;
+  actionabilityScore: number;
+  state: string;
+  triggerType: string;
+  idealEntryPrice: number | null;
+  currentPrice: number;
+  atrExtensionFromIdeal: number;
+  candlesSinceTrigger: number | null;
+  candlesSincePeakTiming: number | null;
+  penalties: {
+    candlesLatePenalty: number;
+    atrExtensionPenalty: number;
+    percentExtensionPenalty: number;
+    postTriggerImpulsePenalty: number;
+    crowdedLevelPenalty: number;
+    rrCompressionPenalty: number;
+  };
+  positiveFactors: string[];
+  ts: number;
+};
+
+function readScannerDiagnostics(): ScannerDiagnosticRow[] {
+  const g = globalThis as Record<string, unknown>;
+  const raw = g.__SIGFLO_SCANNER_DIAGNOSTICS__;
+  return Array.isArray(raw) ? (raw as ScannerDiagnosticRow[]).slice().reverse() : [];
+}
+
+function ScannerDiagnosticsCard({
+  rows,
+  debugEnabled,
+  onToggleDebug,
+}: {
+  rows: ScannerDiagnosticRow[];
+  debugEnabled: boolean;
+  onToggleDebug: () => void;
+}) {
+  return (
+    <Card className="p-4">
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <h2 className="text-sm font-semibold text-white">Timing lifecycle diagnostics</h2>
+        <button
+          type="button"
+          onClick={onToggleDebug}
+          className={`rounded-lg border px-2 py-1 text-[11px] font-semibold transition ${
+            debugEnabled
+              ? 'border-emerald-500/35 bg-emerald-500/15 text-emerald-200'
+              : 'border-white/[0.12] bg-white/[0.04] text-sigflo-muted hover:text-white'
+          }`}
+        >
+          {debugEnabled ? 'Debug logs on' : 'Enable console logs'}
+        </button>
+      </div>
+      <p className="mb-3 text-xs text-sigflo-muted">
+        Shows latest in-memory scanner lifecycle evaluations (up to 20). Focus: first trigger capture, freshness decay, and late penalties.
+      </p>
+      {rows.length === 0 ? (
+        <p className="text-xs text-sigflo-muted">
+          No diagnostics yet. Wait for live scanner updates, then refresh this view.
+        </p>
+      ) : (
+        <div className="space-y-2">
+          {rows.map((r) => (
+            <div key={`${r.symbol}-${r.ts}`} className="rounded-xl border border-sigflo-border bg-sigflo-bg/45 px-3 py-2">
+              <div className="flex flex-wrap items-center justify-between gap-1">
+                <p className="text-xs font-medium text-white">
+                  {r.symbol} · {r.setupType}
+                </p>
+                <p className="text-[11px] text-sigflo-muted">{new Date(r.ts).toLocaleTimeString()}</p>
+              </div>
+              <p className="mt-1 text-[11px] text-cyan-200">
+                state: {r.state} · trigger: {r.triggerType}
+              </p>
+              <p className="mt-1 text-[11px] text-sigflo-muted">
+                setup {r.setupScore} · timing {r.timingScore} · freshness {r.entryFreshnessScore} · room {r.roomToTargetScore} · actionability {r.actionabilityScore}
+              </p>
+              <p className="mt-1 text-[11px] text-sigflo-muted">
+                ideal {r.idealEntryPrice != null ? r.idealEntryPrice.toFixed(4) : '—'} · current {r.currentPrice.toFixed(4)} · atrExt {r.atrExtensionFromIdeal.toFixed(2)} · since trigger {r.candlesSinceTrigger ?? '—'} · since peak {r.candlesSincePeakTiming ?? '—'}
+              </p>
+              <p className="mt-1 text-[10px] text-rose-200/85">
+                penalties: late {r.penalties.candlesLatePenalty.toFixed(1)}, atr {r.penalties.atrExtensionPenalty.toFixed(1)}, % {r.penalties.percentExtensionPenalty.toFixed(1)}, impulse {r.penalties.postTriggerImpulsePenalty.toFixed(1)}, crowded {r.penalties.crowdedLevelPenalty.toFixed(1)}, rr {r.penalties.rrCompressionPenalty.toFixed(1)}
+              </p>
+              <p className="mt-1 text-[10px] text-emerald-200/85">positives: {r.positiveFactors.length ? r.positiveFactors.join(', ') : 'none'}</p>
+            </div>
+          ))}
+        </div>
+      )}
+    </Card>
+  );
+}
+
 export function EngineDebugScreen() {
   const navigate = useNavigate();
   const [rerunTick, setRerunTick] = useState(0);
   const [lastRerunAt, setLastRerunAt] = useState(() => new Date());
+  const [diagTick, setDiagTick] = useState(0);
+  const [debugEnabled, setDebugEnabled] = useState<boolean>(() =>
+    Boolean((globalThis as { __SIGFLO_SCANNER_DEBUG__?: boolean }).__SIGFLO_SCANNER_DEBUG__),
+  );
   const determinism = useMemo(() => runScannerDeterminismCheck(), [rerunTick]);
+  const diagnostics = useMemo(() => readScannerDiagnostics(), [diagTick, rerunTick]);
+
+  useEffect(() => {
+    const id = window.setInterval(() => setDiagTick((n) => n + 1), 1000);
+    return () => window.clearInterval(id);
+  }, []);
 
   return (
     <div className="space-y-4 pb-6">
@@ -97,6 +203,15 @@ export function EngineDebugScreen() {
 
       <PassCard frame={determinism.firstPass} title={`Pass 1: initial emit #${rerunTick + 1}`} />
       <PassCard frame={determinism.secondPass} title={`Pass 2: cooldown and dedup #${rerunTick + 1}`} />
+      <ScannerDiagnosticsCard
+        rows={diagnostics}
+        debugEnabled={debugEnabled}
+        onToggleDebug={() => {
+          const next = !debugEnabled;
+          (globalThis as { __SIGFLO_SCANNER_DEBUG__?: boolean }).__SIGFLO_SCANNER_DEBUG__ = next;
+          setDebugEnabled(next);
+        }}
+      />
     </div>
   );
 }

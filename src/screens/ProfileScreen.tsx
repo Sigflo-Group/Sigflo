@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { useAccountSnapshot } from '@/hooks/useAccountSnapshot';
 import { useBotStatuses } from '@/hooks/useBotStatuses';
@@ -362,18 +362,26 @@ export default function ProfileScreen() {
             </div>
           ) : null}
           {authMode === 'supabase' && user ? (
-            <button
-              type="button"
-              onClick={() => {
-                void (async () => {
-                  await signOut();
-                  navigate('/login', { replace: true });
-                })();
-              }}
-              className="rounded-lg border border-white/[0.08] bg-sigflo-elevated px-3 py-1.5 text-xs font-semibold text-sigflo-muted transition hover:text-white"
-            >
-              Sign out
-            </button>
+            <>
+              <Link
+                to="/admin/beta"
+                className="rounded-lg border border-[rgba(0,255,200,0.22)] bg-[rgba(0,255,200,0.08)] px-3 py-1.5 text-xs font-semibold text-[#8FFFD4] transition hover:bg-[rgba(0,255,200,0.12)]"
+              >
+                Beta approvals
+              </Link>
+              <button
+                type="button"
+                onClick={() => {
+                  void (async () => {
+                    await signOut();
+                    navigate('/login', { replace: true });
+                  })();
+                }}
+                className="rounded-lg border border-white/[0.08] bg-sigflo-elevated px-3 py-1.5 text-xs font-semibold text-sigflo-muted transition hover:text-white"
+              >
+                Sign out
+              </button>
+            </>
           ) : null}
           {authMode === 'dev' ? (
             <p className="text-[11px] text-sigflo-muted">Auth: dev header (set VITE_SUPABASE_* for Google sign-in).</p>

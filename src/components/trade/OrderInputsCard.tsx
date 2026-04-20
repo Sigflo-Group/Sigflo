@@ -9,6 +9,11 @@ import {
   BYBIT_TRANSFER_HELP_HREF,
   BYBIT_USER_ASSETS_EXCHANGE_HREF,
 } from '@/lib/exchangeTransferUrls';
+import {
+  BYBIT_TPSL_TRIGGER_VALUES,
+  bybitTpSlTriggerShortLabel,
+  type BybitTpSlTriggerBy,
+} from '@/lib/bybitTpSlTrigger';
 
 function fmtUsd2(n: number): string {
   if (!Number.isFinite(n)) return '—';
@@ -62,6 +67,7 @@ function sliderIndexToAmountUsd(idx: number, amountMax: number, indexMax: number
 
 /** Stop loss slider: adverse move from entry (0–100%). */
 const SL_PCT_SLIDER_MAX = 100;
+const SL_PCT_STEP = 0.1;
 
 /** One-tap adverse % presets (must stay ≤ SL_PCT_SLIDER_MAX). */
 const SL_PCT_PRESETS = [1, 2, 3, 5, 10, 15, 25, 50] as const;
@@ -69,9 +75,14 @@ const SL_PCT_PRESETS = [1, 2, 3, 5, 10, 15, 25, 50] as const;
 /** Take profit slider: favorable move from entry (%). */
 const TP_PCT_SLIDER_MIN = 0;
 const TP_PCT_SLIDER_MAX = 500;
+/** How closely the TP thumb / +% readout tracks implied % when price (e.g. mark) moves — not chip snaps (those would jump 25↔50). */
+const TP_PCT_REFLECT_STEP = 0.1;
 
 /** One-tap favorable % presets (clamped to slider range in UI). */
 const TP_PCT_PRESETS = [0, 10, 25, 50, 100, 150, 200, 300, 400, 500] as const;
+
+/** Scale-out % of the **open exchange leg** (partial TP) — shown under Take profit when eligible. */
+const PARTIAL_POSITION_TP_PCTS = [25, 50, 75] as const;
 
 /** Snap targets (slider only settles on these; includes 0% SL / TP preset list). */
 const SL_SNAP_PCTS = [0, ...SL_PCT_PRESETS] as const;
@@ -95,6 +106,70 @@ function nearestSnapPct(raw: number, snaps: readonly number[]): number {
   }
   return best;
 }
+
+function roundPctToStep(pct: number, step: number): number {
+  if (!Number.isFinite(pct) || !(step > 0)) return 0;
+  return Math.round(pct / step) * step;
+}
+
+function fmtPctCompact(pct: number): string {
+  return Number.isInteger(pct) ? `${pct}` : pct.toFixed(1);
+}
+
+/**
+ * SL/TP % anchor: `entry` = plan or avg entry; `last` = spot last only; `quote` = futures live quote
+ * (mark → last → index — treated as one anchor for % sliders).
+ */
+export type SlTpPctBasis = 'entry' | 'last' | 'quote';
+
+/** Single futures reference: fair/mark first (perp convention), then last, then index. */
+function coalesceFuturesQuotePx(
+  last: number | null,
+  mark: number | null,
+  index: number | null,
+): number | null {
+  if (mark != null && Number.isFinite(mark) && mark > 0) return mark;
+  if (last != null && Number.isFinite(last) && last > 0) return last;
+  if (index != null && Number.isFinite(index) && index > 0) return index;
+  return null;
+}
+
+function pctBasisHeaderText(b: SlTpPctBasis, entryBasisUi: string): string {
+  if (b === 'entry') return entryBasisUi;
+  if (b === 'quote') return 'live';
+  return 'last';
+}
+
+function pctBasisChipText(b: SlTpPctBasis, entryChipLabel: string): string {
+  if (b === 'entry') return entryChipLabel;
+  if (b === 'quote') return 'Live';
+  return 'Last';
+}
+
+function slTpAwaitingSliderCopy(basis: SlTpPctBasis, sliderBlocked: boolean, m: MarketMode): string | null {
+  if (!sliderBlocked || basis === 'entry') return null;
+  if (basis === 'quote') {
+    return m === 'futures' ? 'Waiting for a live quote (mark / last / index) — % slider stays off until then.' : null;
+  }
+  return 'Waiting for last price — % slider stays off until then.';
+}
+
+function pctBasisTooltip(basis: SlTpPctBasis, market: MarketMode, chip: 'entry' | 'avg'): string {
+  if (basis === 'entry') {
+    return chip === 'avg'
+      ? 'Calculate from exchange average entry (filled)'
+      : 'Calculate from plan / chart entry anchor';
+  }
+  if (basis === 'quote') {
+    return market === 'futures'
+      ? 'Calculate % from live perp quote (mark if available, else last traded, else index).'
+      : 'Calculate from last traded price (order-book prints).';
+  }
+  return 'Calculate from last traded price (order-book prints).';
+}
+
+const FUTURES_SL_TP_PCT_BASES: SlTpPctBasis[] = ['entry', 'quote'];
+const SPOT_SL_TP_PCT_BASES: SlTpPctBasis[] = ['entry', 'last'];
 
 /** Evenly spaces SL chip/tick centers along the track (last segment maps 50% → 100% for the thumb). */
 function slChipLayoutNorm(chipIndex: number): number {
@@ -303,6 +378,13 @@ export function OrderInputsCard(props: {
   onTakeProfitInputChange?: (v: string) => void;
   /** For ≈ base size line and SL/TP % hints. */
   quoteLastPrice?: number;
+  /** Futures: mark — merged with last/index into one “Live” % anchor. */
+  quoteMarkPrice?: number;
+  /** Futures: index — merged with mark/last into one “Live” % anchor. */
+  quoteIndexPrice?: number;
+  /** Futures: which price type hits TP/SL first on Bybit (MEXC-style trigger). */
+  futuresTpSlTriggerBy?: BybitTpSlTriggerBy;
+  onFuturesTpSlTriggerByChange?: (t: BybitTpSlTriggerBy) => void;
   quotePair?: string;
   referenceEntryPrice?: number;
   /** Explicit account label (e.g. "Available to Trade"). */
@@ -340,6 +422,14 @@ export function OrderInputsCard(props: {
     riskLevel?: RiskLevel;
     riskMeterPct?: number;
   };
+  /** Under Take profit: submit partial close at 25% / 50% / 75% of open leg (Bybit). */
+  onPartialPositionScaleOut?: (fraction: number) => void;
+  partialPositionScaleOutBusy?: boolean;
+  /**
+   * When `avg`, the first SL/TP % basis chip reads "Avg" and uses exchange average entry (via `referenceEntryPrice`).
+   * When `entry`, chip reads "Entry" for plan/anchor entry from the parent model.
+   */
+  slTpEntryChip?: 'entry' | 'avg';
 }) {
   const {
     market,
@@ -364,6 +454,10 @@ export function OrderInputsCard(props: {
     onTakeProfitInputChange,
     compactStats,
     quoteLastPrice,
+    quoteMarkPrice,
+    quoteIndexPrice,
+    futuresTpSlTriggerBy,
+    onFuturesTpSlTriggerByChange,
     quotePair,
     referenceEntryPrice,
     balanceLabel = 'Wallet Balance',
@@ -378,7 +472,14 @@ export function OrderInputsCard(props: {
     utaUnrealizedPnlUsd,
     utaWalletBalanceUsd,
     assetTransferHref,
+    onPartialPositionScaleOut,
+    partialPositionScaleOutBusy = false,
+    slTpEntryChip = 'entry',
   } = props;
+
+  const entryBasisUi = slTpEntryChip === 'avg' ? 'avg' : 'entry';
+  const entryChipLabel = slTpEntryChip === 'avg' ? 'Avg' : 'Entry';
+
   const balanceShown =
     displayBalanceUsd != null && Number.isFinite(displayBalanceUsd) ? displayBalanceUsd : balanceUsd;
   const amountMax = Math.max(0, Number.isFinite(balanceUsd) ? balanceUsd : 0);
@@ -414,6 +515,18 @@ export function OrderInputsCard(props: {
     return false;
   });
   const [marginMode, setMarginMode] = useState<'cross' | 'isolated'>('cross');
+  const [slPercentBasis, setSlPercentBasis] = useState<SlTpPctBasis>('entry');
+  const [tpPercentBasis, setTpPercentBasis] = useState<SlTpPctBasis>('entry');
+
+  useEffect(() => {
+    if (market === 'spot') {
+      setSlPercentBasis((b) => (b === 'quote' ? 'last' : b));
+      setTpPercentBasis((b) => (b === 'quote' ? 'last' : b));
+    } else {
+      setSlPercentBasis((b) => (b === 'last' ? 'quote' : b));
+      setTpPercentBasis((b) => (b === 'last' ? 'quote' : b));
+    }
+  }, [market]);
 
   useEffect(() => {
     if (stopInput != null && stopInput !== '') {
@@ -448,28 +561,73 @@ export function OrderInputsCard(props: {
   const entry = referenceEntryPrice;
   const stopN = stopInput != null ? parseFloat(String(stopInput).replace(/,/g, '')) : NaN;
   const tpN = takeProfitInput != null ? parseFloat(String(takeProfitInput).replace(/,/g, '')) : NaN;
+  const entryNum = entry != null && entry > 0 ? entry : null;
+  const lastNum = quoteLastPrice != null && Number.isFinite(quoteLastPrice) && quoteLastPrice > 0 ? quoteLastPrice : null;
+  const exchangeMarkNum =
+    quoteMarkPrice != null && Number.isFinite(quoteMarkPrice) && quoteMarkPrice > 0 ? quoteMarkPrice : null;
+  const exchangeIndexNum =
+    quoteIndexPrice != null && Number.isFinite(quoteIndexPrice) && quoteIndexPrice > 0 ? quoteIndexPrice : null;
+  const quoteNum = market === 'futures' ? coalesceFuturesQuotePx(lastNum, exchangeMarkNum, exchangeIndexNum) : null;
+
+  const slReferencePrice: number | null =
+    slPercentBasis === 'entry'
+      ? entryNum
+      : slPercentBasis === 'quote'
+        ? quoteNum
+        : lastNum;
+  const tpReferencePrice: number | null =
+    tpPercentBasis === 'entry'
+      ? entryNum
+      : tpPercentBasis === 'quote'
+        ? quoteNum
+        : lastNum;
+
+  const hasQuoteContext =
+    entryNum != null || (market === 'futures' ? quoteNum != null : lastNum != null);
+  const showSlPctPanel = Boolean(onStopInputChange) && hasQuoteContext;
+  const showTpPctPanel = Boolean(onTakeProfitInputChange) && hasQuoteContext;
+  const slPctSliderBlocked = slReferencePrice == null;
+  const tpPctSliderBlocked = tpReferencePrice == null;
+  const slAwaitingMsg = slTpAwaitingSliderCopy(slPercentBasis, slPctSliderBlocked, market);
+  const tpAwaitingMsg = slTpAwaitingSliderCopy(tpPercentBasis, tpPctSliderBlocked, market);
+
+  /** Same anchor as SL/TP sliders (entry vs live quote). */
   const stopPctHint =
-    entry != null && entry > 0 && Number.isFinite(stopN) && stopN > 0
-      ? ((stopN - entry) / entry) * 100 * (side === 'long' ? 1 : -1)
+    slReferencePrice != null &&
+    slReferencePrice > 0 &&
+    Number.isFinite(stopN) &&
+    stopN > 0
+      ? ((stopN - slReferencePrice) / slReferencePrice) * 100 * (side === 'long' ? 1 : -1)
       : null;
   const tpPctHint =
-    entry != null && entry > 0 && Number.isFinite(tpN) && tpN > 0
-      ? ((tpN - entry) / entry) * 100 * (side === 'long' ? 1 : -1)
+    tpReferencePrice != null &&
+    tpReferencePrice > 0 &&
+    Number.isFinite(tpN) &&
+    tpN > 0
+      ? ((tpN - tpReferencePrice) / tpReferencePrice) * 100 * (side === 'long' ? 1 : -1)
       : null;
 
-  const entryNum = entry != null && entry > 0 ? entry : null;
-  const slBpsImplied = entryNum != null ? impliedStopBps(entryNum, side, stopN) : null;
-  const tpBpsImplied = entryNum != null ? impliedTakeProfitBps(entryNum, side, tpN) : null;
+  const tpBpsImpliedByBasis =
+    tpReferencePrice != null ? impliedTakeProfitBps(tpReferencePrice, side, tpN) : null;
 
+  const slBpsImpliedByBasis =
+    slReferencePrice != null ? impliedStopBps(slReferencePrice, side, stopN) : null;
   const slSliderPct =
-    slEnabled && entryNum != null && slBpsImplied != null
-      ? Math.min(SL_PCT_SLIDER_MAX, Math.max(0, Math.round(slBpsImplied / 100)))
+    slEnabled && slReferencePrice != null && slBpsImpliedByBasis != null
+      ? Math.min(SL_PCT_SLIDER_MAX, Math.max(0, roundPctToStep(slBpsImpliedByBasis / 100, SL_PCT_STEP)))
       : 0;
+  /** Reflect implied % with fine steps so live quote moves do not quantize to coarse presets (avoids 50%↔25% jumps). */
   const tpSliderPct =
-    !tpEnabled || entryNum == null
+    !tpEnabled || tpReferencePrice == null
       ? 100
-      : tpBpsImplied != null
-        ? Math.min(TP_PCT_SLIDER_MAX, Math.max(TP_PCT_SLIDER_MIN, Math.round(tpBpsImplied / 100)))
+      : tpBpsImpliedByBasis != null
+        ? Math.min(
+            TP_PCT_SLIDER_MAX,
+            Math.max(
+              TP_PCT_SLIDER_MIN,
+              roundPctToStep(tpBpsImpliedByBasis / 100, TP_PCT_REFLECT_STEP),
+            ),
+          )
         : 100;
 
   const slSliderLinearSteps = useMemo(
@@ -747,10 +905,6 @@ export function OrderInputsCard(props: {
 
       {market === 'futures' ? (
         <div className="space-y-2">
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-xs font-semibold text-sigflo-muted">Leverage</span>
-            <span className="text-sm font-bold tabular-nums text-white">{Math.min(leverage, levMax)}x</span>
-          </div>
           <div className="flex items-center justify-between rounded-xl border border-white/[0.08] bg-black/20 px-2 py-1.5">
             <span className="text-[10px] font-semibold uppercase tracking-wider text-sigflo-muted">Margin</span>
             <div className="flex rounded-lg bg-black/40 p-0.5">
@@ -767,6 +921,10 @@ export function OrderInputsCard(props: {
                 </button>
               ))}
             </div>
+          </div>
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-xs font-semibold text-sigflo-muted">Leverage</span>
+            <span className="text-sm font-bold tabular-nums text-white">{Math.min(leverage, levMax)}x</span>
           </div>
           <div className="flex justify-between text-[9px] tabular-nums text-sigflo-muted">
             <span>1x</span>
@@ -803,7 +961,36 @@ export function OrderInputsCard(props: {
       )}
 
       {showLevels ? (
-        <div className="grid grid-cols-2 gap-2">
+        <div className="space-y-2">
+          {market === 'futures' && futuresTpSlTriggerBy != null && onFuturesTpSlTriggerByChange ? (
+            <div className="rounded-xl border border-white/[0.08] bg-black/30 px-2.5 py-2 ring-1 ring-white/[0.04]">
+              <p className="text-[9px] font-semibold uppercase tracking-[0.14em] text-sigflo-muted">TP / SL trigger</p>
+              <p className="mt-0.5 text-[8px] leading-snug text-sigflo-muted/80">
+                Bybit: which price crosses your levels first (same as MEXC Last / Fair / Index).
+              </p>
+              <div className="mt-1.5 inline-flex flex-wrap rounded-md border border-white/[0.08] bg-black/35 p-0.5">
+                {BYBIT_TPSL_TRIGGER_VALUES.map((t) => {
+                  const active = futuresTpSlTriggerBy === t;
+                  return (
+                    <button
+                      key={t}
+                      type="button"
+                      onClick={() => onFuturesTpSlTriggerByChange(t)}
+                      className={`rounded px-2 py-0.5 text-[8px] font-bold uppercase tracking-[0.1em] transition ${
+                        active
+                          ? 'bg-cyan-500/18 text-cyan-100 ring-1 ring-cyan-400/30'
+                          : 'text-sigflo-muted hover:text-sigflo-text'
+                      }`}
+                      title={t === 'MarkPrice' ? 'Mark / fair price' : t === 'LastPrice' ? 'Last traded price' : 'Index price'}
+                    >
+                      {bybitTpSlTriggerShortLabel(t)}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ) : null}
+          <div className="grid grid-cols-2 gap-2">
           <div className="space-y-1">
             <div className="flex items-center justify-between gap-1">
               <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-sigflo-muted">Stop loss</span>
@@ -839,32 +1026,86 @@ export function OrderInputsCard(props: {
               placeholder="USDT"
               aria-label="Stop loss price"
             />
-            {entryNum != null && onStopInputChange ? (
+            {showSlPctPanel ? (
               <div className="mt-1.5 space-y-1.5 rounded-xl border border-white/[0.07] bg-black/35 px-2.5 py-2 ring-1 ring-white/[0.04]">
                 <div className="flex items-center justify-between gap-2">
-                  <span className="text-[8px] font-semibold uppercase tracking-[0.14em] text-sigflo-muted">
-                    % from entry (adverse)
-                  </span>
+                  <div className="flex min-w-0 items-center gap-1">
+                    <span className="text-[8px] font-semibold uppercase tracking-[0.14em] text-sigflo-muted">
+                      % from {pctBasisHeaderText(slPercentBasis, entryBasisUi)} (adverse)
+                    </span>
+                    <div className="inline-flex flex-wrap rounded-md border border-white/[0.08] bg-black/30 p-0.5">
+                      {(market === 'futures' ? FUTURES_SL_TP_PCT_BASES : SPOT_SL_TP_PCT_BASES).map((basis) => {
+                        const active = slPercentBasis === basis;
+                        return (
+                          <button
+                            key={basis}
+                            type="button"
+                            onClick={() => setSlPercentBasis(basis)}
+                            className={`rounded px-1.5 py-0.5 text-[8px] font-semibold uppercase tracking-[0.12em] transition ${
+                              active
+                                ? 'bg-cyan-500/18 text-cyan-100 ring-1 ring-cyan-400/30'
+                                : 'text-sigflo-muted hover:text-sigflo-text'
+                            }`}
+                            title={pctBasisTooltip(basis, market, slTpEntryChip)}
+                          >
+                            {pctBasisChipText(basis, entryChipLabel)}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
                   <span
                     className={`text-[12px] font-bold tabular-nums ${slEnabled ? 'text-rose-200' : 'text-sigflo-muted'}`}
                   >
-                    {slEnabled ? `−${slSliderPct}%` : '—'}
+                    {slEnabled ? `−${fmtPctCompact(slSliderPct)}%` : '—'}
                   </span>
                 </div>
+                {entryNum != null ? (
+                  <p className="text-[7px] font-mono tabular-nums leading-tight text-sigflo-muted/85">
+                    {slTpEntryChip === 'avg' ? 'Avg' : 'Entry'} ${formatQuoteNumber(entryNum)}
+                    {market === 'futures' ? (
+                      <>
+                        <span className="text-sigflo-muted/50"> · </span>
+                        Live{' '}
+                        {quoteNum != null ? (
+                          `$${formatQuoteNumber(quoteNum)}`
+                        ) : (
+                          <span className="text-sigflo-muted/55">…</span>
+                        )}
+                      </>
+                    ) : (
+                      <>
+                        <span className="text-sigflo-muted/50"> · </span>
+                        Last{' '}
+                        {lastNum != null ? (
+                          `$${formatQuoteNumber(lastNum)}`
+                        ) : (
+                          <span className="text-sigflo-muted/55">…</span>
+                        )}
+                      </>
+                    )}
+                  </p>
+                ) : null}
+                {slAwaitingMsg ? (
+                  <p className="text-[7px] leading-snug text-amber-200/85">{slAwaitingMsg}</p>
+                ) : null}
                 <div className="relative w-full">
                   <input
                     type="range"
                     min={0}
                     max={LEVEL_SLIDER_STEPS}
                     step={1}
-                    disabled={!slEnabled}
+                    disabled={!slEnabled || slReferencePrice == null}
                     value={slSliderLinearSteps}
-                    aria-label="Stop loss percent from entry on adverse side"
+                    aria-label={`Stop loss percent from ${pctBasisHeaderText(slPercentBasis, entryBasisUi)} on adverse side`}
                     onChange={(e) => {
                       const rawPct = slPctFromLinearSteps(Number(e.target.value));
-                      const pct = nearestSnapPct(rawPct, SL_SNAP_PCTS);
+                      const pct = Math.min(SL_PCT_SLIDER_MAX, Math.max(0, roundPctToStep(rawPct, SL_PCT_STEP)));
+                      if (slReferencePrice == null || !onStopInputChange) return;
                       setSlEnabled(true);
-                      onStopInputChange(formatQuoteNumber(stopPriceFromBps(entryNum, side, distancePctToBps(pct))));
+                      onStopInputChange(
+                        formatQuoteNumber(stopPriceFromBps(slReferencePrice, side, distancePctToBps(pct))),
+                      );
                     }}
                     className="sigflo-level-slider sigflo-level-slider--rose relative z-[1] w-full cursor-pointer disabled:cursor-not-allowed disabled:opacity-40"
                   />
@@ -891,18 +1132,19 @@ export function OrderInputsCard(props: {
                         <button
                           key={`sl-m-${pct}`}
                           type="button"
+                          disabled={slReferencePrice == null}
                           onClick={() => {
-                            if (entryNum == null || !onStopInputChange) return;
+                            if (slReferencePrice == null || !onStopInputChange) return;
                             setSlEnabled(true);
                             onStopInputChange(
-                              formatQuoteNumber(stopPriceFromBps(entryNum, side, distancePctToBps(pct))),
+                              formatQuoteNumber(stopPriceFromBps(slReferencePrice, side, distancePctToBps(pct))),
                             );
                           }}
                           title={`${pct}% adverse`}
                           style={levelThumbAlignedStyle(norm)}
                           className={`absolute top-0 max-w-[2.25rem] truncate text-center text-[6.5px] font-bold tabular-nums leading-none transition sm:text-[7px] ${
                             on ? 'text-rose-200' : 'text-sigflo-muted/75 hover:text-rose-100/90'
-                          }`}
+                          } disabled:pointer-events-none disabled:opacity-35`}
                         >
                           {pct}%
                         </button>
@@ -911,7 +1153,9 @@ export function OrderInputsCard(props: {
                   </div>
                 </div>
                 <div className="flex justify-between text-[8px] font-medium tabular-nums text-sigflo-muted/75">
-                  <span>0% (entry)</span>
+                  <span>
+                    0% ({pctBasisHeaderText(slPercentBasis, entryBasisUi)})
+                  </span>
                   <span>{SL_PCT_SLIDER_MAX}% max</span>
                 </div>
               </div>
@@ -959,33 +1203,85 @@ export function OrderInputsCard(props: {
               placeholder="USDT"
               aria-label="Take profit price"
             />
-            {entryNum != null && onTakeProfitInputChange ? (
+            {showTpPctPanel ? (
               <div className="mt-1.5 space-y-1.5 rounded-xl border border-white/[0.07] bg-black/35 px-2.5 py-2 ring-1 ring-white/[0.04]">
                 <div className="flex items-center justify-between gap-2">
-                  <span className="text-[8px] font-semibold uppercase tracking-[0.14em] text-sigflo-muted">
-                    % from entry (favorable)
-                  </span>
+                  <div className="flex min-w-0 items-center gap-1">
+                    <span className="text-[8px] font-semibold uppercase tracking-[0.14em] text-sigflo-muted">
+                      % from {pctBasisHeaderText(tpPercentBasis, entryBasisUi)} (favorable)
+                    </span>
+                    <div className="inline-flex flex-wrap rounded-md border border-white/[0.08] bg-black/30 p-0.5">
+                      {(market === 'futures' ? FUTURES_SL_TP_PCT_BASES : SPOT_SL_TP_PCT_BASES).map((basis) => {
+                        const active = tpPercentBasis === basis;
+                        return (
+                          <button
+                            key={basis}
+                            type="button"
+                            onClick={() => setTpPercentBasis(basis)}
+                            className={`rounded px-1.5 py-0.5 text-[8px] font-semibold uppercase tracking-[0.12em] transition ${
+                              active
+                                ? 'bg-cyan-500/18 text-cyan-100 ring-1 ring-cyan-400/30'
+                                : 'text-sigflo-muted hover:text-sigflo-text'
+                            }`}
+                            title={pctBasisTooltip(basis, market, slTpEntryChip)}
+                          >
+                            {pctBasisChipText(basis, entryChipLabel)}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
                   <span
                     className={`text-[12px] font-bold tabular-nums ${tpEnabled ? 'text-emerald-200' : 'text-sigflo-muted'}`}
                   >
-                    {tpEnabled ? `+${tpSliderPct}%` : '—'}
+                    {tpEnabled ? `+${fmtPctCompact(tpSliderPct)}%` : '—'}
                   </span>
                 </div>
+                {entryNum != null ? (
+                  <p className="text-[7px] font-mono tabular-nums leading-tight text-sigflo-muted/85">
+                    {slTpEntryChip === 'avg' ? 'Avg' : 'Entry'} ${formatQuoteNumber(entryNum)}
+                    {market === 'futures' ? (
+                      <>
+                        <span className="text-sigflo-muted/50"> · </span>
+                        Live{' '}
+                        {quoteNum != null ? (
+                          `$${formatQuoteNumber(quoteNum)}`
+                        ) : (
+                          <span className="text-sigflo-muted/55">…</span>
+                        )}
+                      </>
+                    ) : (
+                      <>
+                        <span className="text-sigflo-muted/50"> · </span>
+                        Last{' '}
+                        {lastNum != null ? (
+                          `$${formatQuoteNumber(lastNum)}`
+                        ) : (
+                          <span className="text-sigflo-muted/55">…</span>
+                        )}
+                      </>
+                    )}
+                  </p>
+                ) : null}
+                {tpAwaitingMsg ? (
+                  <p className="text-[7px] leading-snug text-amber-200/85">{tpAwaitingMsg}</p>
+                ) : null}
                 <div className="relative w-full">
                   <input
                     type="range"
                     min={0}
                     max={LEVEL_SLIDER_STEPS}
                     step={1}
-                    disabled={!tpEnabled}
+                    disabled={!tpEnabled || tpReferencePrice == null}
                     value={tpSliderLinearSteps}
-                    aria-label="Take profit percent from entry on favorable side"
+                    aria-label={`Take profit percent from ${pctBasisHeaderText(tpPercentBasis, entryBasisUi)} on favorable side`}
                     onChange={(e) => {
                       const rawPct = tpPctFromLinearSteps(Number(e.target.value));
                       const pct = nearestSnapPct(rawPct, TP_SNAP_PCTS);
+                      if (tpReferencePrice == null || !onTakeProfitInputChange) return;
                       setTpEnabled(true);
                       onTakeProfitInputChange(
-                        formatQuoteNumber(takeProfitPriceFromBps(entryNum, side, distancePctToBps(pct))),
+                        formatQuoteNumber(takeProfitPriceFromBps(tpReferencePrice, side, distancePctToBps(pct))),
                       );
                     }}
                     className="sigflo-level-slider sigflo-level-slider--emerald relative z-[1] w-full cursor-pointer disabled:cursor-not-allowed disabled:opacity-40"
@@ -1013,18 +1309,19 @@ export function OrderInputsCard(props: {
                         <button
                           key={`tp-m-${pct}`}
                           type="button"
+                          disabled={tpReferencePrice == null}
                           onClick={() => {
-                            if (entryNum == null || !onTakeProfitInputChange) return;
+                            if (tpReferencePrice == null || !onTakeProfitInputChange) return;
                             setTpEnabled(true);
                             onTakeProfitInputChange(
-                              formatQuoteNumber(takeProfitPriceFromBps(entryNum, side, distancePctToBps(pct))),
+                              formatQuoteNumber(takeProfitPriceFromBps(tpReferencePrice, side, distancePctToBps(pct))),
                             );
                           }}
                           title={`${pct}% favorable`}
                           style={levelThumbAlignedStyle(norm)}
                           className={`absolute top-0 max-w-[2.25rem] truncate text-center text-[6.5px] font-bold tabular-nums leading-none transition sm:text-[7px] ${
                             on ? 'text-emerald-200' : 'text-sigflo-muted/75 hover:text-emerald-100/90'
-                          }`}
+                          } disabled:pointer-events-none disabled:opacity-35`}
                         >
                           {pct}%
                         </button>
@@ -1033,7 +1330,9 @@ export function OrderInputsCard(props: {
                   </div>
                 </div>
                 <div className="flex justify-between text-[8px] font-medium tabular-nums text-sigflo-muted/75">
-                  <span>{TP_PCT_SLIDER_MIN}%</span>
+                  <span>
+                    {TP_PCT_SLIDER_MIN}% ({pctBasisHeaderText(tpPercentBasis, entryBasisUi)})
+                  </span>
                   <span>{TP_PCT_SLIDER_MAX}%</span>
                 </div>
               </div>
@@ -1045,7 +1344,36 @@ export function OrderInputsCard(props: {
                 {tpPctHint.toFixed(2)}%
               </p>
             ) : null}
+            {onPartialPositionScaleOut ? (
+              <div
+                className="mt-2 space-y-1 rounded-xl border border-emerald-500/20 bg-emerald-500/[0.06] px-2 py-2 ring-1 ring-emerald-400/10"
+                role="group"
+                aria-label="Partial take profit — scale out a fraction of the open exchange position"
+              >
+                <p className="text-[8px] font-semibold uppercase tracking-[0.12em] text-emerald-200/85">
+                  Partial take profit
+                </p>
+                <div className="grid grid-cols-3 gap-1">
+                  {PARTIAL_POSITION_TP_PCTS.map((pct) => (
+                    <button
+                      key={pct}
+                      type="button"
+                      disabled={partialPositionScaleOutBusy}
+                      onClick={() => onPartialPositionScaleOut(pct / 100)}
+                      aria-label={`Scale out ${pct} percent of open position`}
+                      className="flex min-h-[32px] items-center justify-center rounded-lg border border-emerald-400/35 bg-emerald-500/15 px-1 text-center text-[10px] font-bold tabular-nums text-emerald-50 transition hover:border-emerald-300/50 hover:bg-emerald-500/25 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-45"
+                    >
+                      {pct}%
+                    </button>
+                  ))}
+                </div>
+                <p className="text-[8px] leading-snug text-sigflo-muted/90">
+                  Same execution as the chart dock partial close.
+                </p>
+              </div>
+            ) : null}
           </div>
+        </div>
         </div>
       ) : null}
 

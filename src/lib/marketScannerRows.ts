@@ -207,6 +207,10 @@ function isSyntheticMoverSignal(signal: CryptoSignal): boolean {
 
 export function deriveMarketStatus(signal: CryptoSignal): MarketRowStatus {
   if (signal.setupType === 'overextended') return 'overextended';
+  if (signal.timingState === 'extended') return 'extended';
+  if (signal.timingState === 'triggered') return 'triggered';
+  if (signal.timingState === 'ready' || signal.timingState === 'developing') return 'developing';
+  if (signal.timingState === 'expired') return 'idle';
   // List gainers with heuristic “pullback” are constructive tape, not a fired setup.
   if (isSyntheticMoverSignal(signal) && signal.setupType === 'pullback') {
     if (signal.setupScore >= 45) return 'developing';
@@ -312,13 +316,19 @@ export function countActiveSetups(rows: MarketScannerRow[], minScore = 70): numb
 }
 
 export function countMarketRowStatuses(rows: MarketScannerRow[]): Record<MarketRowStatus, number> {
-  const out: Record<MarketRowStatus, number> = { idle: 0, developing: 0, triggered: 0, overextended: 0 };
+  const out: Record<MarketRowStatus, number> = {
+    idle: 0,
+    developing: 0,
+    triggered: 0,
+    extended: 0,
+    overextended: 0,
+  };
   for (const r of rows) out[r.status]++;
   return out;
 }
 
 export function parseMarketStatusQuery(v: string | null): MarketRowStatus | null {
-  if (v === 'idle' || v === 'developing' || v === 'triggered' || v === 'overextended') return v;
+  if (v === 'idle' || v === 'developing' || v === 'triggered' || v === 'extended' || v === 'overextended') return v;
   return null;
 }
 
@@ -330,6 +340,8 @@ export function scannerStatusTitle(status: MarketRowStatus): string {
       return 'Developing';
     case 'overextended':
       return 'Overextended';
+    case 'extended':
+      return 'Extended';
     default:
       return 'Idle';
   }

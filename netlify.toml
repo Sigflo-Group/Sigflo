@@ -36,6 +36,12 @@
   status = 200
   force = true
 
+[[redirects]]
+  from = "/api/admin/beta"
+  to = "/.netlify/functions/admin-beta"
+  status = 200
+  force = true
+
 # Same APIs when the app uses VITE_BASE=/feed/ (resolveAppApiPath → /feed/api/...)
 [[redirects]]
   from = "/feed/api/ai/suggest"
@@ -46,6 +52,12 @@
 [[redirects]]
   from = "/feed/api/ai/news-scan"
   to = "/.netlify/functions/market-news-scan"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/feed/api/admin/beta"
+  to = "/.netlify/functions/admin-beta"
   status = 200
   force = true
 

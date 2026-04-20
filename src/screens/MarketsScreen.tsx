@@ -80,11 +80,11 @@ export default function MarketsScreen() {
         : 'bg-slate-500';
 
   return (
-    <div className="sigflo-markets-screen-root relative min-h-[100dvh] pb-[max(5.5rem,env(safe-area-inset-bottom))] pt-[max(0.75rem,env(safe-area-inset-top))]">
-      <div className="relative z-10 mx-auto w-full max-w-lg px-4">
+    <div className="sigflo-markets-screen-root relative min-h-[100dvh] pb-[max(5rem,env(safe-area-inset-bottom))] pt-[max(0.45rem,env(safe-area-inset-top))] sm:pb-[max(5.5rem,env(safe-area-inset-bottom))] sm:pt-[max(0.75rem,env(safe-area-inset-top))]">
+      <div className="relative z-10 mx-auto w-full max-w-none px-0 sm:max-w-lg sm:px-4">
         {/* Header */}
-        <header className="mb-4">
-          <h1 className="text-2xl font-bold tracking-tight text-white">Markets</h1>
+        <header className="mb-3 px-3 sm:mb-4 sm:px-0">
+          <h1 className="text-[1.32rem] font-bold tracking-tight text-white sm:text-2xl">Markets</h1>
           <div className="mt-1 flex items-center gap-2 text-[11px] text-sigflo-muted">
             <span className={`h-1.5 w-1.5 rounded-full ${statusDot}`} />
             <span>
@@ -108,18 +108,18 @@ export default function MarketsScreen() {
               Triggered
             </span>
           </div>
-          <div className="mt-2 flex flex-wrap items-center justify-end gap-2">
+          <div className="mt-1.5 flex flex-wrap items-center justify-end gap-1.5 sm:mt-2 sm:gap-2">
             <button
               type="button"
               onClick={() => setNewsScanOpen(true)}
-              className="inline-flex items-center rounded-lg border border-white/[0.1] bg-white/[0.04] px-2.5 py-1.5 text-[11px] font-semibold text-sigflo-text transition hover:border-cyan-400/25 hover:bg-white/[0.07]"
+              className="inline-flex items-center rounded-lg border border-white/[0.1] bg-white/[0.04] px-2 py-1.5 text-[11px] font-semibold text-sigflo-text transition hover:border-cyan-400/25 hover:bg-white/[0.07] sm:px-2.5"
             >
               Today&apos;s brief
             </button>
             <button
               type="button"
               onClick={() => navigate(getFeedRoute())}
-              className="inline-flex items-center gap-2 rounded-lg border border-sigflo-accent/26 bg-sigflo-accent/10 px-2.5 py-1.5 text-[11px] font-semibold text-sigflo-accent transition hover:border-sigflo-accent/40 hover:bg-sigflo-accent/14"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-sigflo-accent/26 bg-sigflo-accent/10 px-2 py-1.5 text-[11px] font-semibold text-sigflo-accent transition hover:border-sigflo-accent/40 hover:bg-sigflo-accent/14 sm:gap-2 sm:px-2.5"
             >
               <span className="relative flex h-1.5 w-1.5">
                 <span className="absolute inline-flex h-full w-full animate-pulse-dot rounded-full bg-sigflo-accent [animation-duration:1.8s]" />
@@ -131,7 +131,7 @@ export default function MarketsScreen() {
         </header>
 
         {/* Tabs */}
-        <div className="mb-4 flex gap-1 rounded-xl border border-white/[0.06] bg-white/[0.02] p-1" role="tablist">
+        <div className="mb-3 mx-3 flex gap-1 rounded-xl border border-white/[0.06] bg-white/[0.02] p-0.5 sm:mb-4 sm:mx-0 sm:p-1" role="tablist">
           {tabs.map(({ id, label }) => {
             const active = tab === id;
             return (
@@ -141,7 +141,7 @@ export default function MarketsScreen() {
                 role="tab"
                 aria-selected={active}
                 onClick={() => setTab(id)}
-                className={`min-w-0 flex-1 rounded-lg px-2 py-2 text-xs font-semibold transition sm:px-3 sm:text-sm ${
+                className={`min-w-0 flex-1 rounded-lg px-2 py-1.5 text-[11px] font-semibold transition sm:px-3 sm:py-2 sm:text-sm ${
                   active
                     ? 'bg-sigflo-accent/12 text-sigflo-accent ring-1 ring-sigflo-accent/25'
                     : 'text-sigflo-muted hover:text-sigflo-text'
@@ -154,7 +154,7 @@ export default function MarketsScreen() {
         </div>
 
         {/* Market rows */}
-        <div className="space-y-2">
+        <div className="space-y-1.5 px-2 sm:space-y-2 sm:px-0">
           {tab === 'movers' && !tickersLoading && moverRows.length === 0 ? (
             <p className="rounded-2xl border border-white/[0.06] bg-sigflo-surface sigflo-panel-texture px-4 py-10 text-center text-sm text-sigflo-muted">
               No movers yet — check back later.

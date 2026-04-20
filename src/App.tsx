@@ -1,9 +1,12 @@
 import { useEffect, useState } from 'react';
 import { Navigate, Outlet, Route, Routes, useLocation } from 'react-router-dom';
 import { AppShell } from '@/components/layout/AppShell';
+import { BetaAccessGate } from '@/components/layout/BetaAccessGate';
 import { ErrorBoundary } from '@/components/layout/ErrorBoundary';
+import { SigfloMobileLoader } from '@/components/layout/SigfloMobileLoader';
 import { SplashScreen } from '@/components/layout/SplashScreen';
-import { getFeedRoute, getLandingRoute } from '@/config/appRoutes';
+import { getFeedRoute } from '@/config/appRoutes';
+import { SIGFLO_MOBILE_LOADER_FEED_STATUSES } from '@/config/sigfloMobileLoaderStatuses';
 import { useAuth } from '@/context/AuthContext';
 import { isTradingStyleOnboarded } from '@/lib/tradingStyleOnboarding';
 import AuthCallbackScreen from '@/screens/AuthCallbackScreen';
@@ -14,7 +17,7 @@ import BotSettingsScreen from '@/screens/BotSettingsScreen';
 import BotsScreen from '@/screens/BotsScreen';
 import { EngineDebugScreen } from '@/screens/EngineDebugScreen';
 import { FeedScreen } from '@/screens/FeedScreen';
-import LandingPage from '@/screens/LandingPage';
+import BetaAdminScreen from '@/screens/BetaAdminScreen';
 import LoginScreen from '@/screens/LoginScreen';
 import MarketsScreen from '@/screens/MarketsScreen';
 import OnboardingTradingStyleScreen from '@/screens/OnboardingTradingStyleScreen';
@@ -23,6 +26,7 @@ import PrivacyPolicyScreen from '@/screens/PrivacyPolicyScreen';
 import ProfileScreen from '@/screens/ProfileScreen';
 import { ScannerLabScreen } from '@/screens/ScannerLabScreen';
 import { TradeScreen } from '@/screens/TradeScreen';
+import { SignalEngineProviderShell } from '@/components/layout/SignalEngineProviderShell';
 
 function ProtectedLayout() {
   const { user, authMode } = useAuth();
@@ -57,8 +61,17 @@ export default function App() {
   const location = useLocation();
   const { loading: authLoading } = useAuth();
   const [splashMinElapsed, setSplashMinElapsed] = useState(false);
+  const [useMobileBootLoader, setUseMobileBootLoader] = useState(
+    () => typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches,
+  );
   const feedRoute = getFeedRoute();
-  const landingRoute = getLandingRoute();
+
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 767px)');
+    const onChange = () => setUseMobileBootLoader(mq.matches);
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  }, []);
 
   useEffect(() => {
     const t = window.setTimeout(() => setSplashMinElapsed(true), 1050);
@@ -66,7 +79,10 @@ export default function App() {
   }, []);
 
   const skipSplash =
-    isAuthFastEntryPath(location.pathname) || location.pathname === '/privacy' || location.pathname === '/privacy/';
+    isAuthFastEntryPath(location.pathname) ||
+    location.pathname === '/privacy' ||
+    location.pathname === '/privacy/' ||
+    location.pathname === '/admin/beta';
   const showSplash = !skipSplash && (!splashMinElapsed || authLoading);
 
   useEffect(() => {
@@ -76,7 +92,15 @@ export default function App() {
   if (showSplash) {
     return (
       <ErrorBoundary>
-        <SplashScreen />
+        {useMobileBootLoader ? (
+          <SigfloMobileLoader
+            statuses={SIGFLO_MOBILE_LOADER_FEED_STATUSES}
+            intervalMs={1800}
+            showProgress
+          />
+        ) : (
+          <SplashScreen />
+        )}
       </ErrorBoundary>
     );
   }
@@ -89,23 +113,27 @@ export default function App() {
           <Route path="/privacy" element={<PrivacyPolicyScreen />} />
           <Route path="/auth/callback" element={<AuthCallbackScreen />} />
           <Route path="/auth/reset-password" element={<ResetPasswordScreen />} />
-          <Route path={landingRoute} element={<LandingPage />} />
           <Route element={<ProtectedLayout />}>
-            <Route path="/onboarding" element={<OnboardingTradingStyleScreen />} />
-            <Route element={<OnboardingGate />}>
-              <Route element={<AppShell />}>
-                <Route path={feedRoute} element={<FeedScreen />} />
-                <Route path="/markets" element={<MarketsScreen />} />
-                <Route path="/bots" element={<BotsScreen />} />
-                <Route path="/bots/:botId/focus" element={<BotFocusScreen />} />
-                <Route path="/bots/:botId/settings" element={<BotSettingsScreen />} />
-                <Route path="/bots/:botId" element={<BotDetailScreen />} />
-                <Route path="/portfolio" element={<PortfolioScreen />} />
-                <Route path="/profile" element={<ProfileScreen />} />
-                {import.meta.env.DEV ? <Route path="/engine-debug" element={<EngineDebugScreen />} /> : null}
-                {import.meta.env.DEV ? <Route path="/scanner-lab" element={<ScannerLabScreen />} /> : null}
+            <Route path="/admin/beta" element={<BetaAdminScreen />} />
+            <Route element={<BetaAccessGate />}>
+              <Route path="/onboarding" element={<OnboardingTradingStyleScreen />} />
+              <Route element={<OnboardingGate />}>
+                <Route element={<SignalEngineProviderShell />}>
+                  <Route element={<AppShell />}>
+                    <Route path={feedRoute} element={<FeedScreen />} />
+                    <Route path="/markets" element={<MarketsScreen />} />
+                    <Route path="/bots" element={<BotsScreen />} />
+                    <Route path="/bots/:botId/focus" element={<BotFocusScreen />} />
+                    <Route path="/bots/:botId/settings" element={<BotSettingsScreen />} />
+                    <Route path="/bots/:botId" element={<BotDetailScreen />} />
+                    <Route path="/portfolio" element={<PortfolioScreen />} />
+                    <Route path="/profile" element={<ProfileScreen />} />
+                    {import.meta.env.DEV ? <Route path="/engine-debug" element={<EngineDebugScreen />} /> : null}
+                    {import.meta.env.DEV ? <Route path="/scanner-lab" element={<ScannerLabScreen />} /> : null}
+                  </Route>
+                  <Route path="/trade" element={<TradeScreen />} />
+                </Route>
               </Route>
-              <Route path="/trade" element={<TradeScreen />} />
             </Route>
           </Route>
           <Route path="*" element={<Navigate to={feedRoute} replace />} />

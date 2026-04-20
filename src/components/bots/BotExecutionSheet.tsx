@@ -440,7 +440,9 @@ export type BotExecutionSheetProps = {
   minOrderUsd: number;
   maxLeverage: number;
   /** Called after the 200ms slide commit delay. */
-  onExecute: (args: { amountUsd: number; leverage: number }) => Promise<{ ok: true } | { ok: false; message: string }>;
+  onExecute: (args: { amountUsd: number; leverage: number }) => Promise<
+    { ok: true } | { ok: false; message: string; cta?: { label: string; href: string } }
+  >;
   onViewPosition: () => void;
   tabBarInsetPx?: number;
 };
@@ -465,6 +467,7 @@ export function BotExecutionSheet({
   const [busy, setBusy] = useState(false);
   const [phase, setPhase] = useState<'form' | 'success' | 'error'>('form');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [errorCta, setErrorCta] = useState<{ label: string; href: string } | null>(null);
 
   const riskModel = useMemo(
     () => ({
@@ -498,6 +501,7 @@ export function BotExecutionSheet({
     if (!open) return;
     setPhase('form');
     setErrorMessage(null);
+    setErrorCta(null);
     setBusy(false);
     const seed = roundUsd(Math.max(minOrderUsd, balanceUsd > 0 ? (balanceUsd * 10) / 100 : minOrderUsd));
     setAmountUsd(clamp(seed, minOrderUsd, Math.max(minOrderUsd, balanceUsd)));
@@ -513,9 +517,16 @@ export function BotExecutionSheet({
     phase === 'form';
 
   const runExecute = async () => {
-    if (!canSlide) return;
+    const canSubmitNow =
+      balanceUsd >= minOrderUsd &&
+      cappedAmount >= minOrderUsd &&
+      Number.isFinite(chartModel.entry) &&
+      chartModel.entry > 0 &&
+      !busy;
+    if (!canSubmitNow) return;
     setBusy(true);
     setErrorMessage(null);
+    setErrorCta(null);
     try {
       const res = await onExecute({ amountUsd: cappedAmount, leverage: cappedLev });
       if (res.ok) {
@@ -528,10 +539,12 @@ export function BotExecutionSheet({
       } else {
         setPhase('error');
         setErrorMessage(res.message);
+        setErrorCta(res.cta ?? null);
       }
     } catch {
       setPhase('error');
       setErrorMessage('Something went wrong — try again.');
+      setErrorCta(null);
     } finally {
       setBusy(false);
     }
@@ -658,12 +671,35 @@ export function BotExecutionSheet({
               {phase === 'error' && errorMessage ? (
                 <div className="mt-3 rounded-xl border border-rose-400/30 bg-rose-500/10 px-3 py-2 text-center text-xs font-medium text-rose-100">
                   {errorMessage}
+                  {errorCta ? (
+                    <button
+                      type="button"
+                      className="mt-2 block w-full rounded-lg border border-rose-300/45 bg-rose-500/12 py-2 text-[11px] font-bold uppercase tracking-wide text-rose-100 transition hover:bg-rose-500/18"
+                      onClick={() => {
+                        window.open(errorCta.href, '_blank', 'noopener,noreferrer');
+                      }}
+                    >
+                      {errorCta.label}
+                    </button>
+                  ) : null}
+                  {errorCta ? (
+                    <button
+                      type="button"
+                      className="mt-2 block w-full rounded-lg border border-cyan-300/40 bg-cyan-500/10 py-2 text-[11px] font-bold uppercase tracking-wide text-cyan-100 transition hover:bg-cyan-500/18"
+                      onClick={() => {
+                        void runExecute();
+                      }}
+                    >
+                      I accepted terms, retry now
+                    </button>
+                  ) : null}
                   <button
                     type="button"
                     className="mt-2 block w-full rounded-lg border border-rose-400/35 py-2 text-[11px] font-bold uppercase tracking-wide text-rose-100 transition hover:bg-rose-500/15"
                     onClick={() => {
                       setPhase('form');
                       setErrorMessage(null);
+                      setErrorCta(null);
                     }}
                   >
                     Retry

@@ -16,6 +16,8 @@ export type ExitAiCoPilotModel = {
   primaryStatus: ExitAiPrimaryStatus;
   /** Short label, e.g. "Holding" */
   statusTitle: string;
+  /** Directional readout to avoid ambiguity on hold/exit intent */
+  directionLine: string;
   /** What the AI is trying to do right now */
   intentLine: string;
   /** Subtle confidence / pressure readout */
@@ -202,6 +204,7 @@ export function buildActionPreviewLine(input: {
 
 export function buildExitAiCoPilotModel(input: {
   mode: ExitAiMode;
+  side: 'long' | 'short';
   flow: ResolvedExitGuidanceFlow | null;
   nextPlanned: string;
   safeguards: AutomationSafeguards;
@@ -236,6 +239,7 @@ export function buildExitAiCoPilotModel(input: {
   return {
     primaryStatus,
     statusTitle: statusTitleFor(primaryStatus),
+    directionLine: input.side === 'short' ? 'Short bias' : 'Long bias',
     intentLine: buildIntentLine(primaryStatus, input.mode, g),
     confidenceLine: buildConfidenceLine(primaryStatus, input.mode, g),
     actionPreview,

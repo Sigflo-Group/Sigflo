@@ -83,6 +83,31 @@ export default {
           '55%': { opacity: '0.06' },
           '100%': { transform: 'translateX(220%) skewX(-14deg)', opacity: '0' },
         },
+        /** Splash / boot: logo rotational drift */
+        'sigflo-loader-spin-slow': {
+          from: { transform: 'rotate(0deg)' },
+          to: { transform: 'rotate(360deg)' },
+        },
+        /** Splash / boot: subtle vertical + scale “breathing” */
+        'sigflo-loader-float-soft': {
+          '0%, 100%': { transform: 'translateY(0) scale(1)' },
+          '50%': { transform: 'translateY(-10px) scale(1.04)' },
+        },
+        /** Ambient glow orbs behind splash */
+        'sigflo-loader-orb-float': {
+          '0%, 100%': { transform: 'translateY(0)', opacity: '0.4' },
+          '50%': { transform: 'translateY(-40px)', opacity: '1' },
+        },
+        /** Progress bar specular sweep */
+        'sigflo-loader-beam': {
+          '0%': { transform: 'translateX(-120%)' },
+          '100%': { transform: 'translateX(320%)' },
+        },
+        /** Compact mobile loader: logo breathing pulse */
+        'sigflo-mobile-logo-pulse': {
+          '0%, 100%': { transform: 'scale(1)', opacity: '0.92' },
+          '50%': { transform: 'scale(1.045)', opacity: '1' },
+        },
       },
       animation: {
         'pulse-dot': 'pulse-dot 2s ease-in-out infinite',
@@ -90,6 +115,12 @@ export default {
         'glow-breathe': 'glow-breathe 4s ease-in-out infinite',
         'spark-glow': 'spark-glow 5s ease-in-out infinite',
         'position-shimmer': 'position-shimmer 7.5s ease-in-out infinite',
+        'sigflo-loader-spin-slow': 'sigflo-loader-spin-slow 18s linear infinite',
+        'sigflo-loader-float-soft': 'sigflo-loader-float-soft 6s ease-in-out infinite',
+        'sigflo-loader-orb-10': 'sigflo-loader-orb-float 10s ease-in-out infinite',
+        'sigflo-loader-orb-14': 'sigflo-loader-orb-float 14s ease-in-out infinite',
+        'sigflo-loader-beam': 'sigflo-loader-beam 1.6s linear infinite',
+        'sigflo-mobile-logo-pulse': 'sigflo-mobile-logo-pulse 2.2s ease-in-out infinite',
       },
     },
   },

@@ -1,6 +1,10 @@
-import { tradeTimingChipProps, type TradeTimingChipState } from '@/lib/tradeTimingChip';
+import { blendTimingReadinessScore, type TradeTimingChipState } from '@/lib/tradeTimingChip';
+import {
+  buildTradeTimingUiModel,
+  executionQualityExplanation,
+} from '@/lib/tradeSetupExecutionModel';
 import type { MarketRowStatus } from '@/types/markets';
-import type { TradeSide } from '@/types/trade';
+import type { ExecutionQuality, TradeSide } from '@/types/trade';
 
 export type EntryGuidance = {
   timingState: TradeTimingChipState;
@@ -8,11 +12,14 @@ export type EntryGuidance = {
   action: string;
   reason: string;
   confidenceLabel: 'High' | 'Medium' | 'Low';
+  /** Setup vs execution model — short helper under timing. */
+  timingHelperText?: string;
+  executionSummary?: string | null;
 };
 
 /**
- * Pre-entry (and light in-position) copy for the scenario strip — mirrors exit guidance shape.
- * Uses scanner timing + scores + distance from last to planned entry.
+ * Pre-entry (and in-position) copy for the scenario strip — uses setup/execution split
+ * ({@link buildTradeTimingUiModel}) so fills are not mislabeled as “Weak timing”.
  */
 export function computeTradeEntryGuidance(args: {
   marketStatus: MarketRowStatus;
@@ -21,22 +28,36 @@ export function computeTradeEntryGuidance(args: {
   side: TradeSide;
   lastPrice: number;
   planEntry: number;
-  /** Open position: entry is locked; copy shifts to management framing. */
   hasOpenPosition: boolean;
+  executionQuality?: ExecutionQuality | null;
 }): EntryGuidance {
-  const { state, label } = tradeTimingChipProps(args.marketStatus, args.tradeScore);
-  const blend = (args.setupScore / 100) * 0.45 + (args.tradeScore / 100) * 0.55;
+  const ui = buildTradeTimingUiModel({
+    inPosition: args.hasOpenPosition,
+    marketStatus: args.marketStatus,
+    executionQuality: args.executionQuality ?? null,
+  });
+
+  const blend = blendTimingReadinessScore(args.setupScore, args.tradeScore) / 100;
   let confidenceLabel: EntryGuidance['confidenceLabel'] = 'Medium';
   if (blend > 0.62) confidenceLabel = 'High';
   else if (blend < 0.42) confidenceLabel = 'Low';
 
+  const executionSummary =
+    args.hasOpenPosition && args.executionQuality != null
+      ? `Execution: ${args.executionQuality === 'strong' ? 'Strong' : args.executionQuality === 'okay' ? 'Okay' : 'Weak'} — ${executionQualityExplanation(args.executionQuality)}`
+      : null;
+
   if (args.hasOpenPosition) {
     return {
-      timingState: state,
-      timingLabel: label,
-      action: 'Entry is live — risk is now path, size, and invalidation vs your plan.',
+      timingState: ui.chipState,
+      timingLabel: ui.chipLabel,
+      timingHelperText: ui.helperText,
+      executionSummary,
+      action: 'Entry is live — focus on path, size, and invalidation vs your plan.',
       reason:
-        'Focus on tape vs stop/target; add size only when structure still matches the thesis and your safeguards allow.',
+        args.executionQuality === 'weak'
+          ? 'Entered after optimal range — late entry reduced trade quality; manage risk tightly vs your stop.'
+          : 'Focus on tape vs stop/target; add size only when structure still matches the thesis and your safeguards allow.',
       confidenceLabel,
     };
   }
@@ -44,29 +65,23 @@ export function computeTradeEntryGuidance(args: {
   let action: string;
   let reason: string;
 
-  switch (state) {
-    case 'ready':
-      action = 'Prefer limits or scaled bids near plan entry — avoid chasing spikes.';
-      reason = 'Timing and score line up for execution if liquidity and spread stay reasonable.';
+  switch (ui.setupState) {
+    case 'triggered':
+      action = 'Entry window is open — prefer limits or scaled bids near plan entry; avoid chasing spikes.';
+      reason = 'This is the first actionable moment for this setup on the scanner timeline.';
       break;
-    case 'developing':
+    case 'building':
       action = 'Let the setup finish — wait for confirmation before committing size.';
       reason = 'Structure is still forming; early size increases variance.';
-      break;
-    case 'early':
-      action = 'Wait for a cleaner trigger or a better price pocket vs your plan.';
-      reason = 'Conditions are not yet aligned for new risk on this signal.';
-      break;
-    case 'invalid':
-      action = 'Stand down or cut intended size until risk posture improves.';
-      reason =
-        args.tradeScore < 45
-          ? 'Trade quality or sizing flags elevated risk for fresh exposure.'
-          : 'Extension or timing suggests poor risk/reward for new entries here.';
       break;
     default:
       action = 'Watch your levels; size only when your rules are satisfied.';
       reason = 'Patience beats forcing entries.';
+  }
+
+  if (ui.chipState === 'invalid') {
+    action = 'Stand down or cut intended size until risk posture improves.';
+    reason = 'Extension or late-setup risk suggests poor risk/reward for fresh entries here.';
   }
 
   if (args.planEntry > 0 && args.lastPrice > 0) {
@@ -80,8 +95,10 @@ export function computeTradeEntryGuidance(args: {
   }
 
   return {
-    timingState: state,
-    timingLabel: label,
+    timingState: ui.chipState,
+    timingLabel: ui.chipLabel,
+    timingHelperText: ui.helperText,
+    executionSummary: null,
     action,
     reason,
     confidenceLabel,

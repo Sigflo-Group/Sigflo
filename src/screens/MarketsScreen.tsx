@@ -125,7 +125,10 @@ export default function MarketsScreen() {
                 <span className="absolute inline-flex h-full w-full animate-pulse-dot rounded-full bg-sigflo-accent [animation-duration:1.8s]" />
                 <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-sigflo-accent" />
               </span>
-              {triggeredNowCount} signal{triggeredNowCount === 1 ? '' : 's'} triggered now
+              <span className="sm:hidden">{triggeredNowCount} triggered</span>
+              <span className="hidden sm:inline">
+                {triggeredNowCount} signal{triggeredNowCount === 1 ? '' : 's'} triggered now
+              </span>
             </button>
           </div>
         </header>

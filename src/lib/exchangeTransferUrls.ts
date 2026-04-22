@@ -12,6 +12,12 @@ export const BYBIT_DEPOSIT_HREF = 'https://www.bybit.com/user/assets/deposit';
 /** MEXC spot / funding deposit (logged-in). */
 export const MEXC_DEPOSIT_HREF = 'https://www.mexc.com/assets/deposit';
 
+/** Bybit API key management page. */
+export const BYBIT_API_KEYS_HREF = 'https://www.bybit.com/app/user/api-management';
+
+/** MEXC API key management page. */
+export const MEXC_API_KEYS_HREF = 'https://www.mexc.com/user/openapi';
+
 /** Alternate assets route (exchange index) when the `/app/` hub misbehaves. */
 export const BYBIT_USER_ASSETS_EXCHANGE_HREF = 'https://www.bybit.com/user/assets/exchange/index';
 

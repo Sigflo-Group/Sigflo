@@ -21,6 +21,7 @@ import { ScannerInsightCard } from '@/components/trade/ScannerInsightCard';
 import { TradingControlExitBridge } from '@/components/trade/TradingControlExitBridge';
 import { TradingControlTradeHint } from '@/components/trade/TradingControlTradeHint';
 import { TradeControls } from '@/components/trade/TradeControls';
+import { GuidedExecutionPanel, type GuidedExecutionSetup } from '@/components/trade/GuidedExecutionPanel';
 import { LiveIndicator } from '@/components/trade/LiveIndicator';
 import { AdjustRiskSheet, type AdjustRiskPositionSnapshot } from '@/components/trade/AdjustRiskSheet';
 import { ManagePartialCloseSheet } from '@/components/trade/position/ManagePartialCloseSheet';
@@ -330,6 +331,8 @@ export function TradeScreen() {
   const [manageOrderDraftDirty, setManageOrderDraftDirty] = useState(false);
   const [closeAllModalOpen, setCloseAllModalOpen] = useState(false);
   const [closedPositionSummary, setClosedPositionSummary] = useState<ClosedPositionSummary | null>(null);
+  const [guidedExecutionOpen, setGuidedExecutionOpen] = useState(false);
+  const [guidedExecutionSide, setGuidedExecutionSide] = useState<TradeSide>('long');
   const [tick, setTick] = useState(0);
   const appliedPortfolioDefaults = useRef<string | null>(null);
   /** One-time seed for amount from balance cap (avoid default $1200 → 100% on small UTA). */
@@ -1362,6 +1365,65 @@ export function TradeScreen() {
     side,
   ]);
 
+  const guidedExecutionSetup = useMemo<GuidedExecutionSetup>(() => {
+    const sideForPanel = guidedExecutionSide;
+    const entry =
+      Number.isFinite(mergedModel.entry) && mergedModel.entry > 0
+        ? mergedModel.entry
+        : Number.isFinite(mergedModel.lastPrice) && mergedModel.lastPrice > 0
+          ? mergedModel.lastPrice
+          : 0;
+    const stopCandidate = Number.isFinite(stopParsed) && stopParsed > 0 ? stopParsed : mergedModel.stop;
+    const targetCandidate = Number.isFinite(targetParsed) && targetParsed > 0 ? targetParsed : mergedModel.target;
+    const coerced = coerceStopTargetToSide(
+      sideForPanel,
+      entry,
+      Number.isFinite(stopCandidate) && stopCandidate > 0 ? stopCandidate : entry * (sideForPanel === 'long' ? 0.998 : 1.002),
+      Number.isFinite(targetCandidate) && targetCandidate > 0
+        ? targetCandidate
+        : entry * (sideForPanel === 'long' ? 1.003 : 0.997),
+      selectedSignal.setupScore,
+    );
+    const rr =
+      entry > 0 && Math.abs(coerced.stop - entry) > 0
+        ? Math.abs(coerced.target - entry) / Math.abs(coerced.stop - entry)
+        : 0;
+    return {
+      symbol: mergedModel.pair,
+      direction: sideForPanel,
+      statusLabel: uiSignalStateLabel(uiSignalStateFromMarketStatus(scannerStatus)),
+      setupScore: selectedSignal.setupScore,
+      setupLabel: setupScoreBandShort(selectedSignal),
+      rationale: selectedSignal.aiExplanation,
+      entry,
+      stop: coerced.stop,
+      target: coerced.target,
+      positionSizeUsd: metrics.positionSizeUsd,
+      leverage,
+      estimatedMarginUsd: metrics.amountUsedUsd,
+      liquidationBufferPct:
+        entry > 0 && Number.isFinite(metrics.liquidation)
+          ? Math.abs((entry - metrics.liquidation) / entry) * 100
+          : 0,
+      riskRewardRatio: rr,
+    };
+  }, [
+    guidedExecutionSide,
+    leverage,
+    mergedModel.entry,
+    mergedModel.lastPrice,
+    mergedModel.pair,
+    mergedModel.stop,
+    mergedModel.target,
+    metrics.amountUsedUsd,
+    metrics.liquidation,
+    metrics.positionSizeUsd,
+    scannerStatus,
+    selectedSignal,
+    stopParsed,
+    targetParsed,
+  ]);
+
   const scenarioProb = useMemo(
     () =>
       computeScenarioProbabilities({
@@ -2245,7 +2307,12 @@ export function TradeScreen() {
   );
 
   const executeTrade = useCallback(
-    async (nextSide: TradeSide, opts?: { manageIntent?: 'add' | 'reverse' }) => {
+    async (nextSide: TradeSide, opts?: { manageIntent?: 'add' | 'reverse'; bypassGuidedExecution?: boolean }) => {
+      if (!isManageMode && !opts?.bypassGuidedExecution) {
+        setGuidedExecutionSide(nextSide);
+        setGuidedExecutionOpen(true);
+        return;
+      }
       if (!canExecute) {
         flashTradeToast(sizingValidation.reason ?? 'Set a valid position size before placing an order.');
         return;
@@ -2471,6 +2538,7 @@ export function TradeScreen() {
       stopParsed,
       targetParsed,
       useRealExecution,
+      isManageMode,
     ],
   );
 
@@ -3866,13 +3934,12 @@ export function TradeScreen() {
                   >
                     <button
                       type="button"
-                      disabled={hasActiveTradePosition}
                       onClick={() => setSetupMode(false)}
                       className={`min-w-0 flex-1 rounded px-1.5 py-1 text-[7px] font-semibold uppercase tracking-[0.08em] transition ${
-                        !setupMode && !hasActiveTradePosition
+                        !setupMode
                           ? 'bg-white/[0.12] text-white'
                           : 'text-sigflo-muted hover:text-white'
-                      } disabled:cursor-not-allowed disabled:opacity-60`}
+                      }`}
                     >
                       Clean
                     </button>
@@ -3880,7 +3947,7 @@ export function TradeScreen() {
                       type="button"
                       onClick={() => setSetupMode(true)}
                       className={`min-w-0 flex-1 rounded px-1.5 py-1 text-[7px] font-semibold uppercase tracking-[0.08em] transition ${
-                        setupMode || hasActiveTradePosition
+                        setupMode
                           ? 'bg-cyan-500/18 text-cyan-100 ring-1 ring-cyan-400/25'
                           : 'text-sigflo-muted hover:text-cyan-100'
                       }`}
@@ -4019,6 +4086,27 @@ export function TradeScreen() {
           }}
           disabled={!!orderPending}
           busy={!!orderPending}
+        />
+      ) : null}
+
+      {!isManageMode ? (
+        <GuidedExecutionPanel
+          open={guidedExecutionOpen}
+          setup={guidedExecutionSetup}
+          onClose={() => setGuidedExecutionOpen(false)}
+          onExecute={async () => {
+            setGuidedExecutionOpen(false);
+            await executeTrade(guidedExecutionSide, { bypassGuidedExecution: true });
+          }}
+          onViewPosition={() => {
+            if (market === 'futures' && exchangePositionForSymbol) {
+              openManagePositionView();
+              setGuidedExecutionOpen(false);
+              return;
+            }
+            navigate('/portfolio');
+            setGuidedExecutionOpen(false);
+          }}
         />
       ) : null}
 

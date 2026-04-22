@@ -1,10 +1,6 @@
 import type { CryptoSignal } from '@/types/signal';
 import type { AiInsight, TradeChartCandle, TradeSide, TradeViewModel } from '@/types/trade';
 
-function clamp(n: number, lo: number, hi: number) {
-  return Math.min(hi, Math.max(lo, n));
-}
-
 /** Rough reference marks when the feed has not delivered a last price yet. */
 const FALLBACK_LAST_BY_BASE: Record<string, number> = {
   BTC: 65200,
@@ -60,9 +56,8 @@ function setupTypeToMomentum(setupType: CryptoSignal['setupType']): AiInsight['m
 /**
  * Derive stop / target distances from setup quality: stronger setups use slightly tighter invalidation bands.
  */
-function deriveLevels(side: TradeSide, ref: number, setupScore: number): { stop: number; target: number; entry: number } {
-  const score = clamp(setupScore, 35, 98);
-  const stopFrac = 0.01 + ((90 - score) / 90) * 0.025;
+function deriveLevels(side: TradeSide, ref: number, _setupScore: number): { stop: number; target: number; entry: number } {
+  const stopFrac = 0.002; // 0.2% default stop distance at trade start
   const rewardMult = 1.45;
   const entry = ref;
   if (side === 'long') {

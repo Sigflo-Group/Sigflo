@@ -70,7 +70,7 @@ const SL_PCT_SLIDER_MAX = 100;
 const SL_PCT_STEP = 0.1;
 
 /** One-tap adverse % presets (must stay ≤ SL_PCT_SLIDER_MAX). */
-const SL_PCT_PRESETS = [1, 2, 3, 5, 10, 15, 25, 50] as const;
+const SL_PCT_PRESETS = [0.2, 1, 2, 3, 5, 10, 15, 25, 50] as const;
 
 /** Take profit slider: favorable move from entry (%). */
 const TP_PCT_SLIDER_MIN = 0;
@@ -168,8 +168,8 @@ function pctBasisTooltip(basis: SlTpPctBasis, market: MarketMode, chip: 'entry' 
   return 'Calculate from last traded price (order-book prints).';
 }
 
-const FUTURES_SL_TP_PCT_BASES: SlTpPctBasis[] = ['entry', 'quote'];
-const SPOT_SL_TP_PCT_BASES: SlTpPctBasis[] = ['entry', 'last'];
+const FUTURES_SL_TP_PCT_BASES: SlTpPctBasis[] = ['entry'];
+const SPOT_SL_TP_PCT_BASES: SlTpPctBasis[] = ['entry'];
 
 /** Evenly spaces SL chip/tick centers along the track (last segment maps 50% → 100% for the thumb). */
 function slChipLayoutNorm(chipIndex: number): number {
@@ -582,8 +582,7 @@ export function OrderInputsCard(props: {
         ? quoteNum
         : lastNum;
 
-  const hasQuoteContext =
-    entryNum != null || (market === 'futures' ? quoteNum != null : lastNum != null);
+  const hasQuoteContext = entryNum != null;
   const showSlPctPanel = Boolean(onStopInputChange) && hasQuoteContext;
   const showTpPctPanel = Boolean(onTakeProfitInputChange) && hasQuoteContext;
   const slPctSliderBlocked = slReferencePrice == null;
@@ -962,7 +961,10 @@ export function OrderInputsCard(props: {
 
       {showLevels ? (
         <div className="space-y-2">
-          {market === 'futures' && futuresTpSlTriggerBy != null && onFuturesTpSlTriggerByChange ? (
+          {market === 'futures' &&
+          BYBIT_TPSL_TRIGGER_VALUES.length > 1 &&
+          futuresTpSlTriggerBy != null &&
+          onFuturesTpSlTriggerByChange ? (
             <div className="rounded-xl border border-white/[0.08] bg-black/30 px-2.5 py-2 ring-1 ring-white/[0.04]">
               <p className="text-[9px] font-semibold uppercase tracking-[0.14em] text-sigflo-muted">TP / SL trigger</p>
               <p className="mt-0.5 text-[8px] leading-snug text-sigflo-muted/80">
@@ -1063,27 +1065,6 @@ export function OrderInputsCard(props: {
                 {entryNum != null ? (
                   <p className="text-[7px] font-mono tabular-nums leading-tight text-sigflo-muted/85">
                     {slTpEntryChip === 'avg' ? 'Avg' : 'Entry'} ${formatQuoteNumber(entryNum)}
-                    {market === 'futures' ? (
-                      <>
-                        <span className="text-sigflo-muted/50"> · </span>
-                        Live{' '}
-                        {quoteNum != null ? (
-                          `$${formatQuoteNumber(quoteNum)}`
-                        ) : (
-                          <span className="text-sigflo-muted/55">…</span>
-                        )}
-                      </>
-                    ) : (
-                      <>
-                        <span className="text-sigflo-muted/50"> · </span>
-                        Last{' '}
-                        {lastNum != null ? (
-                          `$${formatQuoteNumber(lastNum)}`
-                        ) : (
-                          <span className="text-sigflo-muted/55">…</span>
-                        )}
-                      </>
-                    )}
                   </p>
                 ) : null}
                 {slAwaitingMsg ? (
@@ -1240,27 +1221,6 @@ export function OrderInputsCard(props: {
                 {entryNum != null ? (
                   <p className="text-[7px] font-mono tabular-nums leading-tight text-sigflo-muted/85">
                     {slTpEntryChip === 'avg' ? 'Avg' : 'Entry'} ${formatQuoteNumber(entryNum)}
-                    {market === 'futures' ? (
-                      <>
-                        <span className="text-sigflo-muted/50"> · </span>
-                        Live{' '}
-                        {quoteNum != null ? (
-                          `$${formatQuoteNumber(quoteNum)}`
-                        ) : (
-                          <span className="text-sigflo-muted/55">…</span>
-                        )}
-                      </>
-                    ) : (
-                      <>
-                        <span className="text-sigflo-muted/50"> · </span>
-                        Last{' '}
-                        {lastNum != null ? (
-                          `$${formatQuoteNumber(lastNum)}`
-                        ) : (
-                          <span className="text-sigflo-muted/55">…</span>
-                        )}
-                      </>
-                    )}
                   </p>
                 ) : null}
                 {tpAwaitingMsg ? (

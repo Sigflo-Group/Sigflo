@@ -1,3 +1,61 @@
+export type TradeDirection = 'long' | 'short';
+
+export type ExecutionRiskSummary = {
+  liquidationBufferPct: number;
+  riskRewardRatio: number;
+  estimatedMarginUsd: number;
+};
+
+export type TradeExecutionIntentRequest = {
+  symbol: string;
+  direction: TradeDirection;
+  positionSizeUsd: number;
+  leverage: number;
+  stopPrice?: number;
+  targetPrice?: number;
+  brokerAccountId?: string;
+};
+
+export type TradeExecutionIntentResponse = {
+  intentId: string;
+  executionToken: string;
+  expiresAt: string;
+  preview: {
+    symbol: string;
+    direction: TradeDirection;
+    positionSizeUsd: number;
+    leverage: number;
+    stopPrice?: number;
+    targetPrice?: number;
+    riskSummary: ExecutionRiskSummary;
+  };
+};
+
+export type TradeExecuteRequest = {
+  executionToken: string;
+  idempotencyKey: string;
+};
+
+export type TradeExecuteResponse = {
+  ok: true;
+  trade: TradeRecord;
+};
+
+export type TradeRecord = {
+  id: string;
+  tradeIntentId: string | null;
+  symbol: string;
+  direction: TradeDirection;
+  positionSizeUsd: number;
+  leverage: number;
+  entryPrice: number | null;
+  stopPrice: number | null;
+  targetPrice: number | null;
+  status: string;
+  brokerOrderId: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
 export type MarketMode = 'futures' | 'spot';
 export type TradeSide = 'long' | 'short';
 export type TradeTrend = 'Bullish' | 'Bearish' | 'Neutral';

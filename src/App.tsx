@@ -8,6 +8,7 @@ import { SplashScreen } from '@/components/layout/SplashScreen';
 import { getFeedRoute } from '@/config/appRoutes';
 import { SIGFLO_MOBILE_LOADER_FEED_STATUSES } from '@/config/sigfloMobileLoaderStatuses';
 import { useAuth } from '@/context/AuthContext';
+import { useAuthProvider } from '@/providers/AuthProvider';
 import { isTradingStyleOnboarded } from '@/lib/tradingStyleOnboarding';
 import AuthCallbackScreen from '@/screens/AuthCallbackScreen';
 import ResetPasswordScreen from '@/screens/ResetPasswordScreen';
@@ -27,10 +28,14 @@ import ProfileScreen from '@/screens/ProfileScreen';
 import { ScannerLabScreen } from '@/screens/ScannerLabScreen';
 import { TradeScreen } from '@/screens/TradeScreen';
 import { SignalEngineProviderShell } from '@/components/layout/SignalEngineProviderShell';
+import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
+import { StepUpProtectedRoute } from '@/components/auth/StepUpProtectedRoute';
+import StepUpVerificationScreen from '@/screens/StepUpVerificationScreen';
 
 function ProtectedLayout() {
-  const { user, authMode } = useAuth();
-  const needLogin = authMode === 'supabase' && !user;
+  const { user, loading } = useAuthProvider();
+  if (loading) return null;
+  const needLogin = !user;
   if (needLogin) return <Navigate to="/login" replace />;
   return <Outlet />;
 }
@@ -59,7 +64,7 @@ function isAuthFastEntryPath(pathname: string): boolean {
 
 export default function App() {
   const location = useLocation();
-  const { loading: authLoading } = useAuth();
+  const { loading: authLoading } = useAuthProvider();
   const [splashMinElapsed, setSplashMinElapsed] = useState(false);
   const [useMobileBootLoader, setUseMobileBootLoader] = useState(
     () => typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches,
@@ -120,18 +125,24 @@ export default function App() {
               <Route element={<OnboardingGate />}>
                 <Route element={<SignalEngineProviderShell />}>
                   <Route element={<AppShell />}>
-                    <Route path={feedRoute} element={<FeedScreen />} />
+                    <Route path={feedRoute} element={<ProtectedRoute><FeedScreen /></ProtectedRoute>} />
                     <Route path="/markets" element={<MarketsScreen />} />
                     <Route path="/bots" element={<BotsScreen />} />
                     <Route path="/bots/:botId/focus" element={<BotFocusScreen />} />
                     <Route path="/bots/:botId/settings" element={<BotSettingsScreen />} />
                     <Route path="/bots/:botId" element={<BotDetailScreen />} />
-                    <Route path="/portfolio" element={<PortfolioScreen />} />
-                    <Route path="/profile" element={<ProfileScreen />} />
+                    <Route path="/portfolio" element={<ProtectedRoute><PortfolioScreen /></ProtectedRoute>} />
+                    <Route path="/profile" element={<ProtectedRoute><ProfileScreen /></ProtectedRoute>} />
+                    <Route path="/settings/profile" element={<ProtectedRoute><ProfileScreen /></ProtectedRoute>} />
+                    <Route path="/settings/exchange" element={<StepUpProtectedRoute><ProfileScreen /></StepUpProtectedRoute>} />
+                    <Route path="/settings/security" element={<ProtectedRoute><ProfileScreen /></ProtectedRoute>} />
+                    <Route path="/settings/execution" element={<StepUpProtectedRoute><ProfileScreen /></StepUpProtectedRoute>} />
+                    <Route path="/security/step-up" element={<ProtectedRoute><StepUpVerificationScreen /></ProtectedRoute>} />
                     {import.meta.env.DEV ? <Route path="/engine-debug" element={<EngineDebugScreen />} /> : null}
                     {import.meta.env.DEV ? <Route path="/scanner-lab" element={<ScannerLabScreen />} /> : null}
                   </Route>
-                  <Route path="/trade" element={<TradeScreen />} />
+                  <Route path="/trade" element={<ProtectedRoute><TradeScreen /></ProtectedRoute>} />
+                  <Route path="/trade/:symbol" element={<ProtectedRoute><TradeScreen /></ProtectedRoute>} />
                 </Route>
               </Route>
             </Route>

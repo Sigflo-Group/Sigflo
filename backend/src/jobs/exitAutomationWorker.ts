@@ -8,6 +8,7 @@ import {
 } from '../repositories/exitWatchRepo.js';
 import { decryptText } from '../security/crypto.js';
 import { log } from '../lib/logger.js';
+import { retryTransientNetwork } from '../lib/transientNetworkRetry.js';
 import { linearQtyFromBaseAmount } from '../lib/linearOrderQty.js';
 import { resolveExitWatchGuidance, type ExitStrategyPreset } from '../lib/exitGuidanceEngine.js';
 
@@ -36,7 +37,10 @@ function matchPosition(watch: ExitAutomationWatchRow, positions: Awaited<ReturnT
 }
 
 export async function runExitAutomationTick(): Promise<void> {
-  const watches = await listEnabledExitWatches();
+  const watches = await retryTransientNetwork(() => listEnabledExitWatches(), {
+    retries: 4,
+    baseDelayMs: 500,
+  });
   if (watches.length === 0) return;
 
   for (const w of watches) {

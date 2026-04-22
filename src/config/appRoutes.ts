@@ -51,3 +51,22 @@ export function feedActionablePath(): string {
   const feed = getFeedRoute();
   return feed === '/' ? `/${FEED_ACTIONABLE_QUERY}` : `${feed}${FEED_ACTIONABLE_QUERY}`;
 }
+
+export type AppRouteMeta = {
+  requiresAuth: boolean;
+  requiresStepUp: boolean;
+  auditLabel: string;
+};
+
+export const APP_ROUTE_META: Record<string, AppRouteMeta> = {
+  '/login': { requiresAuth: false, requiresStepUp: false, auditLabel: 'auth_login' },
+  '/feed': { requiresAuth: true, requiresStepUp: false, auditLabel: 'view_feed' },
+  '/markets': { requiresAuth: true, requiresStepUp: false, auditLabel: 'view_markets' },
+  '/trade/:symbol': { requiresAuth: true, requiresStepUp: false, auditLabel: 'view_trade' },
+  '/portfolio': { requiresAuth: true, requiresStepUp: false, auditLabel: 'view_portfolio' },
+  '/settings/profile': { requiresAuth: true, requiresStepUp: false, auditLabel: 'settings_profile' },
+  '/settings/exchange': { requiresAuth: true, requiresStepUp: true, auditLabel: 'settings_exchange' },
+  '/settings/security': { requiresAuth: true, requiresStepUp: false, auditLabel: 'settings_security' },
+  '/settings/execution': { requiresAuth: true, requiresStepUp: true, auditLabel: 'settings_execution' },
+  '/security/step-up': { requiresAuth: true, requiresStepUp: false, auditLabel: 'security_step_up' },
+};

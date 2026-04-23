@@ -186,10 +186,15 @@ function SlideToConfirm({
   onConfirm: () => void;
 }) {
   const trackRef = useRef<HTMLDivElement | null>(null);
+  const progressRef = useRef(0);
   const [progress, setProgress] = useState(0);
   const [dragging, setDragging] = useState(false);
   const knobW = 46;
   const threshold = 0.86;
+
+  useEffect(() => {
+    progressRef.current = progress;
+  }, [progress]);
 
   useEffect(() => {
     if (loading || success) setProgress(1);
@@ -204,13 +209,15 @@ function SlideToConfirm({
     const onMove = (ev: PointerEvent) => {
       const maxX = Math.max(1, rect.width - knobW - 8);
       const x = clamp(ev.clientX - rect.left - knobW / 2 - 4, 0, maxX);
-      setProgress(x / maxX);
+      const next = x / maxX;
+      progressRef.current = next;
+      setProgress(next);
     };
     const onUp = () => {
       setDragging(false);
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
-      if (progress >= threshold) {
+      if (progressRef.current >= threshold) {
         setProgress(1);
         onConfirm();
       } else {

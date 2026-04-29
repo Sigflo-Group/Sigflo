@@ -10,7 +10,10 @@ export type GuidedExecutionSetup = {
   setupScore: number;
   setupLabel: string;
   rationale: string;
+  /** Reference fill ≈ last traded (live). R:R and validation use this; SL/TP stay plan prices. */
   entry: number;
+  /** Plan / chart anchor when it differs from {@link entry} (shown as a caption). */
+  planEntry?: number;
   stop: number;
   target: number;
   positionSizeUsd: number;
@@ -186,10 +189,15 @@ function SlideToConfirm({
   onConfirm: () => void;
 }) {
   const trackRef = useRef<HTMLDivElement | null>(null);
+  const progressRef = useRef(0);
   const [progress, setProgress] = useState(0);
   const [dragging, setDragging] = useState(false);
   const knobW = 46;
   const threshold = 0.86;
+
+  useEffect(() => {
+    progressRef.current = progress;
+  }, [progress]);
 
   useEffect(() => {
     if (loading || success) setProgress(1);
@@ -204,13 +212,15 @@ function SlideToConfirm({
     const onMove = (ev: PointerEvent) => {
       const maxX = Math.max(1, rect.width - knobW - 8);
       const x = clamp(ev.clientX - rect.left - knobW / 2 - 4, 0, maxX);
-      setProgress(x / maxX);
+      const next = x / maxX;
+      progressRef.current = next;
+      setProgress(next);
     };
     const onUp = () => {
       setDragging(false);
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
-      if (progress >= threshold) {
+      if (progressRef.current >= threshold) {
         setProgress(1);
         onConfirm();
       } else {
@@ -469,10 +479,15 @@ export function GuidedExecutionPanel({ open, setup, onClose, onExecute, onViewPo
               </p>
 
               <div className="grid grid-cols-3 gap-2">
-                <ExecutionRiskRow label="Entry" value={fmtPx(setup.entry)} />
+                <ExecutionRiskRow label={setup.planEntry != null ? 'Entry (live)' : 'Entry'} value={fmtPx(setup.entry)} />
                 <ExecutionRiskRow label="Stop" value={fmtPx(stop)} />
                 <ExecutionRiskRow label="Target" value={fmtPx(target)} />
               </div>
+              {setup.planEntry != null ? (
+                <p className="mt-1 text-[10px] leading-snug text-zinc-500">
+                  Plan entry {fmtPx(setup.planEntry)} · stop and target are the prices sent on the order
+                </p>
+              ) : null}
 
               <div className="mt-3 grid grid-cols-2 gap-2">
                 <ExecutionRiskRow label="Position Size" value={fmtUsd(positionSizeUsd)} />

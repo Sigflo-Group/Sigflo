@@ -600,6 +600,39 @@ export function TradeScreen() {
     live.lastPrice,
   ]);
 
+  /**
+   * Guided sheet opens before `setSide(nextSide)` runs — `guidedExecutionSide` is the button intent.
+   * Levels must follow that direction (and `signalForTrade` / chart pair), not only the pre-click ticket `side`.
+   */
+  const guidedPlanModel = useMemo(() => {
+    const anchorPx = resolveTradeAnchorPrice(tradePriceAnchor, live.lastPrice, signalForTrade.pair);
+    return buildTradeViewModelFromSignal(
+      signalForTrade,
+      {
+        lastPrice: live.lastPrice,
+        change24hPct: live.change24hPct,
+        high24h: live.high24h,
+        low24h: live.low24h,
+        volume24h: live.volume24h,
+        priceSeries: live.priceSeries,
+        chartCandles: live.chartCandles,
+      },
+      { anchorPrice: anchorPx, balanceUsd: balanceForModel, tradeSide: guidedExecutionSide },
+    );
+  }, [
+    balanceForModel,
+    guidedExecutionSide,
+    signalForTrade,
+    tradePriceAnchor,
+    live.change24hPct,
+    live.high24h,
+    live.low24h,
+    live.volume24h,
+    live.priceSeries,
+    live.chartCandles,
+    live.lastPrice,
+  ]);
+
   const assetTransferHref = useMemo(() => {
     const bybit = accountSnapshots.find((s) => s.exchange === 'bybit' && s.status === 'connected');
     return bybit ? BYBIT_ASSET_TRANSFER_HREF : null;
@@ -1367,23 +1400,42 @@ export function TradeScreen() {
 
   const guidedExecutionSetup = useMemo<GuidedExecutionSetup>(() => {
     const sideForPanel = guidedExecutionSide;
-    const entry =
-      Number.isFinite(mergedModel.entry) && mergedModel.entry > 0
+    const sameSideAsTicket = sideForPanel === side;
+    const planAnchorEntry = sameSideAsTicket
+      ? Number.isFinite(mergedModel.entry) && mergedModel.entry > 0
         ? mergedModel.entry
         : Number.isFinite(mergedModel.lastPrice) && mergedModel.lastPrice > 0
           ? mergedModel.lastPrice
+          : 0
+      : Number.isFinite(guidedPlanModel.entry) && guidedPlanModel.entry > 0
+        ? guidedPlanModel.entry
+        : Number.isFinite(mergedModel.lastPrice) && mergedModel.lastPrice > 0
+          ? mergedModel.lastPrice
           : 0;
-    const stopCandidate = Number.isFinite(stopParsed) && stopParsed > 0 ? stopParsed : mergedModel.stop;
-    const targetCandidate = Number.isFinite(targetParsed) && targetParsed > 0 ? targetParsed : mergedModel.target;
+    const stopCandidate =
+      sameSideAsTicket && Number.isFinite(stopParsed) && stopParsed > 0 ? stopParsed : guidedPlanModel.stop;
+    const targetCandidate =
+      sameSideAsTicket && Number.isFinite(targetParsed) && targetParsed > 0 ? targetParsed : guidedPlanModel.target;
     const coerced = coerceStopTargetToSide(
       sideForPanel,
-      entry,
-      Number.isFinite(stopCandidate) && stopCandidate > 0 ? stopCandidate : entry * (sideForPanel === 'long' ? 0.998 : 1.002),
+      planAnchorEntry,
+      Number.isFinite(stopCandidate) && stopCandidate > 0
+        ? stopCandidate
+        : planAnchorEntry * (sideForPanel === 'long' ? 0.998 : 1.002),
       Number.isFinite(targetCandidate) && targetCandidate > 0
         ? targetCandidate
-        : entry * (sideForPanel === 'long' ? 1.003 : 0.997),
-      selectedSignal.setupScore,
+        : planAnchorEntry * (sideForPanel === 'long' ? 1.003 : 0.997),
+      signalForTrade.setupScore,
     );
+    const liveLast =
+      Number.isFinite(mergedModel.lastPrice) && mergedModel.lastPrice > 0 ? mergedModel.lastPrice : 0;
+    const entry = liveLast > 0 ? liveLast : planAnchorEntry;
+    const planEntry =
+      liveLast > 0 &&
+      planAnchorEntry > 0 &&
+      Math.abs(liveLast - planAnchorEntry) / planAnchorEntry > 1e-7
+        ? planAnchorEntry
+        : undefined;
     const rr =
       entry > 0 && Math.abs(coerced.stop - entry) > 0
         ? Math.abs(coerced.target - entry) / Math.abs(coerced.stop - entry)
@@ -1392,10 +1444,11 @@ export function TradeScreen() {
       symbol: mergedModel.pair,
       direction: sideForPanel,
       statusLabel: uiSignalStateLabel(uiSignalStateFromMarketStatus(scannerStatus)),
-      setupScore: selectedSignal.setupScore,
-      setupLabel: setupScoreBandShort(selectedSignal),
-      rationale: selectedSignal.aiExplanation,
+      setupScore: signalForTrade.setupScore,
+      setupLabel: setupScoreBandShort(signalForTrade),
+      rationale: signalForTrade.aiExplanation,
       entry,
+      planEntry,
       stop: coerced.stop,
       target: coerced.target,
       positionSizeUsd: metrics.positionSizeUsd,
@@ -1409,17 +1462,19 @@ export function TradeScreen() {
     };
   }, [
     guidedExecutionSide,
+    guidedPlanModel.entry,
+    guidedPlanModel.stop,
+    guidedPlanModel.target,
     leverage,
     mergedModel.entry,
     mergedModel.lastPrice,
     mergedModel.pair,
-    mergedModel.stop,
-    mergedModel.target,
     metrics.amountUsedUsd,
     metrics.liquidation,
     metrics.positionSizeUsd,
     scannerStatus,
-    selectedSignal,
+    side,
+    signalForTrade,
     stopParsed,
     targetParsed,
   ]);

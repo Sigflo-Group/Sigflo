@@ -1,10 +1,16 @@
 import type { RiskLevel } from '@/types/trade';
 
-function actionHint(tradeScore: number): string {
+function actionHint(
+  tradeScore: number,
+  ctx: { leverage: number; walletUsedPct: number },
+): string {
   if (tradeScore >= 75) return 'Good execution — entry active';
   if (tradeScore >= 60) return 'Acceptable — keep size controlled';
   if (tradeScore >= 45) return 'Too aggressive — reduce size';
-  return 'Risk high — lower leverage';
+  /** Below 45: score blends setup + margin + leverage — do not always blame leverage (e.g. 1× + tiny size). */
+  if (ctx.walletUsedPct > 20) return 'Risk high — margin is still a large share of wallet';
+  if (ctx.leverage > 1) return 'Risk high — lower leverage or margin';
+  return 'Caution — weak setup is pulling the trade score down';
 }
 
 export function PreTradeWarningCard(props: {
@@ -43,7 +49,7 @@ export function PreTradeWarningCard(props: {
         <span
           className={`text-sm font-bold leading-snug ${highRiskPulse ? 'text-rose-100' : 'text-white'}`}
         >
-          {actionHint(tradeScore)}
+          {actionHint(tradeScore, { leverage, walletUsedPct })}
         </span>
         <span className="shrink-0 text-[10px] font-semibold tabular-nums text-sigflo-muted">Score {tradeScore}</span>
       </div>

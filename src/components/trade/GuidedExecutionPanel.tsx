@@ -10,7 +10,10 @@ export type GuidedExecutionSetup = {
   setupScore: number;
   setupLabel: string;
   rationale: string;
+  /** Reference fill ≈ last traded (live). R:R and validation use this; SL/TP stay plan prices. */
   entry: number;
+  /** Plan / chart anchor when it differs from {@link entry} (shown as a caption). */
+  planEntry?: number;
   stop: number;
   target: number;
   positionSizeUsd: number;
@@ -476,10 +479,15 @@ export function GuidedExecutionPanel({ open, setup, onClose, onExecute, onViewPo
               </p>
 
               <div className="grid grid-cols-3 gap-2">
-                <ExecutionRiskRow label="Entry" value={fmtPx(setup.entry)} />
+                <ExecutionRiskRow label={setup.planEntry != null ? 'Entry (live)' : 'Entry'} value={fmtPx(setup.entry)} />
                 <ExecutionRiskRow label="Stop" value={fmtPx(stop)} />
                 <ExecutionRiskRow label="Target" value={fmtPx(target)} />
               </div>
+              {setup.planEntry != null ? (
+                <p className="mt-1 text-[10px] leading-snug text-zinc-500">
+                  Plan entry {fmtPx(setup.planEntry)} · stop and target are the prices sent on the order
+                </p>
+              ) : null}
 
               <div className="mt-3 grid grid-cols-2 gap-2">
                 <ExecutionRiskRow label="Position Size" value={fmtUsd(positionSizeUsd)} />

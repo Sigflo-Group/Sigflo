@@ -8,7 +8,7 @@ import { useSignalEngine } from '@/hooks/useSignalEngine';
 import { supabase } from '@/lib/supabase';
 import { formatFundingBalance } from '@/lib/formatFundingBalance';
 import { getOAuthRedirectToProfile } from '@/lib/oauthRedirectOrigin';
-import { BYBIT_DEPOSIT_HREF, MEXC_DEPOSIT_HREF } from '@/lib/exchangeTransferUrls';
+import { BYBIT_API_KEYS_HREF, BYBIT_DEPOSIT_HREF, MEXC_API_KEYS_HREF, MEXC_DEPOSIT_HREF } from '@/lib/exchangeTransferUrls';
 import { sanitizeUserFacingHttpErrorMessage } from '@/lib/httpErrorMessage';
 import type { ExchangeId, ExchangeSnapshot } from '@/types/integrations';
 
@@ -427,6 +427,15 @@ export default function ProfileScreen() {
                   {connected ? (
                     <div className="flex shrink-0 items-center gap-1.5">
                       <a
+                        href={exchange === 'bybit' ? BYBIT_API_KEYS_HREF : MEXC_API_KEYS_HREF}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        title={`Open ${exchange.toUpperCase()} API key settings in a new tab`}
+                        className="rounded-lg border border-white/[0.14] bg-white/[0.04] px-2 py-1 text-[11px] font-semibold text-sigflo-text transition hover:bg-white/[0.08]"
+                      >
+                        API Keys
+                      </a>
+                      <a
                         href={exchange === 'bybit' ? BYBIT_DEPOSIT_HREF : MEXC_DEPOSIT_HREF}
                         target="_blank"
                         rel="noopener noreferrer"
@@ -444,17 +453,28 @@ export default function ProfileScreen() {
                       </button>
                     </div>
                   ) : (
-                    <button
-                      type="button"
-                      disabled={!canUseExchangeApi}
-                      onClick={() => {
-                        setConnectError(null);
-                        setExchangeForm({ exchange, apiKey: '', apiSecret: '', passphrase: '' });
-                      }}
-                      className="rounded-lg border border-cyan-400/30 bg-cyan-500/10 px-2 py-1 text-[11px] font-semibold text-cyan-100 transition hover:bg-cyan-500/15 disabled:cursor-not-allowed disabled:opacity-40"
-                    >
-                      Connect
-                    </button>
+                    <div className="flex shrink-0 items-center gap-1.5">
+                      <a
+                        href={exchange === 'bybit' ? BYBIT_API_KEYS_HREF : MEXC_API_KEYS_HREF}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        title={`Open ${exchange.toUpperCase()} API key settings in a new tab`}
+                        className="rounded-lg border border-white/[0.14] bg-white/[0.04] px-2 py-1 text-[11px] font-semibold text-sigflo-text transition hover:bg-white/[0.08]"
+                      >
+                        API Keys
+                      </a>
+                      <button
+                        type="button"
+                        disabled={!canUseExchangeApi}
+                        onClick={() => {
+                          setConnectError(null);
+                          setExchangeForm({ exchange, apiKey: '', apiSecret: '', passphrase: '' });
+                        }}
+                        className="rounded-lg border border-cyan-400/30 bg-cyan-500/10 px-2 py-1 text-[11px] font-semibold text-cyan-100 transition hover:bg-cyan-500/15 disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        Connect
+                      </button>
+                    </div>
                   )}
                 </div>
                 {snapshot ? <ExchangeBalanceBreakdown snapshot={snapshot} /> : null}

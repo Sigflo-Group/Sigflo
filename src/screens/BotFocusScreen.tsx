@@ -207,9 +207,9 @@ function botDetailMatchesChartScale(botEntry: number, chartAnchor: number): bool
 function mergeModelWithBotLevels(
   base: TradeViewModel,
   bot: BotAgent,
-  hasActiveSetup: boolean,
+  applyMergedBotSeed: boolean,
 ): TradeViewModel {
-  if (!hasActiveSetup || !levelsValid(bot.detail.entry, bot.detail.stop, bot.detail.target)) {
+  if (!applyMergedBotSeed || !levelsValid(bot.detail.entry, bot.detail.stop, bot.detail.target)) {
     return base;
   }
   const side = biasToSide(bot.detail.bias);
@@ -475,7 +475,8 @@ export default function BotFocusScreen() {
   const uiState = focusSignal ? uiSignalStateFromMarketStatus(marketStatus) : null;
   const cardStatus = resolveBotCardStatus(storedStatus, uiState);
 
-  const hasActiveSetup = Boolean(
+  /** Static card seed levels (may be wrong scale vs pair picker — never use alone for SETUP readout). */
+  const botSeededLevels = Boolean(
     bot && !bot.expandedSetupPending && levelsValid(bot.detail.entry, bot.detail.stop, bot.detail.target),
   );
 
@@ -503,7 +504,7 @@ export default function BotFocusScreen() {
 
   const chartModel = useMemo(() => {
     if (!baseModel || !bot) return baseModel;
-    const levelsValidForBot = hasActiveSetup && levelsValid(bot.detail.entry, bot.detail.stop, bot.detail.target);
+    const levelsValidForBot = botSeededLevels && levelsValid(bot.detail.entry, bot.detail.stop, bot.detail.target);
     const anchor =
       Number.isFinite(baseModel.lastPrice) && baseModel.lastPrice > 0
         ? baseModel.lastPrice
@@ -517,7 +518,12 @@ export default function BotFocusScreen() {
       anchor > 0 &&
       botDetailMatchesChartScale(bot.detail.entry, anchor);
     return mergeModelWithBotLevels(baseModel, bot, applyBotLevels);
-  }, [baseModel, bot, hasActiveSetup]);
+  }, [baseModel, bot, botSeededLevels]);
+
+  /** Levels actually driving the chart / orders for the selected pair (live signal + anchor). */
+  const hasDisplayableSetup = Boolean(
+    chartModel && levelsValid(chartModel.entry, chartModel.stop, chartModel.target),
+  );
 
   /** Live swing-derived intent copy for this symbol + active chart interval (never uses stale seed prices). */
   const liveSetupCopy = useMemo(() => {
@@ -866,17 +872,23 @@ export default function BotFocusScreen() {
 
   const actionable = Boolean(focusSignal && isFeedActionableOpportunity(focusSignal));
   const canExecute =
-    Boolean(bot && focusSignal && hasActiveSetup && storedStatus !== 'paused' && (actionable || bot.detail.confidencePct >= 62));
+    Boolean(
+      bot &&
+        focusSignal &&
+        hasDisplayableSetup &&
+        storedStatus !== 'paused' &&
+        (actionable || bot.detail.confidencePct >= 62),
+    );
 
   /** Shown beside Trade when execution is disabled — matches `canExecute` guardrails. */
   const tradeDisabledNote = useMemo(() => {
     if (canExecute || !bot) return null;
     if (!focusSignal) return 'No signal for this pair';
     if (storedStatus === 'paused') return 'Resume bot to trade';
-    if (!hasActiveSetup) return 'No active setup';
+    if (!hasDisplayableSetup) return 'No active setup';
     if (!actionable && bot.detail.confidencePct < 62) return 'Need score 65+ or 62% confidence';
     return null;
-  }, [actionable, bot, canExecute, focusSignal, hasActiveSetup, storedStatus]);
+  }, [actionable, bot, canExecute, focusSignal, hasDisplayableSetup, storedStatus]);
 
   const confidencePct = bot
     ? Math.round((bot.detail.confidencePct + (focusSignal?.setupScore ?? bot.detail.confidencePct)) / 2)
@@ -898,10 +910,10 @@ export default function BotFocusScreen() {
     const p1 = pairFromWatched(bot.watchedPairs[1] ?? p0);
     const p2 = pairFromWatched(bot.watchedPairs[2] ?? p1);
     const lines = [
-      `Scanned ${p0} — ${hasActiveSetup ? 'structure mapped' : 'no valid setup'}`,
+      `Scanned ${p0} — ${hasDisplayableSetup ? 'structure mapped' : 'no valid setup'}`,
       `Monitoring ${p1} after ${marketStatus === 'developing' ? 'impulse' : 'pullback'}`,
     ];
-    if (!hasActiveSetup) {
+    if (!hasDisplayableSetup) {
       lines.push(`Rejected ${p2} — ${bot.detail.marketContext.volume === 'Weak' ? 'low volume' : 'timing'}`);
     } else {
       lines.push(`${p2} momentum check complete`);
@@ -910,7 +922,7 @@ export default function BotFocusScreen() {
       lines.push(`Trigger watch on ${focusSignal.pair}`);
     }
     return lines.slice(0, 5);
-  }, [bot, focusSignal, hasActiveSetup, marketStatus]);
+  }, [bot, focusSignal, hasDisplayableSetup, marketStatus]);
 
   const whyExplainKey = useMemo(
     () =>
@@ -922,9 +934,9 @@ export default function BotFocusScreen() {
 
   const tradeScoreForWhy = useMemo(() => {
     if (!focusSignal) return 55;
-    if (bot && hasActiveSetup) return Math.round((bot.detail.confidencePct + focusSignal.setupScore) / 2);
+    if (bot && hasDisplayableSetup) return Math.round((bot.detail.confidencePct + focusSignal.setupScore) / 2);
     return focusSignal.setupScore;
-  }, [bot, focusSignal, hasActiveSetup]);
+  }, [bot, focusSignal, hasDisplayableSetup]);
 
   const [whyAiCache, setWhyAiCache] = useState<{
     key: string;
@@ -1041,13 +1053,12 @@ export default function BotFocusScreen() {
   }
 
   const setupSide = setupSideForExec;
-  const rrDisplay =
-    hasActiveSetup && bot.detail.entry != null && bot.detail.stop != null && bot.detail.target != null
-      ? rrFromLevels(setupSide, bot.detail.entry, bot.detail.stop, bot.detail.target)
-      : chartModel.riskReward;
+  const rrDisplay = hasDisplayableSetup
+    ? rrFromLevels(chartModel.side, chartModel.entry, chartModel.stop, chartModel.target)
+    : chartModel.riskReward;
 
   const stickyTone =
-    hasActiveSetup && cardStatus !== 'paused'
+    hasDisplayableSetup && cardStatus !== 'paused'
       ? 'shadow-[0_12px_40px_-12px_rgba(0,200,120,0.25)] ring-1 ring-landing-accent/15'
       : 'shadow-[0_8px_32px_rgba(0,0,0,0.35)]';
 
@@ -1248,7 +1259,7 @@ export default function BotFocusScreen() {
               open={insightDrawerOpen}
               onToggle={() => setInsightDrawerOpen((v) => !v)}
               bot={bot}
-              hasActiveSetup={hasActiveSetup}
+              hasActiveSetup={hasDisplayableSetup}
               rrDisplay={Number.isFinite(rrDisplay) ? rrDisplay : chartModel.riskReward}
               toggleClassName="pr-[4.75rem] sm:pr-[5.25rem]"
               intentDisplay={liveSetupCopy?.intentLine}
@@ -1323,15 +1334,17 @@ export default function BotFocusScreen() {
 
         <section
           className={`rounded-2xl border bg-landing-surface landing-panel-texture p-4 ${
-            hasActiveSetup ? 'border-landing-accent/25 shadow-landing-glow-sm' : 'border-landing-border'
+            hasDisplayableSetup ? 'border-landing-accent/25 shadow-landing-glow-sm' : 'border-landing-border'
           }`}
         >
           <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-landing-muted">Setup</p>
-          {hasActiveSetup ? (
+          {hasDisplayableSetup ? (
             <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 text-xs">
               <div>
                 <dt className="text-landing-muted">Bias</dt>
-                <dd className="mt-0.5 font-semibold text-landing-text">{bot.detail.bias}</dd>
+                <dd className="mt-0.5 font-semibold text-landing-text">
+                  {chartModel.side === 'long' ? 'Long' : 'Short'}
+                </dd>
               </div>
               <div>
                 <dt className="text-landing-muted">Confidence</dt>
@@ -1339,15 +1352,15 @@ export default function BotFocusScreen() {
               </div>
               <div>
                 <dt className="text-landing-muted">Entry</dt>
-                <dd className="mt-0.5 font-mono text-landing-text">{formatBotPrice(bot.detail.entry)}</dd>
+                <dd className="mt-0.5 font-mono text-landing-text">{formatBotPrice(chartModel.entry)}</dd>
               </div>
               <div>
                 <dt className="text-landing-muted">Stop</dt>
-                <dd className="mt-0.5 font-mono text-rose-200/90">{formatBotPrice(bot.detail.stop)}</dd>
+                <dd className="mt-0.5 font-mono text-rose-200/90">{formatBotPrice(chartModel.stop)}</dd>
               </div>
               <div>
                 <dt className="text-landing-muted">Target</dt>
-                <dd className="mt-0.5 font-mono text-emerald-200/90">{formatBotPrice(bot.detail.target)}</dd>
+                <dd className="mt-0.5 font-mono text-emerald-200/90">{formatBotPrice(chartModel.target)}</dd>
               </div>
               <div>
                 <dt className="text-landing-muted">R:R</dt>

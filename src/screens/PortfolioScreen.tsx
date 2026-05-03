@@ -473,7 +473,7 @@ export default function PortfolioScreen() {
 
                 return (
                   <CardShell
-                    key={`${p.exchange}-${p.symbol}-${index}`}
+                    key={`${p.exchange}-${p.symbol}-${p.side}-${p.positionIdx ?? 0}`}
                     glow={up && pnlPct >= 0.5}
                     className={`!p-3 border-white/[0.07] ${up ? 'ring-1 ring-[#00C878]/15' : 'ring-1 ring-rose-500/10'}`}
                   >

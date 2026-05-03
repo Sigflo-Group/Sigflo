@@ -30,6 +30,16 @@ function alertStatusSummary(prefs: AlertPreference): string {
   return `Alerts on · ${prefs.minScore}+`;
 }
 
+/** Deep link `?alerts=1` — read once for initial state (Strict Mode–safe vs stripping the param immediately). */
+function readOpenAlertsFromUrl(): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    return new URLSearchParams(window.location.search).get('alerts') === '1';
+  } catch {
+    return false;
+  }
+}
+
 function OpportunitiesSkeleton() {
   return (
     <div className="space-y-3" aria-busy="true" aria-label="Loading opportunities">
@@ -47,6 +57,8 @@ export default function BotsScreen() {
   const [searchParams, setSearchParams] = useSearchParams();
   const liveSectionRef = useRef<HTMLDivElement>(null);
   const formingSectionRef = useRef<HTMLElement>(null);
+  const alertSettingsPanelRef = useRef<HTMLDivElement>(null);
+  const pendingAlertsScrollRef = useRef(false);
   const [opportunities, setOpportunities] = useState<OpportunityCardModel[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -56,7 +68,7 @@ export default function BotsScreen() {
   const [lastSyncedAt, setLastSyncedAt] = useState<number | null>(null);
   const [scanLineTick, setScanLineTick] = useState(0);
   const [alertPrefs, setAlertPrefs] = useState<AlertPreference>(() => getAlertPreferences());
-  const [showAlertSettings, setShowAlertSettings] = useState(false);
+  const [showAlertSettings, setShowAlertSettings] = useState(readOpenAlertsFromUrl);
   const { highlightIds, commandBarFlashKey, setupReadyBanner } = useSetupAlerts(opportunities);
   const riskSettings = useRiskSettings();
   const dailyRiskGuard = useDailyRiskGuard();
@@ -91,10 +103,26 @@ export default function BotsScreen() {
     if (searchParams.get('alerts') !== '1') return;
     setShowAlertSettings(true);
     setAlertPrefs(getAlertPreferences());
+    pendingAlertsScrollRef.current = true;
+  }, [searchParams]);
+
+  useEffect(() => {
+    if (!showAlertSettings || !pendingAlertsScrollRef.current) return;
+    pendingAlertsScrollRef.current = false;
+    const id = window.requestAnimationFrame(() => {
+      alertSettingsPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+    return () => window.cancelAnimationFrame(id);
+  }, [showAlertSettings]);
+
+  /** Remove `alerts=1` from the URL once the panel is dismissed so bookmarks and engine deep links stay consistent. */
+  useEffect(() => {
+    if (showAlertSettings) return;
+    if (searchParams.get('alerts') !== '1') return;
     const next = new URLSearchParams(searchParams);
     next.delete('alerts');
     setSearchParams(next, { replace: true });
-  }, [searchParams, setSearchParams]);
+  }, [showAlertSettings, searchParams, setSearchParams]);
 
   useEffect(() => {
     let cancelled = false;
@@ -311,7 +339,11 @@ export default function BotsScreen() {
         </motion.section>
 
         <motion.section ref={liveSectionRef} custom={3} initial="hidden" animate="visible" variants={sectionVariants}>
-          <div className="mb-2 space-y-2">
+          <div
+            id="sigflo-bots-alert-settings"
+            ref={alertSettingsPanelRef}
+            className="mb-2 space-y-2 scroll-mt-4"
+          >
             <div className="flex flex-wrap items-end justify-between gap-2">
               <p className="flex min-w-0 flex-1 items-center gap-2 text-xs text-zinc-500">
                 <span className="sigflo-engine-scan-dot shrink-0 rounded-full bg-[#00ffc8]/80" aria-hidden />

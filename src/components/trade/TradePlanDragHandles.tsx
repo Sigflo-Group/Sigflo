@@ -14,10 +14,10 @@ function numFromBarPrice(p: unknown): number | null {
 
 function priceToY(series: SeriesHost | null, price: number): number | null {
   if (!series) return null;
-  const fn = (series as { priceToCoordinate?: (p: number) => number | null }).priceToCoordinate;
-  if (typeof fn !== 'function') return null;
-  const y = fn.call(series, price);
-  return y != null && Number.isFinite(Number(y)) ? Number(y) : null;
+  const y = series.priceToCoordinate(price);
+  if (y == null) return null;
+  const n = Number(y);
+  return Number.isFinite(n) ? n : null;
 }
 
 function fmtDragPx(n: number): string {

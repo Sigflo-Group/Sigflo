@@ -890,7 +890,19 @@ export function TradeScreen() {
       if (manageCtx.pair) next.pair = manageCtx.pair;
     }
     return next;
-  }, [live, model, portfolioEntry, isManageMode, manageCtx]);
+  }, [
+    model,
+    live.lastPrice,
+    live.change24hPct,
+    live.high24h,
+    live.low24h,
+    live.volume24h,
+    live.priceSeries,
+    live.chartCandles,
+    portfolioEntry,
+    isManageMode,
+    manageCtx,
+  ]);
 
   const tradePairFavoriteBase = useMemo(() => normalizeTradePairBase(mergedModel.pair), [mergedModel.pair]);
   const isPairInWatchlist = useMemo(

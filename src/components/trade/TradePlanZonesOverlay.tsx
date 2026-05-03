@@ -23,10 +23,10 @@ type SeriesHost = ISeriesApi<'Candlestick'> | ISeriesApi<'Line'>;
 
 function priceToY(series: SeriesHost | null, price: number): number | null {
   if (!series) return null;
-  const fn = (series as { priceToCoordinate?: (p: number) => number | null }).priceToCoordinate;
-  if (typeof fn !== 'function') return null;
-  const y = fn.call(series, price);
-  return y != null && Number.isFinite(y) ? y : null;
+  const y = series.priceToCoordinate(price);
+  if (y == null) return null;
+  const n = Number(y);
+  return Number.isFinite(n) ? n : null;
 }
 
 function ySpan(yA: number, yB: number): { top: number; height: number } {

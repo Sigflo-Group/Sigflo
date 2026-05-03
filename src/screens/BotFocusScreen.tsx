@@ -351,9 +351,19 @@ export default function BotFocusScreen() {
     setChartSetupMode((v) => !v);
   }, []);
   const [setupFocusBanner, setSetupFocusBanner] = useState<string | null>(null);
+  const setupFocusBannerTimerRef = useRef<number | null>(null);
+  useEffect(() => {
+    return () => {
+      if (setupFocusBannerTimerRef.current != null) window.clearTimeout(setupFocusBannerTimerRef.current);
+    };
+  }, []);
   const onSetupFocusBannerCb = useCallback((label: string) => {
+    if (setupFocusBannerTimerRef.current != null) window.clearTimeout(setupFocusBannerTimerRef.current);
     setSetupFocusBanner(label);
-    window.setTimeout(() => setSetupFocusBanner(null), 4200);
+    setupFocusBannerTimerRef.current = window.setTimeout(() => {
+      setSetupFocusBanner(null);
+      setupFocusBannerTimerRef.current = null;
+    }, 4200);
   }, []);
   const chartSlotRef = useRef<HTMLDivElement | null>(null);
   const [fullChartPlotPx, setFullChartPlotPx] = useState(BOT_FOCUS_CHART_PLOT_PX);
@@ -1015,9 +1025,19 @@ export default function BotFocusScreen() {
     }
   };
 
+  const tapFlashTimerRef = useRef<number | null>(null);
+  useEffect(() => {
+    return () => {
+      if (tapFlashTimerRef.current != null) window.clearTimeout(tapFlashTimerRef.current);
+    };
+  }, []);
   const flash = (id: string) => {
+    if (tapFlashTimerRef.current != null) window.clearTimeout(tapFlashTimerRef.current);
     setTapFlash(id);
-    window.setTimeout(() => setTapFlash(null), 160);
+    tapFlashTimerRef.current = window.setTimeout(() => {
+      setTapFlash(null);
+      tapFlashTimerRef.current = null;
+    }, 160);
   };
 
   useEffect(() => {

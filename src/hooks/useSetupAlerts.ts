@@ -101,6 +101,13 @@ export function useSetupAlerts(opportunities: OpportunityCardModel[]): UseSetupA
   );
 
   useEffect(() => {
+    return () => {
+      if (bannerTimerRef.current != null) window.clearTimeout(bannerTimerRef.current);
+      for (const t of highlightTimersRef.current.values()) window.clearTimeout(t);
+    };
+  }, []);
+
+  useEffect(() => {
     runCompare(opportunities);
   }, [opportunities, runCompare]);
 

@@ -10,6 +10,7 @@ export async function executeBrokerOrder(input: {
   direction: 'long' | 'short';
   positionSizeUsd: number;
   leverage: number;
+  entryPrice: number;
 }) {
   if (input.account.broker !== 'bybit') {
     throw new Error('Broker not supported');
@@ -20,7 +21,8 @@ export async function executeBrokerOrder(input: {
   };
   await bybitAdapter.ensureTradeEnabled(creds);
   const side = input.direction === 'long' ? 'Buy' : 'Sell';
-  const qty = Math.max(1, Math.floor(input.positionSizeUsd)).toString();
+  // qty must be in base-coin units (e.g. BTC for BTCUSDT), not USD
+  const qty = (input.positionSizeUsd / input.entryPrice).toString();
   const result = await bybitAdapter.placeLinearOrder(creds, {
     symbol: input.symbol,
     side,

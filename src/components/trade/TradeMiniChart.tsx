@@ -11,6 +11,7 @@ import {
   type Time,
   type UTCTimestamp,
 } from 'lightweight-charts';
+import { clientYToSeriesCoordinateY } from '@/lib/chartSeriesOverlayCoordinates';
 import { getKlines } from '@/services/market/marketDataService';
 import type { Candle } from '@/types/market';
 
@@ -297,13 +298,14 @@ export function TradeMiniChart({
     if (!series || !host) return;
     if (!onPlannedStopChange && !onPlannedTargetsChange) return;
 
-    const y = e.clientY - host.getBoundingClientRect().top;
+    const yPane = clientYToSeriesCoordinateY(series, e.clientY);
+    if (yPane == null) return;
     const hit = 12;
     const stp = stopPrice;
     if (stp != null && Number.isFinite(stp) && stp > 0 && onPlannedStopChange) {
       const ys = series.priceToCoordinate(stp);
       const yn = ys != null ? Number(ys) : NaN;
-      if (Number.isFinite(yn) && Math.abs(y - yn) <= hit) {
+      if (Number.isFinite(yn) && Math.abs(yPane - yn) <= hit) {
         dragKindRef.current = 'stop';
         e.currentTarget.setPointerCapture(e.pointerId);
         setFloatLabel(fmtDragPx(stp));
@@ -317,7 +319,7 @@ export function TradeMiniChart({
         if (!Number.isFinite(t) || t <= 0) continue;
         const yt = series.priceToCoordinate(t);
         const ytn = yt != null ? Number(yt) : NaN;
-        if (Number.isFinite(ytn) && Math.abs(y - ytn) <= hit) {
+        if (Number.isFinite(ytn) && Math.abs(yPane - ytn) <= hit) {
           dragKindRef.current = i;
           e.currentTarget.setPointerCapture(e.pointerId);
           setFloatLabel(fmtDragPx(t));
@@ -331,10 +333,10 @@ export function TradeMiniChart({
     const kind = dragKindRef.current;
     if (kind === null) return;
     const series = seriesRef.current;
-    const host = hostRef.current;
-    if (!series || !host) return;
-    const y = e.clientY - host.getBoundingClientRect().top;
-    const raw = series.coordinateToPrice(y);
+    if (!series) return;
+    const yPane = clientYToSeriesCoordinateY(series, e.clientY);
+    if (yPane == null) return;
+    const raw = series.coordinateToPrice(yPane);
     const price = numFromBarPrice(raw);
     if (price == null) return;
     setFloatLabel(fmtDragPx(price));

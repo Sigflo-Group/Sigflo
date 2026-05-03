@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type RefObject } from 'react';
 import type { IChartApi, ISeriesApi } from 'lightweight-charts';
+import { clientYToSeriesCoordinateY, seriesPriceToOverlayY } from '@/lib/chartSeriesOverlayCoordinates';
 
 type SeriesHost = ISeriesApi<'Candlestick'> | ISeriesApi<'Line'>;
 
@@ -10,14 +11,6 @@ const HIT_STRIP_PX = 14;
 function numFromBarPrice(p: unknown): number | null {
   const n = typeof p === 'number' ? p : Number(p);
   return Number.isFinite(n) && n > 0 ? n : null;
-}
-
-function priceToY(series: SeriesHost | null, price: number): number | null {
-  if (!series) return null;
-  const y = series.priceToCoordinate(price);
-  if (y == null) return null;
-  const n = Number(y);
-  return Number.isFinite(n) ? n : null;
 }
 
 function fmtDragPx(n: number): string {
@@ -111,8 +104,10 @@ export function TradePlanDragHandles({
   const W = plotEl.clientWidth;
   if (H < 8 || W < 8) return null;
 
-  const yStop = visibleStop && Number.isFinite(stop) && stop > 0 ? priceToY(series, stop) : null;
-  const yTgt = visibleTarget && Number.isFinite(target) && target > 0 ? priceToY(series, target) : null;
+  const yStop =
+    visibleStop && Number.isFinite(stop) && stop > 0 ? seriesPriceToOverlayY(plotEl, series, stop) : null;
+  const yTgt =
+    visibleTarget && Number.isFinite(target) && target > 0 ? seriesPriceToOverlayY(plotEl, series, target) : null;
 
   const beginStripDrag = (
     e: React.PointerEvent<HTMLDivElement>,
@@ -131,9 +126,8 @@ export function TradePlanDragHandles({
     const kind = dragKindRef.current;
     if (kind == null) return;
     e.stopPropagation();
-    const host = plotEl;
-    if (!host) return;
-    const y = e.clientY - host.getBoundingClientRect().top;
+    const y = clientYToSeriesCoordinateY(series, e.clientY);
+    if (y == null) return;
     const raw = series.coordinateToPrice(y);
     const price = numFromBarPrice(raw);
     if (price == null) return;

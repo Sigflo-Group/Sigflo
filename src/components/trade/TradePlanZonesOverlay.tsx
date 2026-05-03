@@ -1,6 +1,7 @@
 import { useEffect, useState, type RefObject } from 'react';
 import type { IChartApi, ISeriesApi } from 'lightweight-charts';
 import { TradePlanCornerStats } from '@/components/trade/TradePlanCornerStats';
+import { seriesPriceToOverlayY } from '@/lib/chartSeriesOverlayCoordinates';
 import {
   entryBandPrices,
   stopProximityBoost,
@@ -21,12 +22,9 @@ const CORNER_STATS_RIGHT_GAP_PX = 6;
 
 type SeriesHost = ISeriesApi<'Candlestick'> | ISeriesApi<'Line'>;
 
-function priceToY(series: SeriesHost | null, price: number): number | null {
+function priceToY(series: SeriesHost | null, plotEl: HTMLElement, price: number): number | null {
   if (!series) return null;
-  const y = series.priceToCoordinate(price);
-  if (y == null) return null;
-  const n = Number(y);
-  return Number.isFinite(n) ? n : null;
+  return seriesPriceToOverlayY(plotEl, series, price);
 }
 
 function ySpan(yA: number, yB: number): { top: number; height: number } {
@@ -134,12 +132,12 @@ export function TradePlanZonesOverlay({
   const eBand = entryBandPrices(entry, stop);
   const tBand = targetBandPrices(target, entry, stop);
 
-  const yE0 = priceToY(series, eBand.lo);
-  const yE1 = priceToY(series, eBand.hi);
-  const yEntry = priceToY(series, entry);
-  const yS = priceToY(series, stop);
-  const yT0 = priceToY(series, tBand.lo);
-  const yT1 = priceToY(series, tBand.hi);
+  const yE0 = priceToY(series, plotEl, eBand.lo);
+  const yE1 = priceToY(series, plotEl, eBand.hi);
+  const yEntry = priceToY(series, plotEl, entry);
+  const yS = priceToY(series, plotEl, stop);
+  const yT0 = priceToY(series, plotEl, tBand.lo);
+  const yT1 = priceToY(series, plotEl, tBand.hi);
 
   const stopBoost = stopProximityBoost(lastPrice, stop, entry);
   const tgtBoost = targetProximityBoost(lastPrice, target, entry);
@@ -168,7 +166,7 @@ export function TradePlanZonesOverlay({
   const lineY = {
     entry: visibleEntry ? yEntry : null,
     stop: visibleStop ? yS : null,
-    target: visibleTarget ? priceToY(series, target) : null,
+    target: visibleTarget ? priceToY(series, plotEl, target) : null,
   };
 
   const focusClass = focusPulse ? 'sigflo-trade-plan--focus-in' : '';

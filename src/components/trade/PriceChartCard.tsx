@@ -18,6 +18,7 @@ import {
 import { MarketStatsRow } from '@/components/trade/MarketStatsRow';
 import { SetupToggle } from '@/components/trade/SetupToggle';
 import { TradePlanCornerStats } from '@/components/trade/TradePlanCornerStats';
+import { TradePlanDragHandles } from '@/components/trade/TradePlanDragHandles';
 import { TradePlanZonesOverlay } from '@/components/trade/TradePlanZonesOverlay';
 import { TRADE_CHART_PLOT_EXPANDED_PX } from '@/config/tradeChartHeights';
 import type { TradeChartInterval } from '@/hooks/useLiveTradeMarket';
@@ -175,6 +176,12 @@ export function PriceChartCard({
   chartPlotFlexFill = false,
   /** Premium zone overlay: exit label when live / AI exit tooling is active. */
   tradePlanExitLabel = 'exit' as 'exit' | 'ai',
+  /** When Setup premium zones are on, allow dragging stop/target hit strips (parent updates plan inputs). */
+  draggablePlanLevels = false,
+  onPlanStopChange,
+  onPlanTargetChange,
+  onPlanStopDragEnd,
+  onPlanTargetDragEnd,
 }: {
   model: TradeViewModel;
   market: MarketMode;
@@ -241,6 +248,11 @@ export function PriceChartCard({
   onSetupFocusBanner?: (label: string) => void;
   chartPlotFlexFill?: boolean;
   tradePlanExitLabel?: 'exit' | 'ai';
+  draggablePlanLevels?: boolean;
+  onPlanStopChange?: (price: number) => void;
+  onPlanTargetChange?: (price: number) => void;
+  onPlanStopDragEnd?: (price: number) => void | Promise<void>;
+  onPlanTargetDragEnd?: (price: number) => void | Promise<void>;
 }) {
   const showTimeframeBar =
     Boolean(timeframeOptions?.length && chartInterval != null && onChartIntervalChange);
@@ -1961,6 +1973,35 @@ export function PriceChartCard({
                 focusPulse={setupFocusPulse}
                 exitZoneMode={tradePlanExitLabel}
                 showCornerStats={!dockTradePlanCornerStatsInHeader}
+              />
+            </div>
+          ) : null}
+          {usePremiumTradeZones &&
+          draggablePlanLevels &&
+          (onPlanStopChange != null ||
+            onPlanTargetChange != null ||
+            onPlanStopDragEnd != null ||
+            onPlanTargetDragEnd != null) ? (
+            <div
+              className={`pointer-events-none absolute inset-x-0 bottom-0 z-[38] overflow-hidden ${
+                headerDockedInPlotPanel ? 'top-0' : 'top-px'
+              }`}
+            >
+              <TradePlanDragHandles
+                plotEl={chartPlotMountEl}
+                chartRef={chartRef}
+                candleSeriesRef={candleRef}
+                lineSeriesRef={lineRef}
+                candlesActive={candlesActiveOverlay}
+                chartGen={tradePlanChartGen}
+                stop={model.stop}
+                target={model.target}
+                visibleStop={visibleLevels.stop}
+                visibleTarget={visibleLevels.target}
+                onStopChange={onPlanStopChange}
+                onTargetChange={onPlanTargetChange}
+                onStopDragEnd={onPlanStopDragEnd}
+                onTargetDragEnd={onPlanTargetDragEnd}
               />
             </div>
           ) : null}

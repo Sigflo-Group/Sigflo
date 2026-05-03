@@ -1,8 +1,11 @@
 import { AnimatePresence, motion } from 'framer-motion';
 import { useEffect, useMemo, useState } from 'react';
-import { ActivePositionCard } from '@/components/trade/ActivePositionCard';
+import { ActivePositionCard as LegacyActivePositionCard } from '@/components/trade/ActivePositionCard';
+import { ExitAutomationCard } from '@/components/trade/ExitAutomationCard';
+import { ActivePositionCard as SigfloActivePositionCard } from '@/components/positions/ActivePositionCard';
 import { syntheticFromExchangePosition } from '@/lib/exchangePositionSynthetic';
 import type { SimulatedActivePosition } from '@/types/activePosition';
+import type { SigfloActivePosition } from '@/types/position';
 import type { PositionItem } from '@/types/integrations';
 import type { MarketMode } from '@/types/trade';
 
@@ -21,6 +24,12 @@ type ActivePositionsPanelProps = {
   scenarioSummary: string;
   /** Linear futures: navigate to manage-position flow (TP/SL, add size, close ticket). */
   onOpenManagePosition?: () => void;
+  /**
+   * Unified Sigflo layer (exchange-backed or demo repository) for futures active management UI.
+   */
+  sigfloManagedLayer: SigfloActivePosition | null;
+  /** Live mark for the layer card / exit automation (e.g. throttled last). */
+  liveMarkForLayer?: number | null;
 };
 
 export function ActivePositionsPanel({
@@ -35,6 +44,8 @@ export function ActivePositionsPanel({
   exitStrategyLabel,
   scenarioSummary,
   onOpenManagePosition,
+  sigfloManagedLayer,
+  liveMarkForLayer,
 }: ActivePositionsPanelProps) {
   const [nowMs, setNowMs] = useState(() => Date.now());
   useEffect(() => {
@@ -50,10 +61,18 @@ export function ActivePositionsPanel({
   const showExchangeFutures = market === 'futures' && exchangePosition != null && exchangeCardModel != null;
   const showExchangeSpot = market === 'spot' && exchangeSpotDisplay != null;
   const showExchange = showExchangeFutures || showExchangeSpot;
+  const showFuturesLayer = market === 'futures' && sigfloManagedLayer != null;
+  const demoOnlyLayer = showFuturesLayer && !showExchangeFutures;
 
-  if (!showExchange) return null;
+  const showPanel = showExchange || showFuturesLayer;
 
-  const header = market === 'spot' ? 'Bybit spot' : 'Bybit position';
+  if (!showPanel) return null;
+
+  const header = demoOnlyLayer
+    ? 'Active position (demo)'
+    : market === 'spot'
+      ? 'Bybit spot'
+      : 'Bybit position';
 
   return (
     <AnimatePresence mode="popLayout">
@@ -81,37 +100,36 @@ export function ActivePositionsPanel({
                   Manage
                 </button>
               ) : null}
-              <button
-                type="button"
-                onClick={onRequestCloseAllModal}
-                className="rounded-md border border-rose-500/35 bg-rose-500/[0.08] px-2 py-1 text-[8px] font-bold uppercase tracking-wide text-rose-200/95 transition hover:bg-rose-500/16 sm:text-[9px]"
-              >
-                Close all
-              </button>
+              {!demoOnlyLayer ? (
+                <button
+                  type="button"
+                  onClick={onRequestCloseAllModal}
+                  className="rounded-md border border-rose-500/35 bg-rose-500/[0.08] px-2 py-1 text-[8px] font-bold uppercase tracking-wide text-rose-200/95 transition hover:bg-rose-500/16 sm:text-[9px]"
+                >
+                  Close all
+                </button>
+              ) : null}
             </div>
           </div>
 
           <div className="flex flex-col gap-1.5">
             <AnimatePresence initial={false}>
-              {showExchangeFutures && exchangeCardModel && exchangePosition ? (
+              {showFuturesLayer && sigfloManagedLayer ? (
                 <motion.div
-                  key={`ex-${exchangePosition.symbol}`}
+                  key={`sigflo-layer-${sigfloManagedLayer.id}`}
                   layout
                   initial={{ opacity: 0, y: 12, scale: 0.98 }}
                   animate={{ opacity: 1, y: 0, scale: 1 }}
                   exit={{ opacity: 0, x: -12, scale: 0.98, transition: { duration: 0.2 } }}
                   transition={{ type: 'spring', stiffness: 420, damping: 32 }}
+                  className="flex flex-col gap-1.5"
                 >
-                  <ActivePositionCard
-                    position={exchangeCardModel}
-                    markPrice={markPrice}
+                  <SigfloActivePositionCard
+                    position={sigfloManagedLayer}
+                    liveMarkPrice={liveMarkForLayer}
                     nowMs={nowMs}
-                    exitAiModeLabel={exitAiModeLabel}
-                    exitStrategyLabel={exitStrategyLabel}
-                    scenarioSummary={scenarioSummary}
-                    executionSource="exchange"
-                    exchangeUnrealizedUsd={exchangePosition.unrealizedPnl}
                   />
+                  <ExitAutomationCard position={sigfloManagedLayer} liveMarkPrice={liveMarkForLayer} />
                 </motion.div>
               ) : null}
               {showExchangeSpot && exchangeSpotDisplay ? (
@@ -123,7 +141,7 @@ export function ActivePositionsPanel({
                   exit={{ opacity: 0, x: -12, scale: 0.98, transition: { duration: 0.2 } }}
                   transition={{ type: 'spring', stiffness: 420, damping: 32 }}
                 >
-                  <ActivePositionCard
+                  <LegacyActivePositionCard
                     position={exchangeSpotDisplay}
                     markPrice={markPrice}
                     nowMs={nowMs}
@@ -138,9 +156,11 @@ export function ActivePositionsPanel({
           </div>
 
           <p className="px-0.5 text-center text-[8px] leading-snug text-sigflo-muted/85">
-            {market === 'spot'
-              ? 'Synced from your Bybit wallet — Close / Partial send market sells (base qty).'
-              : 'Synced from your Bybit account — use Close to send reduce-only orders.'}
+            {demoOnlyLayer
+              ? 'Suggestion only · Live changes require confirmation — demo row, not your exchange.'
+              : market === 'spot'
+                ? 'Synced from your Bybit wallet — Close / Partial send market sells (base qty).'
+                : 'Synced from your Bybit account — use Close to send reduce-only orders.'}
           </p>
         </div>
       </motion.div>

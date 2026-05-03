@@ -184,7 +184,7 @@ export function MarketCard({
               </span>
             </div>
             {isTriggered && !showJustTriggered ? (
-              <p className={`pl-6 text-[10px] font-semibold text-[#9fffe9]/90 sm:pl-[94px] ${justTriggered ? 'sigflo-trigger-entry-active sigflo-trigger-entry-shimmer' : ''}`}>
+              <p className={`pl-6 text-[10px] font-semibold text-[#9fffe9]/90 sm:pl-[94px] ${justTriggered ? 'sigflo-trigger-entry-active' : ''}`}>
                 Entry open
               </p>
             ) : null}

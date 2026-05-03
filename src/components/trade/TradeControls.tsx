@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import { OrderInputsCard } from '@/components/trade/OrderInputsCard';
 import { PreTradeWarningCard } from '@/components/trade/PreTradeWarningCard';
 import { formatQuoteNumber } from '@/lib/formatQuote';
@@ -5,6 +6,7 @@ import type { ManageTradePositionContext } from '@/lib/manageTradeContext';
 import type { BybitTpSlTriggerBy } from '@/lib/bybitTpSlTrigger';
 import type { DerivedTradeMetrics } from '@/lib/tradeRisk';
 import type { MarketMode, TradeSide, TradeViewModel } from '@/types/trade';
+import { playAlertSound } from '@/utils/sound';
 
 function fmtManageSignedUsd(n: number): string {
   const sign = n >= 0 ? '+' : '-';
@@ -155,6 +157,20 @@ export function TradeControls(props: TradeControlsProps) {
     slTpPercentEntryAnchor > 0
       ? 'avg'
       : 'entry';
+
+  const prevRiskWarnRef = useRef<{ high: boolean; lowScore: boolean } | null>(null);
+  useEffect(() => {
+    if (isManageMode) return;
+    const high = metrics.liquidationRisk === 'High';
+    const lowScore = metrics.riskSummary.tradeScore < 45;
+    const warn = high || lowScore;
+    const prev = prevRiskWarnRef.current;
+    prevRiskWarnRef.current = { high, lowScore };
+    if (prev == null) return;
+    if (warn && !prev.high && !prev.lowScore) {
+      playAlertSound();
+    }
+  }, [isManageMode, metrics.liquidationRisk, metrics.riskSummary.tradeScore]);
 
   return (
     <div className="mx-auto flex w-full max-w-lg flex-col space-y-1 px-3 pb-4 pt-0">

@@ -1,8 +1,8 @@
 {
   "permissions": {
     "allow": [
-      "Bash(npx tsc *)",
-      "Bash(npm run *)"
+      "Bash(git branch *)",
+      "Bash(git checkout *)"
     ]
   }
 }

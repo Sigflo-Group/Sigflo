@@ -172,7 +172,7 @@ export function DockSplitEntryButtons({
   const disabledHint = !canExecute ? 'Set a position size and ensure balance is available' : undefined;
 
   const btnRow =
-    'flex min-h-[28px] min-w-0 w-full items-center justify-center rounded-lg px-2 text-[9px] font-bold uppercase tracking-[0.08em] transition enabled:active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-40 sm:min-h-[30px] sm:px-3 sm:text-[10px]';
+    'flex min-h-[34px] min-w-0 w-full items-center justify-center rounded-lg px-2.5 text-[10px] font-bold uppercase tracking-[0.08em] transition enabled:active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-40 sm:min-h-[30px] sm:px-3 sm:text-[10px]';
 
   const shortDim = signalBias === 'long' ? 'opacity-[0.72] brightness-[0.92] saturate-[0.92]' : '';
   const longDim = signalBias === 'short' ? 'opacity-[0.72] brightness-[0.92] saturate-[0.92]' : '';
@@ -236,7 +236,7 @@ export function ChartInlineTradeButtons({
   const disabledHint = !canExecute ? 'Set a position size and ensure balance is available' : undefined;
   const btnBase =
     variant === 'dock'
-      ? 'inline-flex h-[31px] min-w-[3.42rem] items-center justify-center rounded-[7px] px-[10px] py-0 text-[12px] font-bold leading-none sm:h-[34px] sm:min-w-[3.72rem] sm:px-[11px] sm:text-[13px]'
+      ? 'inline-flex h-[36px] min-w-[3.75rem] items-center justify-center rounded-[7px] px-[11px] py-0 text-[13px] font-bold leading-none sm:h-[34px] sm:min-w-[3.72rem] sm:px-[11px] sm:text-[13px]'
       : 'px-2 py-1 text-[10px] rounded-md';
 
   const shortDim =

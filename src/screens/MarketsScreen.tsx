@@ -80,7 +80,7 @@ export default function MarketsScreen() {
         : 'bg-slate-500';
 
   return (
-    <div className="sigflo-markets-screen-root relative min-h-[100dvh] pb-[max(5.5rem,env(safe-area-inset-bottom))] pt-[max(0.4rem,env(safe-area-inset-top))] sm:pb-[max(5.5rem,env(safe-area-inset-bottom))] sm:pt-[max(0.5rem,env(safe-area-inset-top))]">
+    <div className="sigflo-markets-screen-root relative min-h-0 pt-[max(0.4rem,env(safe-area-inset-top))] sm:pt-[max(0.5rem,env(safe-area-inset-top))]">
       <div className="relative z-10 mx-auto w-full max-w-none px-0 sm:max-w-md sm:px-3">
         {/* Header — base sizes ~10% up for mobile; sm+ unchanged */}
         <header className="mb-2.5 px-2.5 sm:mb-3 sm:px-0">
@@ -142,7 +142,7 @@ export default function MarketsScreen() {
                 key={id}
                 type="button"
                 role="tab"
-                aria-selected={active}
+                aria-selected={active ? 'true' : 'false'}
                 onClick={() => setTab(id)}
                 className={`min-w-0 flex-1 rounded-md px-2.5 py-1.5 text-[11px] font-semibold transition sm:rounded-lg sm:px-2.5 sm:py-1.5 sm:text-xs ${
                   active

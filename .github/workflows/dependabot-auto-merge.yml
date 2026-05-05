@@ -23,7 +23,14 @@ jobs:
         uses: dependabot/fetch-metadata@v2
 
       - name: Enable auto-merge
-        if: steps.metadata.outputs.update-type == 'version-update:semver-patch' || steps.metadata.outputs.update-type == 'version-update:semver-minor'
+        if: |
+          (steps.metadata.outputs.update-type == 'version-update:semver-patch' || 
+           steps.metadata.outputs.update-type == 'version-update:semver-minor') &&
+          !contains(steps.metadata.outputs.dependency-names, 'ccxt') &&
+          !contains(steps.metadata.outputs.dependency-names, 'bybit') &&
+          !contains(steps.metadata.outputs.dependency-names, 'binance') &&
+          !contains(steps.metadata.outputs.dependency-names, 'okx') &&
+          !contains(steps.metadata.outputs.dependency-names, 'kucoin')
         uses: peter-evans/enable-pull-request-automerge@v3
         with:
           merge-method: squash

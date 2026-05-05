@@ -35,10 +35,10 @@ export function AppTopBar() {
             <button
               type="button"
               onClick={() => navigate(-1)}
-              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-white/[0.08] text-sigflo-muted transition hover:text-white"
+              className="flex h-10 min-h-[2.75rem] w-10 min-w-[2.75rem] shrink-0 items-center justify-center rounded-lg border border-white/[0.08] text-sigflo-muted transition hover:text-white sm:h-9 sm:min-h-0 sm:w-9 sm:min-w-0"
               aria-label="Back"
             >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
+              <svg viewBox="0 0 24 24" fill="none" aria-hidden className="h-[18px] w-[18px] sm:h-4 sm:w-4">
                 <path
                   d="M15 6l-6 6 6 6"
                   stroke="currentColor"
@@ -68,7 +68,7 @@ export function AppTopBar() {
         </div>
         <Link
           to={feedActionablePath()}
-          className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-full border border-sigflo-accent/25 bg-sigflo-accentDim px-2.5 text-[10px] font-bold uppercase leading-none tracking-wider text-sigflo-accent transition hover:border-sigflo-accent/40 hover:bg-sigflo-accent/14"
+          className="inline-flex min-h-[2.75rem] shrink-0 items-center gap-1.5 rounded-full border border-sigflo-accent/25 bg-sigflo-accentDim px-3 py-2 text-[11px] font-bold uppercase leading-none tracking-wider text-sigflo-accent transition hover:border-sigflo-accent/40 hover:bg-sigflo-accent/14 sm:min-h-0 sm:h-7 sm:px-2.5 sm:py-0 sm:text-[10px]"
           aria-label="Open feed filtered to actionable setups"
         >
           <span className="relative flex h-1.5 w-1.5">

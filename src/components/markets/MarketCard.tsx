@@ -136,35 +136,35 @@ export function MarketCard({
       aria-label={`Open trade for ${row.symbol}`}
     >
       <div
-        className={`rounded-xl border bg-sigflo-surface sigflo-panel-texture p-2.5 transition-all active:scale-[0.98] sm:rounded-2xl sm:p-4 ${
+        className={`rounded-lg border bg-sigflo-surface sigflo-panel-texture p-2.5 transition-all active:scale-[0.99] sm:rounded-xl sm:p-2.5 ${
           isTriggered
             ? `${uiStateStyle.card} sigflo-trigger-card-rest ${justTriggered ? 'sigflo-trigger-card-just' : ''} ${
                 isPrimaryTriggered
-                  ? 'scale-[1.024] border-[rgba(0,255,200,0.88)] ring-2 ring-[rgba(0,255,200,0.46)] shadow-[0_22px_48px_-18px_rgba(0,255,200,0.95)]'
-                  : 'scale-[1.01]'
+                  ? 'scale-[1.008] border-[rgba(0,255,200,0.88)] ring-2 ring-[rgba(0,255,200,0.46)] shadow-[0_14px_32px_-16px_rgba(0,255,200,0.72)]'
+                  : 'scale-[1.004]'
               }`
             : uiState === 'in_play'
-              ? `${uiStateStyle.card} scale-[1.005]`
+              ? `${uiStateStyle.card} scale-[1.002]`
               : uiStateStyle.card
         } ${hoverOutlineClass} ${
           isDimmed ? 'opacity-45 blur-[0.6px] saturate-75' : ''
         } ${
-          isLocking ? 'scale-[1.02] -translate-y-[2px] shadow-[0_22px_46px_-18px_rgba(0,255,200,0.78)]' : ''
+          isLocking ? 'scale-[1.01] shadow-[0_14px_30px_-16px_rgba(0,255,200,0.65)]' : ''
         } ${
-          pressed ? 'scale-[0.985] shadow-[0_0_24px_-8px_rgba(0,255,200,0.75)]' : ''
-        } group-hover:-translate-y-[1px] group-hover:shadow-[0_14px_28px_-20px_rgba(0,0,0,0.6)] active:shadow-[0_0_24px_-10px_rgba(0,255,200,0.55)]`}
+          pressed ? 'scale-[0.992] shadow-[0_0_16px_-6px_rgba(0,255,200,0.5)]' : ''
+        } group-hover:shadow-[0_8px_20px_-18px_rgba(0,0,0,0.55)] active:shadow-[0_0_14px_-8px_rgba(0,255,200,0.45)]`}
       >
-        <div className="flex items-start gap-2 sm:items-center sm:gap-3">
+        <div className="flex items-start gap-2 sm:items-center sm:gap-2">
           {/* Left: pair + status */}
           <div className="min-w-0 flex-1">
-            <div className="flex min-w-0 items-center gap-2 sm:gap-3">
-              <div className="min-w-0 flex items-center gap-1.5">
+            <div className="flex min-w-0 items-center gap-2 sm:gap-2">
+              <div className="min-w-0 flex items-center gap-1.5 sm:gap-1">
                 {isTriggered ? <TriggeredFireMark hot={justTriggered || showJustTriggered} /> : null}
-                <h3 className="max-w-[42vw] truncate text-[14px] font-bold tracking-tight text-white sm:max-w-none sm:text-base">
+                <h3 className="max-w-[42vw] truncate text-[14px] font-bold tracking-tight text-white sm:max-w-none sm:text-[15px]">
                   {row.pair}
                 </h3>
               </div>
-              <span className={`min-w-0 inline-flex items-center gap-1 text-[10px] font-semibold sm:gap-1.5 sm:text-[11px] ${uiStateStyle.text}`}>
+              <span className={`min-w-0 inline-flex items-center gap-1 text-[10px] font-semibold sm:gap-1 sm:text-[10px] ${uiStateStyle.text}`}>
                 <span className={`relative flex ${isTriggered ? 'h-2 w-2' : 'h-1.5 w-1.5'}`}>
                   {uiStateStyle.pulse ? (
                     <>
@@ -184,16 +184,16 @@ export function MarketCard({
               </span>
             </div>
             {isTriggered && !showJustTriggered ? (
-              <p className={`pl-6 text-[10px] font-semibold text-[#9fffe9]/90 sm:pl-[94px] ${justTriggered ? 'sigflo-trigger-entry-active sigflo-trigger-entry-shimmer' : ''}`}>
+              <p className={`pl-5 text-[10px] font-semibold text-[#9fffe9]/90 sm:pl-16 sm:text-[10px] ${justTriggered ? 'sigflo-trigger-entry-active sigflo-trigger-entry-shimmer' : ''}`}>
                 Entry open
               </p>
             ) : null}
           </div>
 
           {/* Middle: mini chart (between status and price) */}
-          <div className="w-[110px] shrink-0 sm:w-[126px]">
-            <div className="overflow-hidden rounded-md border border-white/[0.05] bg-[#08090d] px-1 py-0.5 sm:px-1.5 sm:py-1">
-              <svg viewBox={`0 0 ${chartW} ${chartH}`} className="h-[24px] w-full sm:h-[34px]" aria-hidden>
+          <div className="w-[110px] shrink-0 sm:w-[118px]">
+            <div className="overflow-hidden rounded border border-white/[0.05] bg-[#08090d] px-1 py-0.5 sm:rounded-md sm:px-1 sm:py-0.5">
+              <svg viewBox={`0 0 ${chartW} ${chartH}`} className="h-[24px] w-full sm:h-[30px]" aria-hidden>
                 <defs>
                   <linearGradient id={`market-area-${row.symbol}`} x1="0" y1="0" x2="0" y2="1">
                     <stop offset="0%" stopColor={miniLineColor} stopOpacity="0.24" />
@@ -205,7 +205,7 @@ export function MarketCard({
                   d={line}
                   fill="none"
                   stroke={miniLineColor}
-                  strokeWidth="1.7"
+                  strokeWidth="1.85"
                   strokeLinecap="round"
                   strokeLinejoin="round"
                 />
@@ -214,21 +214,21 @@ export function MarketCard({
           </div>
 
           {/* Right: price + change */}
-          <div className="w-[76px] shrink-0 text-right sm:w-auto">
-            <p className="text-[13px] font-bold tabular-nums text-white sm:text-sm">
+          <div className="w-[80px] shrink-0 text-right sm:w-auto">
+            <p className="text-[13px] font-bold tabular-nums text-white sm:text-[13px]">
               {Number.isFinite(row.lastPrice) ? `$${formatQuoteNumber(row.lastPrice)}` : '—'}
             </p>
-            <p className={`text-[11px] font-semibold tabular-nums sm:text-xs ${changePositive ? 'text-emerald-400' : 'text-rose-400'}`}>
+            <p className={`text-[11px] font-semibold tabular-nums sm:text-[11px] ${changePositive ? 'text-emerald-400' : 'text-rose-400'}`}>
               {Number.isFinite(row.change24hPct) ? `${changePositive ? '+' : ''}${row.change24hPct.toFixed(2)}%` : '—'}
             </p>
             <p
-              className={`mt-1 text-right text-[13px] font-bold transition-transform ${
+              className={`mt-0.5 text-right text-[13px] font-bold transition-transform sm:text-[13px] ${
                 uiState === 'triggered'
-                  ? 'text-[#ddfff7] drop-shadow-[0_0_12px_rgba(0,255,200,0.78)]'
+                  ? 'text-[#ddfff7] drop-shadow-[0_0_8px_rgba(0,255,200,0.55)]'
                   : uiState === 'in_play'
                     ? 'text-cyan-100'
                     : 'text-sigflo-muted/95'
-              } ${pressed ? 'translate-x-2 drop-shadow-[0_0_10px_rgba(0,255,200,0.7)]' : ''} group-hover:translate-x-1.5 group-hover:brightness-150 group-active:translate-x-2 group-active:drop-shadow-[0_0_8px_rgba(0,255,200,0.55)]`}
+              } ${pressed ? 'translate-x-1' : ''} group-hover:translate-x-0.5 group-hover:brightness-125 group-active:translate-x-1`}
               aria-hidden
             >
               →

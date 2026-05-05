@@ -73,6 +73,6 @@ export async function getTradeIntentByTokenHash(userId: string, tokenHash: strin
   return rows[0] ?? null;
 }
 
-export async function markTradeIntentUsed(intentId: string, idempotencyKey: string): Promise<void> {
-  await db.query(`update trade_intents set used_at = now(), idempotency_key = $2 where id = $1`, [intentId, idempotencyKey]);
+export async function markTradeIntentUsed(userId: string, intentId: string, idempotencyKey: string): Promise<void> {
+  await db.query(`update trade_intents set used_at = now(), idempotency_key = $3 where id = $1 and user_id = $2`, [intentId, userId, idempotencyKey]);
 }

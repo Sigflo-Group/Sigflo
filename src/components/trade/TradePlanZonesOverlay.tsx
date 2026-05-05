@@ -1,6 +1,7 @@
 import { useEffect, useState, type RefObject } from 'react';
 import type { IChartApi, ISeriesApi } from 'lightweight-charts';
 import { TradePlanCornerStats } from '@/components/trade/TradePlanCornerStats';
+import { seriesPriceToOverlayY } from '@/lib/chartSeriesOverlayCoordinates';
 import {
   entryBandPrices,
   stopProximityBoost,
@@ -21,12 +22,9 @@ const CORNER_STATS_RIGHT_GAP_PX = 6;
 
 type SeriesHost = ISeriesApi<'Candlestick'> | ISeriesApi<'Line'>;
 
-function priceToY(series: SeriesHost | null, price: number): number | null {
+function priceToY(series: SeriesHost | null, plotEl: HTMLElement, price: number): number | null {
   if (!series) return null;
-  const fn = (series as { priceToCoordinate?: (p: number) => number | null }).priceToCoordinate;
-  if (typeof fn !== 'function') return null;
-  const y = fn.call(series, price);
-  return y != null && Number.isFinite(y) ? y : null;
+  return seriesPriceToOverlayY(plotEl, series, price);
 }
 
 function ySpan(yA: number, yB: number): { top: number; height: number } {
@@ -88,7 +86,9 @@ export function TradePlanZonesOverlay({
     ts.subscribeVisibleLogicalRangeChange(bump);
     const ro = new ResizeObserver(() => bump());
     ro.observe(plotEl);
-    const ps = chart.priceScale('right') as {
+    const hostSeries = candlesActive ? candleSeriesRef.current : lineSeriesRef.current;
+    const paneIdx = hostSeries?.getPane().paneIndex() ?? 0;
+    const ps = chart.priceScale('right', paneIdx) as {
       subscribeVisiblePriceRangeChange?: (cb: () => void) => void;
       unsubscribeVisiblePriceRangeChange?: (cb: () => void) => void;
     };
@@ -104,7 +104,7 @@ export function TradePlanZonesOverlay({
       }
       window.clearInterval(id);
     };
-  }, [chartRef, plotEl, chartGen]);
+  }, [chartRef, plotEl, chartGen, candlesActive, candleSeriesRef, lineSeriesRef]);
 
   void coordTick;
 
@@ -116,7 +116,8 @@ export function TradePlanZonesOverlay({
   const showAny = visibleEntry || visibleStop || visibleTarget;
   if (!showAny) return null;
 
-  const measuredScaleW = chart.priceScale('right').width();
+  const paneIdx = series.getPane().paneIndex();
+  const measuredScaleW = chart.priceScale('right', paneIdx).width();
   const rightGutterPx =
     measuredScaleW > 0
       ? Math.min(140, Math.ceil(measuredScaleW + PRICE_SCALE_GUTTER_PAD_PX))
@@ -126,20 +127,32 @@ export function TradePlanZonesOverlay({
   const W = plotEl.clientWidth;
   if (H < 8 || W < 8) return null;
 
-  const timeGutter = 26;
-  const plotBottom = H - timeGutter;
+  /** Bottom of series pane in `plotEl` coords (excludes time scale); fallback matches previous time gutter heuristic. */
+  let plotBottom = H - 26;
+  try {
+    const paneEl = series.getPane().getHTMLElement();
+    if (paneEl) {
+      const pr = plotEl.getBoundingClientRect();
+      const panr = paneEl.getBoundingClientRect();
+      if (Number.isFinite(panr.bottom) && Number.isFinite(pr.top)) {
+        plotBottom = Math.max(8, panr.bottom - pr.top - 2);
+      }
+    }
+  } catch {
+    /* keep fallback */
+  }
   /** Pixels between the exact stop price and the start of the danger fill so the stop line stays visible on top of the chart. */
   const STOP_ZONE_GAP_PX = 6;
 
   const eBand = entryBandPrices(entry, stop);
   const tBand = targetBandPrices(target, entry, stop);
 
-  const yE0 = priceToY(series, eBand.lo);
-  const yE1 = priceToY(series, eBand.hi);
-  const yEntry = priceToY(series, entry);
-  const yS = priceToY(series, stop);
-  const yT0 = priceToY(series, tBand.lo);
-  const yT1 = priceToY(series, tBand.hi);
+  const yE0 = priceToY(series, plotEl, eBand.lo);
+  const yE1 = priceToY(series, plotEl, eBand.hi);
+  const yEntry = priceToY(series, plotEl, entry);
+  const yS = priceToY(series, plotEl, stop);
+  const yT0 = priceToY(series, plotEl, tBand.lo);
+  const yT1 = priceToY(series, plotEl, tBand.hi);
 
   const stopBoost = stopProximityBoost(lastPrice, stop, entry);
   const tgtBoost = targetProximityBoost(lastPrice, target, entry);
@@ -168,7 +181,7 @@ export function TradePlanZonesOverlay({
   const lineY = {
     entry: visibleEntry ? yEntry : null,
     stop: visibleStop ? yS : null,
-    target: visibleTarget ? priceToY(series, target) : null,
+    target: visibleTarget ? priceToY(series, plotEl, target) : null,
   };
 
   const focusClass = focusPulse ? 'sigflo-trade-plan--focus-in' : '';

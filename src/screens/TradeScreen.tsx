@@ -656,7 +656,19 @@ export function TradeScreen() {
       if (manageCtx.pair) next.pair = manageCtx.pair;
     }
     return next;
-  }, [live, model, portfolioEntry, isManageMode, manageCtx]);
+  }, [
+    model,
+    live.lastPrice,
+    live.change24hPct,
+    live.high24h,
+    live.low24h,
+    live.volume24h,
+    live.priceSeries,
+    live.chartCandles,
+    portfolioEntry,
+    isManageMode,
+    manageCtx,
+  ]);
 
   const tradePairFavoriteBase = useMemo(() => normalizeTradePairBase(mergedModel.pair), [mergedModel.pair]);
   const isPairInWatchlist = useMemo(
@@ -3144,7 +3156,7 @@ export function TradeScreen() {
       {tradeToast ? (
         <div
           className="fixed left-1/2 z-[60] w-[min(22rem,calc(100vw-2rem))] -translate-x-1/2 transition-opacity duration-200"
-          style={{ bottom: 'calc(5.5rem + env(safe-area-inset-bottom, 0px))' }}
+          style={{ bottom: 'calc(6rem + env(safe-area-inset-bottom, 0px))' }}
           role="status"
         >
           <div className="rounded-xl border border-[#00ffc8]/35 bg-black/90 px-3 py-2.5 text-center text-sm font-semibold text-[#00ffc8] shadow-[0_12px_40px_-12px_rgba(0,255,200,0.22)] backdrop-blur-md">

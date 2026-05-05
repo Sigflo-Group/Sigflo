@@ -163,7 +163,7 @@ export function detectBreakdownPressure(input: DetectorInput): SignalCandidate |
   const nearBreakdown =
     indicators.breakdownDistanceAtr >= 0 && indicators.breakdownDistanceAtr <= 0.45;
   const rsiWeak = indicators.rsi14 >= 28 && indicators.rsi14 <= 45;
-  const momentumNegative = indicators.rsi14Slope <= 0.5;
+  const momentumNegative = indicators.rsi14Slope <= 0;
   const passes = [bearishTrend, nearBreakdown, rsiWeak, momentumNegative, volRatio >= 1.15].filter(Boolean).length;
   if (passes < 4) return null;
 

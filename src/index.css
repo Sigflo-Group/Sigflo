@@ -14,6 +14,27 @@
   body {
     @apply min-h-[100dvh] antialiased;
   }
+
+  /**
+   * Touch-friendly controls (~44px / 2.75rem minimum height).
+   * - Small phone widths: always (thumb-first layouts).
+   * - `pointer: coarse`: tablets / touch laptops even when the viewport is wide.
+   * Opt out on a control with class `sigflo-touch-keep-compact` (rare density-critical UI).
+   */
+  @media (max-width: 639.98px), (pointer: coarse) {
+    :where(
+        button:not(:disabled),
+        input[type='submit']:not(:disabled),
+        input[type='button']:not(:disabled),
+        input[type='reset']:not(:disabled)
+      ):not(.sigflo-touch-keep-compact) {
+      min-height: 2.75rem;
+    }
+    :where([role='tab']):not(.sigflo-touch-keep-compact) {
+      min-height: 2.75rem;
+    }
+  }
+
   ::selection {
     @apply bg-[rgba(0,255,200,0.25)] text-white;
   }

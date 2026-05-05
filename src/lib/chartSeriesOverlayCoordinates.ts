@@ -13,9 +13,8 @@ function paneTopOffsetInPlot(plotEl: HTMLElement, series: ChartSeriesHost): numb
 }
 
 /**
- * Map a series price to Y (px) in `plotEl`'s local coordinate system (top of `plotEl` = 0).
- * In lightweight-charts v5+, `priceToCoordinate` is in the series pane's space; HTML overlays
- * sit on the outer chart container, so we add the pane's vertical offset inside that container.
+ * Map price → Y in the same coordinate system as `plotEl` (chart container), for HTML stacked on the chart.
+ * lightweight-charts v5+ reports `priceToCoordinate` in the series pane; add the pane's offset inside `plotEl`.
  */
 export function seriesPriceToOverlayY(
   plotEl: HTMLElement,

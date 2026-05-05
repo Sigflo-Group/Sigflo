@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx tsc *)",
+      "Bash(npm run *)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(mv .claude/settings.local.json .claude/settings.local.json.bak2)",
+      "Bash(git checkout *)"
+    ]
+  }
+}

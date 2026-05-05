@@ -127,7 +127,7 @@ export async function postTradeExecute(req: AuthedRequest, res: Response) {
     brokerResponse: broker.brokerResponse,
   });
 
-  await consumeTradeIntent(intent.id, body.idempotencyKey);
+  await consumeTradeIntent(req.user.userId, intent.id, body.idempotencyKey);
   await writeAuditLog({
     userId: req.user.userId,
     requestId: req.requestId,

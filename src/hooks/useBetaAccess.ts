@@ -78,7 +78,7 @@ export function useBetaAccess(): UseBetaAccessResult {
       setError(msg);
       setStatus('ready');
     }
-  }, [authLoading, authMode, user, session?.access_token]);
+  }, [authLoading, authMode, user, session]);
 
   useEffect(() => {
     void run();

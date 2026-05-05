@@ -30,13 +30,17 @@ export function encryptText(value: string): string {
 
 export function decryptText(encoded: string): string {
   const key = getEncryptionKey();
-  const raw = Buffer.from(encoded, 'base64').toString('utf8');
-  const payload = JSON.parse(raw) as Encrypted;
-  const decipher = crypto.createDecipheriv('aes-256-gcm', key, Buffer.from(payload.iv, 'hex'));
-  decipher.setAuthTag(Buffer.from(payload.tag, 'hex'));
-  const plaintext = Buffer.concat([
-    decipher.update(Buffer.from(payload.ciphertext, 'hex')),
-    decipher.final(),
-  ]);
-  return plaintext.toString('utf8');
+  try {
+    const raw = Buffer.from(encoded, 'base64').toString('utf8');
+    const payload = JSON.parse(raw) as Encrypted;
+    const decipher = crypto.createDecipheriv('aes-256-gcm', key, Buffer.from(payload.iv, 'hex'));
+    decipher.setAuthTag(Buffer.from(payload.tag, 'hex'));
+    const plaintext = Buffer.concat([
+      decipher.update(Buffer.from(payload.ciphertext, 'hex')),
+      decipher.final(),
+    ]);
+    return plaintext.toString('utf8');
+  } catch (e) {
+    throw new Error(`Credential decryption failed: ${e instanceof Error ? e.message : 'invalid format'}`);
+  }
 }

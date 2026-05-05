@@ -38,6 +38,7 @@ export async function fetchOrCreateBetaProfile(user: User): Promise<BetaProfileR
       .eq('id', user.id)
       .single();
     if (retryErr) throw retryErr;
+    if (!retry) throw new Error('Profile not found after insert conflict.');
     return retry as BetaProfileRow;
   }
 

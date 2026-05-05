@@ -107,6 +107,18 @@ export default defineConfig(({ mode }) => {
   return {
     /** Set `VITE_BASE=/your/subpath/` when hosting under a subfolder (avoids blank screen from 404 JS/CSS). */
     base: resolvedBase,
+    build: {
+      rollupOptions: {
+        output: {
+          manualChunks: {
+            'vendor-react': ['react', 'react-dom', 'react-router-dom'],
+            'vendor-charts': ['lightweight-charts'],
+            'vendor-motion': ['framer-motion'],
+            'vendor-supabase': ['@supabase/supabase-js'],
+          },
+        },
+      },
+    },
     plugins: [
       {
         name: 'ai-suggest-dev',

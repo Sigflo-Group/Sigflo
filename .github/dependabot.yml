@@ -6,6 +6,8 @@
 version: 2
 
 updates:
+labels:
+  - "dependencies"
   # 🔹 Frontend (Vite / React app)
   - package-ecosystem: "npm"
     directory: "/"
@@ -50,6 +52,21 @@ groups:
       misc:
         patterns:
           - "*"
+          
+  trading-risk:
+    patterns:
+      - "*ccxt*"
+      - "*bybit*"
+      - "*binance*"
+      - "*okx*"
+      - "*kucoin*"
+      - "*ws*"
+    labels:
+      - "risk:trading"
+
+  misc:
+    patterns:
+      - "*"
   # 🔹 Backend / trading engine
   - package-ecosystem: "npm"
     directory: "/backend"

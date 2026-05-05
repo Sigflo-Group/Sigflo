@@ -11,6 +11,7 @@ import {
 import { deriveMarketStatus } from '@/lib/marketScannerRows';
 import type { BotCardExchangeStats } from '@/lib/portfolioBotAttribution';
 import { uiSignalStateFromMarketStatus, uiSignalStateLabel } from '@/lib/signalState';
+import { buildTradeViewModelFromSignal, fallbackLastForPair } from '@/lib/tradeViewFromSignal';
 import type { CryptoSignal } from '@/types/signal';
 
 export type BotCardProps = {
@@ -196,13 +197,26 @@ export function BotCard({
           ? `${signal.aiExplanation.slice(0, 277)}…`
           : signal.aiExplanation
         : d.aiNote;
+    const fallbackAnchor =
+      Number.isFinite(signal.idealEntryPrice) && (signal.idealEntryPrice ?? 0) > 0
+        ? (signal.idealEntryPrice as number)
+        : fallbackLastForPair(signal.pair);
+    const derived = buildTradeViewModelFromSignal(
+      signal,
+      {},
+      {
+        anchorPrice: fallbackAnchor,
+        balanceUsd: 0,
+        tradeSide: signal.side === 'short' ? 'short' : 'long',
+      },
+    );
     return {
       setupState: signal.setupScoreLabel,
       bias: signal.biasLabel,
       confidence: signal.setupScore,
-      entry: signal.plannedEntry ?? d.entry,
-      stop: signal.plannedStop ?? d.stop,
-      target: signal.plannedTarget ?? d.target,
+      entry: signal.plannedEntry ?? derived.entry,
+      stop: signal.plannedStop ?? derived.stop,
+      target: signal.plannedTarget ?? derived.target,
       commentary: commentaryLines(liveNote, d.commentaryShort),
       setupType: setupTypeFromSignal(signal.setupType),
       context: d.marketContext,
@@ -211,6 +225,7 @@ export function BotCard({
 
   const hasValidSetup =
     !bot.expandedSetupPending && levelsValid(merged.entry, merged.stop, merged.target);
+  const hasLivePlanLevels = Boolean(signal && !signal.id.startsWith('tracked-'));
 
   const lastDemo = bot.stats.lastResultPct;
   const lastDemoFmt = `${lastDemo >= 0 ? '+' : ''}${lastDemo.toFixed(1)}%`;
@@ -447,7 +462,18 @@ export function BotCard({
                       />
                     </div>
                   </div>
-                  <p className="text-[9px] font-semibold uppercase tracking-wider text-sigflo-muted">Plan levels</p>
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-[9px] font-semibold uppercase tracking-wider text-sigflo-muted">Plan levels</p>
+                    <span
+                      className={`rounded-full border px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-[0.12em] ${
+                        hasLivePlanLevels
+                          ? 'border-emerald-400/30 bg-emerald-500/12 text-emerald-200/95'
+                          : 'border-amber-300/30 bg-amber-500/10 text-amber-100/95'
+                      }`}
+                    >
+                      {hasLivePlanLevels ? 'Live levels' : 'Fallback levels'}
+                    </span>
+                  </div>
                   <div className="grid grid-cols-3 gap-1.5 text-center">
                     <div className="sigflo-panel-texture rounded-lg border border-white/[0.06] bg-sigflo-elevated py-2">
                       <p className="relative z-[1] text-[8px] uppercase tracking-wider text-sigflo-muted">Entry</p>

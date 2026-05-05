@@ -27,3 +27,17 @@ export function seriesPriceToOverlayY(
   if (!Number.isFinite(yLocal)) return null;
   return paneTopOffsetInPlot(plotEl, series) + yLocal;
 }
+
+/**
+ * Vertical coordinate inside the series pane (same space as `priceToCoordinate` / `coordinateToPrice`).
+ */
+export function clientYToSeriesCoordinateY(series: ChartSeriesHost, clientY: number): number | null {
+  try {
+    const paneEl = series.getPane().getHTMLElement();
+    if (!paneEl) return null;
+    const y = clientY - paneEl.getBoundingClientRect().top;
+    return Number.isFinite(y) ? y : null;
+  } catch {
+    return null;
+  }
+}

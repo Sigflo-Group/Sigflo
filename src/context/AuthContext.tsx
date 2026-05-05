@@ -34,10 +34,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setLoading(false);
       return;
     }
-    void supabase.auth.getSession().then(({ data: { session: next } }) => {
-      setSession(next);
-      setLoading(false);
-    });
+    void supabase.auth.getSession()
+      .then(({ data: { session: next } }) => {
+        setSession(next);
+        setLoading(false);
+      })
+      .catch(() => {
+        setLoading(false);
+      });
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, next) => {

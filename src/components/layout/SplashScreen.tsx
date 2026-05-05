@@ -117,10 +117,6 @@ export function SplashScreen() {
                 className="h-full rounded-full bg-gradient-to-r from-[#00ffc8] via-[#00d9ff] to-blue-500 transition-all duration-700"
                 style={{ width: `${progress}%` }}
               />
-              <div
-                className="pointer-events-none absolute inset-0 bg-[linear-gradient(90deg,transparent,rgba(255,255,255,0.25),transparent)] animate-sigflo-loader-beam"
-                aria-hidden
-              />
             </div>
           </div>
 

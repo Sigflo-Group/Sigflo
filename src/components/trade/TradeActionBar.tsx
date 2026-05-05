@@ -1,4 +1,5 @@
 import { setupBandDockCompactLabel, setupBandDockEmphasisClass } from '@/lib/setupBandUi';
+import { playSideEntryClickSound } from '@/utils/sound';
 import type { TradeTimingChipState } from '@/lib/tradeTimingChip';
 import { StatusChip } from '@/components/trade/StatusChip';
 import type { MarketMode } from '@/types/trade';
@@ -16,6 +17,13 @@ export type ChartTradeQuickActions = {
   onOpenLong: () => void;
   flashSide?: 'long' | 'short' | null;
 };
+
+function withSideEntrySound(fn: () => void) {
+  return () => {
+    playSideEntryClickSound();
+    fn();
+  };
+}
 
 export type ChartDockDecisionMeta = {
   confidenceLabel: string;
@@ -194,10 +202,22 @@ export function DockSplitEntryButtons({
 
   return (
     <div className="grid min-w-0 w-full grid-cols-2 gap-1.5 sm:gap-2" role="group" aria-label="Open trade">
-      <button type="button" disabled={!canExecute} title={disabledHint} onClick={onOpenShort} className={shortBtn}>
+      <button
+        type="button"
+        disabled={!canExecute}
+        title={disabledHint}
+        onClick={withSideEntrySound(onOpenShort)}
+        className={shortBtn}
+      >
         {shortLabel}
       </button>
-      <button type="button" disabled={!canExecute} title={disabledHint} onClick={onOpenLong} className={longBtn}>
+      <button
+        type="button"
+        disabled={!canExecute}
+        title={disabledHint}
+        onClick={withSideEntrySound(onOpenLong)}
+        className={longBtn}
+      >
         {longLabel}
       </button>
     </div>
@@ -266,7 +286,7 @@ export function ChartInlineTradeButtons({
         type="button"
         disabled={!canExecute}
         title={disabledHint}
-        onClick={onOpenShort}
+        onClick={withSideEntrySound(onOpenShort)}
         className={`bg-gradient-to-b from-rose-500/95 to-rose-600 font-bold uppercase leading-tight tracking-wide text-white shadow-[0_0_14px_-5px_rgba(239,68,68,0.45)] transition duration-200 ease-out enabled:active:scale-[0.98] enabled:hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40 ${variant === 'dock' ? '' : 'shrink-0'} ${btnBase} ${shortDim} ${shortGlow}`}
       >
         {shortLabel}
@@ -275,7 +295,7 @@ export function ChartInlineTradeButtons({
         type="button"
         disabled={!canExecute}
         title={disabledHint}
-        onClick={onOpenLong}
+        onClick={withSideEntrySound(onOpenLong)}
         className={`bg-gradient-to-b from-emerald-500/95 to-emerald-600 font-bold uppercase leading-tight tracking-wide text-white shadow-[0_0_14px_-5px_rgba(34,197,94,0.4)] transition duration-200 ease-out enabled:active:scale-[0.98] enabled:hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40 ${variant === 'dock' ? '' : 'shrink-0'} ${btnBase} ${longDim} ${longGlow}`}
       >
         {longLabel}
@@ -340,7 +360,7 @@ export function TradeActionBar(props: {
             type="button"
             disabled={!canExecute}
             title={disabledHint}
-            onClick={onOpenShort}
+            onClick={withSideEntrySound(onOpenShort)}
             className={`flex min-h-[3.5rem] flex-col items-center justify-center rounded-2xl bg-gradient-to-b from-rose-500 to-rose-600 px-2 py-2 text-[15px] font-bold text-white shadow-[0_10px_32px_-10px_rgba(239,68,68,0.55)] transition enabled:active:scale-[0.98] enabled:hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40 ${
               flashSide === 'short' ? 'ring-2 ring-red-200/90 shadow-[0_0_28px_-4px_rgba(248,113,113,0.55)]' : ''
             }`}
@@ -355,7 +375,7 @@ export function TradeActionBar(props: {
             type="button"
             disabled={!canExecute}
             title={disabledHint}
-            onClick={onOpenLong}
+            onClick={withSideEntrySound(onOpenLong)}
             className={`flex min-h-[3.5rem] flex-col items-center justify-center rounded-2xl bg-gradient-to-b from-emerald-500 to-emerald-600 px-2 py-2 text-[15px] font-bold text-white shadow-[0_10px_32px_-10px_rgba(34,197,94,0.5)] transition enabled:active:scale-[0.98] enabled:hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40 ${
               flashSide === 'long' ? 'ring-2 ring-emerald-200/90 shadow-[0_0_28px_-4px_rgba(0,255,200,0.45)]' : ''
             }`}

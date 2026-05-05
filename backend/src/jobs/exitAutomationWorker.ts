@@ -206,5 +206,7 @@ export function startExitAutomationWorker(): void {
   };
 
   void tick();
-  setInterval(() => void tick(), intervalMs);
+  const handle = setInterval(() => void tick(), intervalMs);
+  process.once('SIGTERM', () => clearInterval(handle));
+  process.once('SIGINT', () => clearInterval(handle));
 }

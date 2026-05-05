@@ -18,6 +18,14 @@ import {
 } from '@/components/trade/TradeActionBar';
 import { StatusChip } from '@/components/trade/StatusChip';
 import { ScannerInsightCard } from '@/components/trade/ScannerInsightCard';
+import { EntryPlanCard } from '@/components/trade/EntryPlanCard';
+import { ExecutionLockCard } from '@/components/trade/ExecutionLockCard';
+import { PaperTradePreview } from '@/components/trade/PaperTradePreview';
+import { RiskReviewCard } from '@/components/trade/RiskReviewCard';
+import { SetupThesisCard } from '@/components/trade/SetupThesisCard';
+import { TradeReasoningTimeline } from '@/components/trade/TradeReasoningTimeline';
+import { TradeMiniChart } from '@/components/trade/TradeMiniChart';
+import { TradeReviewHeader } from '@/components/trade/TradeReviewHeader';
 import { TradingControlExitBridge } from '@/components/trade/TradingControlExitBridge';
 import { TradingControlTradeHint } from '@/components/trade/TradingControlTradeHint';
 import { TradeControls } from '@/components/trade/TradeControls';
@@ -34,6 +42,11 @@ import {
   TRADE_CHART_PLOT_MANAGE_MAXIMIZED_PX,
 } from '@/config/tradeChartHeights';
 import { requestChartSetupFocus } from '@/lib/chartSetupFocus';
+import {
+  buildReasoningTimelineItems,
+  deriveRiskLabelForReview,
+  parseSourceEngineFromOpportunityId,
+} from '@/lib/tradeReviewCockpit';
 import { formatQuoteNumber } from '@/lib/formatQuote';
 import { useCanGoBack } from '@/hooks/useCanGoBack';
 import { useExitAutomation } from '@/hooks/useExitAutomation';
@@ -114,12 +127,30 @@ import {
   putExitAutomationWatch,
 } from '@/services/api/tradeClient';
 import { fetchLinearMaxLeverage } from '@/services/bybit/client';
+import { getOpportunityById } from '@/services/opportunities';
+import {
+  getPositionRepository,
+  sigfloActivePositionFromExchange,
+  simulatedFromSigfloActive,
+} from '@/services/positions';
+import { DailyRiskGuardBanner } from '@/components/risk/DailyRiskGuardBanner';
+import { useDailyRiskGuard } from '@/services/risk/dailyRiskGuard';
+import { activePositionCountForRisk, countExchangeOpenLegs, useRiskSettings } from '@/services/risk/riskSettings';
 import type { SymbolTicker } from '@/types/market';
 import type { CryptoSignal, SetupScoreLabel, SignalRiskTag, SignalSetupTag } from '@/types/signal';
 import type { SimulatedActivePosition } from '@/types/activePosition';
 import type { ExchangeSnapshot, PositionItem } from '@/types/integrations';
+import type { OpportunityCardModel } from '@/types/botSystem';
 import type { MarketMode, TradeSide } from '@/types/trade';
+import {
+  parseEntryZoneMidpoint,
+  parsePriceFromString,
+  parseTargetPrices,
+  validateBotsPaperPlan,
+} from '@/utils/tradeMath';
 
+
+const PAPER_REAL_ACCOUNT_NUDGE_DISMISS_KEY = 'sigflo_paper_real_account_nudge_dismissed';
 
 const TRADE_PAIR_PICKER_FALLBACKS: CryptoSignal[] = [
   buildTrackedFallbackSignal('BTC', 'BTCUSDT'),
@@ -276,10 +307,83 @@ function formatSignalPairForTicker(pair: string): string {
   return `${base || '—'} / USDT`;
 }
 
+/** Pretty pair for Bots → Trade query params (often `BTCUSDT` without slash). */
+function formatBotsQueryPair(pairParam: string): string {
+  const p = pairParam.trim().toUpperCase();
+  if (!p) return '—';
+  if (p.includes('/')) return p;
+  const base = p.replace(/USDT$/i, '').replace(/USDC$/i, '');
+  if (base && base !== p) return `${base} / USDT`;
+  return p;
+}
+
 export function TradeScreen() {
   const navigate = useNavigate();
   const canGoBack = useCanGoBack();
   const [params, setSearchParams] = useSearchParams();
+  const botsReviewContext = useMemo(() => {
+    const source = (params.get('source') ?? '').trim().toLowerCase();
+    if (source !== 'bots') return null;
+    const pair = (params.get('pair') ?? '').trim();
+    const setup = (params.get('setup') ?? '').trim();
+    const state = (params.get('state') ?? '').trim();
+    const opportunityId = (params.get('opportunityId') ?? '').trim();
+    const dirRaw = (params.get('direction') ?? '').trim().toUpperCase();
+    const directionFromQuery = dirRaw === 'LONG' || dirRaw === 'SHORT' ? (dirRaw as 'LONG' | 'SHORT') : null;
+    return { pair, setup, state, opportunityId, directionFromQuery };
+  }, [params]);
+  const [botsTradeOpp, setBotsTradeOpp] = useState<OpportunityCardModel | null | undefined>(undefined);
+  const [botsTradeOppLoading, setBotsTradeOppLoading] = useState(false);
+  const [botsPlannedStop, setBotsPlannedStop] = useState<number | null>(null);
+  const [botsPlannedTargets, setBotsPlannedTargets] = useState<number[] | null>(null);
+  const [botsPaperPulseToken, setBotsPaperPulseToken] = useState(0);
+
+  useEffect(() => {
+    const id = botsReviewContext?.opportunityId?.trim();
+    if (!id) {
+      setBotsTradeOpp(undefined);
+      setBotsTradeOppLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setBotsTradeOpp(undefined);
+    setBotsTradeOppLoading(true);
+    void (async () => {
+      try {
+        const opp = await getOpportunityById(id);
+        if (!cancelled) setBotsTradeOpp(opp ?? null);
+      } catch {
+        if (!cancelled) setBotsTradeOpp(null);
+      } finally {
+        if (!cancelled) setBotsTradeOppLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [botsReviewContext?.opportunityId]);
+
+  /** Deep link from Bots active strip: `/trade?pair=BTCUSDT&source=position` */
+  const positionReviewFromQuery = useMemo(() => {
+    const src = (params.get('source') ?? '').trim().toLowerCase();
+    if (src !== 'position') return null;
+    const raw = (params.get('pair') ?? '').trim();
+    if (!raw) return null;
+    return { pairRaw: raw };
+  }, [params]);
+
+  const opportunityIdFromQuery = useMemo(() => (params.get('opportunityId') ?? '').trim(), [params]);
+
+  /** When reviewing an open Sigflo row without an engine opportunity, skip workspace setup hints. */
+  const hideFreshSetupTradeHint = Boolean(positionReviewFromQuery && !opportunityIdFromQuery);
+
+  useEffect(() => {
+    if (!botsTradeOpp) return;
+    setSide(botsTradeOpp.direction === 'LONG' ? 'long' : 'short');
+  }, [botsTradeOpp]);
+
+  /** Any `source=bots` review path stays off live exchange entry; paper preview only. */
+  const liveExecutionLocked = Boolean(botsReviewContext);
   const signalId = params.get('signal') ?? 'sig-1';
   const [market, setMarket] = useState<MarketMode>('futures');
   const [chartInterval, setChartInterval] = useState<TradeChartInterval>(readPersistedTradeChartInterval);
@@ -324,6 +428,8 @@ export function TradeScreen() {
   const [tradeFavRevision, setTradeFavRevision] = useState(0);
   const tradePairMenuRef = useRef<HTMLDivElement>(null);
   const tradeHeaderMoreRef = useRef<HTMLDivElement>(null);
+  /** Tracks manual partial-close confirms so Exit AI can log success/failure follow-up. */
+  const pendingManualPartialClosePctRef = useRef<number | null>(null);
   /** Clean = no trade overlays; Setup = entry / stop / target (and liq on perps). */
   const [setupMode, setSetupMode] = useState(false);
   const [orderPending, setOrderPending] = useState<'open' | 'close' | 'tpsl' | null>(null);
@@ -349,6 +455,125 @@ export function TradeScreen() {
   const requestedManage = modeRaw === 'manage';
   const isManageMode = Boolean(requestedManage && manageCtx);
   const manageDataInvalid = requestedManage && manageCtx === null;
+  const isBotsReviewCockpit = Boolean(botsReviewContext && !isManageMode);
+
+  const botsReviewCockpitModel = useMemo(() => {
+    if (!botsReviewContext) return null;
+    const opp = botsTradeOpp ?? null;
+    const pair = opp?.pair || formatBotsQueryPair(botsReviewContext.pair);
+    const direction: 'LONG' | 'SHORT' = opp?.direction ?? botsReviewContext.directionFromQuery ?? 'LONG';
+    const setupType = opp?.setupType || botsReviewContext.setup || '';
+    const score = opp?.score ?? null;
+    const state = opp?.state || botsReviewContext.state || '—';
+    const sourceEngine =
+      (opp ? parseSourceEngineFromOpportunityId(opp.id) : undefined) ??
+      (botsReviewContext.opportunityId
+        ? parseSourceEngineFromOpportunityId(botsReviewContext.opportunityId)
+        : undefined);
+    const riskLabel = opp ? deriveRiskLabelForReview(opp) : ('Medium' as const);
+    const thesis = opp?.thesis ?? 'Setup context unavailable';
+    const rationale =
+      opp?.rationale ??
+      'Pair loaded from route, but full engine context was not found.';
+    const timeframeAlignment = opp?.timeframeAlignment;
+    const timelineItems =
+      botsTradeOppLoading && botsReviewContext.opportunityId
+        ? []
+        : buildReasoningTimelineItems(opp, Boolean(opp));
+    return {
+      pair,
+      direction,
+      setupType,
+      score,
+      state,
+      sourceEngine,
+      riskLabel,
+      thesis,
+      rationale,
+      timeframeAlignment,
+      timelineItems,
+      entryZone: opp?.entryZone,
+      invalidation: opp?.invalidation,
+      targets: opp?.targets,
+    };
+  }, [botsReviewContext, botsTradeOpp, botsTradeOppLoading]);
+
+  const botsEnginePlanLevels = useMemo(() => {
+    if (!isBotsReviewCockpit || !botsReviewCockpitModel) return null;
+    if (botsReviewContext?.opportunityId && botsTradeOppLoading) return null;
+    const entryPrice = parseEntryZoneMidpoint(botsReviewCockpitModel.entryZone);
+    const stopPrice = parsePriceFromString(botsReviewCockpitModel.invalidation);
+    const targets = parseTargetPrices(botsReviewCockpitModel.targets);
+    if (entryPrice == null || stopPrice == null) return null;
+    return {
+      entryPrice,
+      stopPrice,
+      targets,
+      direction: botsReviewCockpitModel.direction,
+      pair: botsReviewCockpitModel.pair,
+    };
+  }, [isBotsReviewCockpit, botsReviewCockpitModel, botsReviewContext?.opportunityId, botsTradeOppLoading]);
+
+  useEffect(() => {
+    if (!botsEnginePlanLevels) {
+      setBotsPlannedStop(null);
+      setBotsPlannedTargets(null);
+      return;
+    }
+    setBotsPlannedStop(botsEnginePlanLevels.stopPrice);
+    setBotsPlannedTargets([...botsEnginePlanLevels.targets]);
+  }, [
+    botsReviewContext?.opportunityId,
+    botsEnginePlanLevels?.entryPrice,
+    botsEnginePlanLevels?.stopPrice,
+    botsEnginePlanLevels?.targets.join(','),
+  ]);
+
+  const botsPaperPreviewModel = useMemo(() => {
+    if (!isBotsReviewCockpit || !botsReviewCockpitModel || !botsEnginePlanLevels) return null;
+    if (botsReviewContext?.opportunityId && botsTradeOppLoading) return null;
+    const entryPrice = botsEnginePlanLevels.entryPrice;
+    const stopPrice = botsPlannedStop ?? botsEnginePlanLevels.stopPrice;
+    const targets = botsPlannedTargets ?? botsEnginePlanLevels.targets;
+    const { direction } = botsEnginePlanLevels;
+    const validation = validateBotsPaperPlan(entryPrice, stopPrice, targets, direction);
+    return {
+      entryPrice,
+      stopPrice,
+      targets,
+      direction,
+      previewEnabled: validation.ok,
+      previewDisabledReason: validation.ok ? null : (validation.stopWarning ?? validation.targetsWarning),
+      planGeometryWarning: !validation.ok,
+    };
+  }, [
+    isBotsReviewCockpit,
+    botsReviewCockpitModel,
+    botsEnginePlanLevels,
+    botsReviewContext?.opportunityId,
+    botsTradeOppLoading,
+    botsPlannedStop,
+    botsPlannedTargets,
+  ]);
+
+  const botsPlanDirty = useMemo(() => {
+    if (!botsEnginePlanLevels) return false;
+    const stop = botsPlannedStop ?? botsEnginePlanLevels.stopPrice;
+    const tg = botsPlannedTargets ?? botsEnginePlanLevels.targets;
+    if (stop !== botsEnginePlanLevels.stopPrice) return true;
+    if (tg.length !== botsEnginePlanLevels.targets.length) return true;
+    return tg.some((t, i) => t !== botsEnginePlanLevels.targets[i]);
+  }, [botsEnginePlanLevels, botsPlannedStop, botsPlannedTargets]);
+
+  const resetBotsPlanToEngine = useCallback(() => {
+    if (!botsEnginePlanLevels) return;
+    setBotsPlannedStop(botsEnginePlanLevels.stopPrice);
+    setBotsPlannedTargets([...botsEnginePlanLevels.targets]);
+  }, [botsEnginePlanLevels]);
+
+  const bumpBotsPaperPreviewPulse = useCallback(() => {
+    setBotsPaperPulseToken((t) => t + 1);
+  }, []);
 
   useEffect(() => {
     if (isManageMode) setChartDockOpen(true);
@@ -425,8 +650,17 @@ export function TradeScreen() {
 
   useEffect(() => {
     if (isManageMode || signalId.startsWith('pf-')) return;
+    if (positionReviewFromQuery) {
+      const sym = pairBaseToLinearSymbol(positionReviewFromQuery.pairRaw);
+      const row = getPositionRepository().getActivePositionByPair(sym);
+      if (row) {
+        setMarket('futures');
+        setSide(row.direction);
+        return;
+      }
+    }
     setSide(selectedSignal.side === 'short' ? 'short' : 'long');
-  }, [isManageMode, signalId, selectedSignal.side]);
+  }, [isManageMode, signalId, selectedSignal.side, positionReviewFromQuery]);
 
   const manageSideParam = params.get('side');
   useEffect(() => {
@@ -695,8 +929,19 @@ export function TradeScreen() {
     () => accountSnapshots.find((s) => s.exchange === 'bybit' && s.status === 'connected'),
     [accountSnapshots],
   );
+  const riskSettings = useRiskSettings();
+  const dailyRiskGuard = useDailyRiskGuard();
+  const dailyReviewLocked = Boolean(isBotsReviewCockpit && dailyRiskGuard.status === 'locked');
+  const exchangeOpenLegCount = useMemo(() => countExchangeOpenLegs(bybitSnap?.positions), [bybitSnap?.positions]);
+  const riskMonitoredOpenCount = useMemo(
+    () => activePositionCountForRisk(exchangeOpenLegCount),
+    [exchangeOpenLegCount],
+  );
+  const maxOpenPositionsReached = riskMonitoredOpenCount >= riskSettings.maxOpenPositions;
   /** Manage mode still posts closes/adds via `/trade/bybit/*` when Bybit is linked — only entry-mode chart shell differed before. */
   const useRealExecution = Boolean(bybitSnap && (market === 'futures' || market === 'spot'));
+  /** User opt-in from Risk controls — when false, Sigflo does not submit opens or TP/SL updates (closes use their own path). */
+  const liveOrderSubmitEnabled = useRealExecution && riskSettings.allowLiveExecution;
   const exchangePositionForSymbol = useMemo((): PositionItem | null => {
     if (!bybitSnap?.positions?.length) return null;
     const sym = pairBaseToLinearSymbol(mergedModel.pair);
@@ -944,6 +1189,44 @@ export function TradeScreen() {
     useRealExecution,
   ]);
 
+  const sigfloRepoPosition = useMemo(() => {
+    if (isManageMode) return null;
+    if (market !== 'futures') return null;
+    if (primaryOpenPosition != null) return null;
+    return getPositionRepository().getActivePositionByPair(pairBaseToLinearSymbol(mergedModel.pair));
+  }, [isManageMode, market, mergedModel.pair, primaryOpenPosition]);
+
+  const primaryChartOpenPosition = useMemo((): SimulatedActivePosition | null => {
+    if (primaryOpenPosition != null) return primaryOpenPosition;
+    if (sigfloRepoPosition != null) return simulatedFromSigfloActive(sigfloRepoPosition, market);
+    return null;
+  }, [market, primaryOpenPosition, sigfloRepoPosition]);
+
+  const sigfloManagedLayer = useMemo(() => {
+    if (isManageMode || market !== 'futures') return null;
+    const liveMark =
+      Number.isFinite(mergedModel.lastPrice) && mergedModel.lastPrice > 0
+        ? mergedModel.lastPrice
+        : live.lastPrice != null && Number.isFinite(live.lastPrice) && live.lastPrice > 0
+          ? live.lastPrice
+          : NaN;
+    if (useRealExecution && exchangePositionForSymbol) {
+      const m =
+        Number.isFinite(liveMark) && liveMark > 0 ? liveMark : exchangePositionForSymbol.entryPrice;
+      return sigfloActivePositionFromExchange(exchangePositionForSymbol, mergedModel.pair, m);
+    }
+    return sigfloRepoPosition;
+  }, [
+    exchangePositionForSymbol,
+    isManageMode,
+    live.lastPrice,
+    market,
+    mergedModel.lastPrice,
+    mergedModel.pair,
+    sigfloRepoPosition,
+    useRealExecution,
+  ]);
+
   /** SL/TP "% from entry" anchor: exchange average fill when a leg exists, else plan/anchor `mergedModel.entry`. */
   const slTpPercentEntryAnchor = useMemo((): number | null => {
     if (market === 'futures' && exchangePositionForSymbol) {
@@ -1000,7 +1283,8 @@ export function TradeScreen() {
     const p = primaryOpenPosition;
     return p != null && p.id.startsWith('bybit-spot:') ? p : null;
   }, [useRealExecution, market, primaryOpenPosition]);
-  const hasActiveTradePosition = !isManageMode && primaryOpenPosition != null;
+  const hasActiveTradePosition = !isManageMode && primaryChartOpenPosition != null;
+  const isExchangeBackedOpenLeg = primaryOpenPosition != null;
 
   /** Exchange-backed open leg for setup vs execution model (includes manage view when synced). */
   const exchangeOpenLegForTiming = useMemo(() => {
@@ -1130,7 +1414,7 @@ export function TradeScreen() {
     if (market === 'futures' && Number.isFinite(metrics.liquidation) && metrics.liquidation > 0) {
       next.liquidation = metrics.liquidation;
     }
-    const pos = primaryOpenPosition ?? exchangeSyntheticForManageChart;
+    const pos = primaryChartOpenPosition ?? exchangeSyntheticForManageChart;
     if (pos) {
       next.entry = pos.entryPrice;
       if (pos.stopLossPrice != null && Number.isFinite(pos.stopLossPrice) && pos.stopLossPrice > 0) {
@@ -1185,7 +1469,7 @@ export function TradeScreen() {
     market,
     metrics.liquidation,
     modelForMetrics,
-    primaryOpenPosition,
+    primaryChartOpenPosition,
     selectedSignal.setupScore,
     side,
   ]);
@@ -1193,11 +1477,11 @@ export function TradeScreen() {
   /** Pre-entry / plan PnL from throttled React `lastPrice` (scenario strip). */
   const liveUnrealizedPre = useMemo(() => {
     const mark = modelForMetrics.lastPrice;
-    if (primaryOpenPosition && Number.isFinite(mark)) {
-      const entry = Math.max(1e-9, primaryOpenPosition.entryPrice);
-      const dir = primaryOpenPosition.side === 'long' ? 1 : -1;
+    if (primaryChartOpenPosition && Number.isFinite(mark)) {
+      const entry = Math.max(1e-9, primaryChartOpenPosition.entryPrice);
+      const dir = primaryChartOpenPosition.side === 'long' ? 1 : -1;
       const movePct = ((mark - entry) / entry) * 100 * dir;
-      const pnlUsd = primaryOpenPosition.positionNotionalUsd * (movePct / 100);
+      const pnlUsd = primaryChartOpenPosition.positionNotionalUsd * (movePct / 100);
       return { pnlUsd, movePct };
     }
     const entry = Math.max(0.000001, modelForMetrics.entry);
@@ -1206,14 +1490,18 @@ export function TradeScreen() {
     const pnlUsd = metrics.positionSizeUsd * (movePct / 100);
     return { pnlUsd, movePct };
   }, [
-    primaryOpenPosition,
+    primaryChartOpenPosition,
     modelForMetrics.entry,
     modelForMetrics.lastPrice,
     metrics.positionSizeUsd,
     side,
   ]);
 
-  const throttledOpenPnl = useThrottledLiveUnrealized(live.lastPriceRef, primaryOpenPosition, hasActiveTradePosition);
+  const throttledOpenPnl = useThrottledLiveUnrealized(
+    live.lastPriceRef,
+    primaryChartOpenPosition,
+    hasActiveTradePosition,
+  );
 
   const liveUnrealized = hasActiveTradePosition
     ? { pnlUsd: throttledOpenPnl.pnlUsd, movePct: throttledOpenPnl.movePct }
@@ -1243,16 +1531,16 @@ export function TradeScreen() {
       };
     }
 
-    if (primaryOpenPosition && hasActiveTradePosition) {
+    if (primaryChartOpenPosition && hasActiveTradePosition) {
       const mark =
         Number.isFinite(throttledOpenPnl.mark) && throttledOpenPnl.mark > 0
           ? throttledOpenPnl.mark
           : chartModelForPlot.lastPrice;
       return {
         pairLabel: mergedModel.pair,
-        side: primaryOpenPosition.side,
-        positionNotionalUsd: primaryOpenPosition.positionNotionalUsd,
-        entryPrice: primaryOpenPosition.entryPrice,
+        side: primaryChartOpenPosition.side,
+        positionNotionalUsd: primaryChartOpenPosition.positionNotionalUsd,
+        entryPrice: primaryChartOpenPosition.entryPrice,
         markPrice: mark,
         pnlUsd: throttledOpenPnl.pnlUsd,
         stopPrice: stop,
@@ -1269,7 +1557,7 @@ export function TradeScreen() {
     managePnlDisplay,
     markForManage,
     mergedModel.pair,
-    primaryOpenPosition,
+    primaryChartOpenPosition,
     throttledOpenPnl.mark,
     throttledOpenPnl.pnlUsd,
   ]);
@@ -1323,7 +1611,7 @@ export function TradeScreen() {
     }
     return { canExecute: true, reason: null as string | null };
   }, [amountUsd, metrics.balanceUsd, metrics.positionSizeUsd, minOrderUsd, orderSymbol, orderPending]);
-  const canExecute = sizingValidation.canExecute;
+  const canExecute = (!isManageMode && liveExecutionLocked) ? false : sizingValidation.canExecute;
 
   const onAmountUsdChange = useCallback(
     (n: number) => {
@@ -1348,6 +1636,17 @@ export function TradeScreen() {
     },
     [isManageMode, market],
   );
+
+  /** Dock chart: drag stop/target strips (Setup + premium zones) update the same fields as the order card. */
+  const onDockChartPlanStopDrag = useCallback((p: number) => {
+    if (!Number.isFinite(p) || p <= 0) return;
+    setStopStr(formatQuoteNumber(p));
+  }, []);
+
+  const onDockChartPlanTargetDrag = useCallback((p: number) => {
+    if (!Number.isFinite(p) || p <= 0) return;
+    setTargetStr(formatQuoteNumber(p));
+  }, []);
 
   const linkedUta = tradeBalance != null;
 
@@ -1382,7 +1681,7 @@ export function TradeScreen() {
     const stop = chartModelForPlot.stop;
     const target = chartModelForPlot.target;
     const rr = mergedModel.riskReward;
-    const effSide = primaryOpenPosition && !isManageMode ? primaryOpenPosition.side : side;
+    const effSide = primaryChartOpenPosition && !isManageMode ? primaryChartOpenPosition.side : side;
     if (!Number.isFinite(entry) || entry <= 0) {
       return { rewardPercent: 0, riskPercent: 0, rrRatio: Number.isFinite(rr) ? rr : 0 };
     }
@@ -1406,7 +1705,7 @@ export function TradeScreen() {
     chartModelForPlot.target,
     isManageMode,
     mergedModel.riskReward,
-    primaryOpenPosition,
+    primaryChartOpenPosition,
     side,
   ]);
 
@@ -1645,8 +1944,8 @@ export function TradeScreen() {
     }
     return resolveExitGuidanceFlow({
       variant: 'trade',
-      side: primaryOpenPosition?.side ?? side,
-      entry: primaryOpenPosition?.entryPrice ?? modelForMetrics.entry,
+      side: primaryChartOpenPosition?.side ?? side,
+      entry: primaryChartOpenPosition?.entryPrice ?? modelForMetrics.entry,
       estimatedPnlPct: liveUnrealized.movePct,
       stop: chartModelForPlot.stop,
       target: chartModelForPlot.target,
@@ -1666,8 +1965,8 @@ export function TradeScreen() {
     managePnlDisplay,
     markForManage,
     mergedModel.entry,
-    primaryOpenPosition?.entryPrice,
-    primaryOpenPosition?.side,
+    primaryChartOpenPosition?.entryPrice,
+    primaryChartOpenPosition?.side,
     side,
     liveUnrealized.movePct,
     selectedSignal.scoreBreakdown.trendAlignment,
@@ -1894,8 +2193,8 @@ export function TradeScreen() {
 
   /** Omit dock open/closed — refitting on layout toggle wiped pan/zoom after the user dragged the chart. */
   const liveChartRefitKey =
-    hasActiveTradePosition && primaryOpenPosition
-      ? `${mergedModel.pair}|${primaryOpenPosition.id}`
+    hasActiveTradePosition && primaryChartOpenPosition
+      ? `${mergedModel.pair}|${primaryChartOpenPosition.id}`
       : undefined;
 
   /** Chart dock header (under `LiveMarketStrip`): R / T / R:R + setup tier or live exit-state badge — not last price. */
@@ -1956,13 +2255,15 @@ export function TradeScreen() {
     !assistedExitBarForceHidden &&
     exitFlow != null &&
     (exitFlow.effective.state === 'trim' || exitFlow.effective.state === 'exit') &&
-    (isManageMode ? exchangePositionForSymbol != null && manageCtx != null : hasActiveTradePosition);
+    (isManageMode
+      ? exchangePositionForSymbol != null && manageCtx != null
+      : hasActiveTradePosition && isExchangeBackedOpenLeg);
 
   const manageExitAiCoPilot = useMemo(
     () =>
       buildExitAiCoPilotModel({
         mode: exitAuto.mode,
-        side: primaryOpenPosition?.side ?? side,
+        side: primaryChartOpenPosition?.side ?? side,
         flow: exitFlow,
         nextPlanned: exitFlow?.nextPlanned ?? 'Automation watching trend and risk.',
         safeguards: exitAuto.safeguards,
@@ -1980,7 +2281,7 @@ export function TradeScreen() {
       exitFlow,
       manageInsightLine,
       orderPending,
-      primaryOpenPosition?.side,
+      primaryChartOpenPosition?.side,
       side,
       showAssistedExitConfirmBar,
     ],
@@ -2353,10 +2654,24 @@ export function TradeScreen() {
             message: `Scaled out ${pct}% · remaining position still active`,
           });
         }
+        if (pendingManualPartialClosePctRef.current != null) {
+          exitAuto.pushActivity({
+            kind: 'exit_state',
+            message: `Manual partial close ${pct}% submitted — syncing exchange fill…`,
+          });
+        }
         await refreshAccountSnapshots({ silent: false });
       } catch (e) {
+        if (pendingManualPartialClosePctRef.current != null) {
+          const pct = Math.round((pendingManualPartialClosePctRef.current ?? fraction) * 100);
+          exitAuto.pushActivity({
+            kind: 'exit_state',
+            message: `Manual partial close ${pct}% failed — review order state and retry.`,
+          });
+        }
         flashTradeToast(formatBybitTradeErrorMessage(e, 'Close failed'), 5200);
       } finally {
+        pendingManualPartialClosePctRef.current = null;
         setOrderPending(null);
       }
     },
@@ -2375,9 +2690,17 @@ export function TradeScreen() {
 
   const executeTrade = useCallback(
     async (nextSide: TradeSide, opts?: { manageIntent?: 'add' | 'reverse'; bypassGuidedExecution?: boolean }) => {
+      if (!isManageMode && isBotsReviewCockpit && dailyRiskGuard.status === 'locked') {
+        flashTradeToast('Daily risk limit reached — new entries paused for today.');
+        return;
+      }
       if (!isManageMode && !opts?.bypassGuidedExecution) {
         setGuidedExecutionSide(nextSide);
         setGuidedExecutionOpen(true);
+        return;
+      }
+      if (!isManageMode && liveExecutionLocked) {
+        flashTradeToast('Live execution locked — review-only flow from Bots.');
         return;
       }
       if (!canExecute) {
@@ -2416,7 +2739,7 @@ export function TradeScreen() {
         return;
       }
 
-      if (useRealExecution) {
+      if (liveOrderSubmitEnabled) {
         setOrderPending('open');
         try {
           let linearReverseAwaitPostSyncClear = false;
@@ -2579,7 +2902,11 @@ export function TradeScreen() {
         return;
       }
 
-      flashTradeToast('Connect Bybit in Account to place real orders.');
+      if (useRealExecution && !riskSettings.allowLiveExecution) {
+        flashTradeToast('Live execution is locked — enable it in Risk controls when you are ready to send orders.');
+      } else {
+        flashTradeToast('Connect Bybit in Account to place real orders.');
+      }
     },
     [
       amountUsd,
@@ -2589,9 +2916,13 @@ export function TradeScreen() {
       flashTradeToast,
       futuresLevCap,
       futuresTpSlTriggerBy,
+      dailyRiskGuard.status,
+      isBotsReviewCockpit,
       isManageMode,
       leverage,
+      liveExecutionLocked,
       live.lastPrice,
+      liveOrderSubmitEnabled,
       market,
       mergedModel.entry,
       mergedModel.lastPrice,
@@ -2600,18 +2931,18 @@ export function TradeScreen() {
       minOrderUsd,
       orderSymbol,
       refreshAccountSnapshots,
+      riskSettings.allowLiveExecution,
       side,
       sizingValidation.reason,
       stopParsed,
       targetParsed,
       useRealExecution,
-      isManageMode,
     ],
   );
 
   const submitManageTradingStopFromNumbers = useCallback(
     async (stopPrice: number, targetPrice: number) => {
-      if (!isManageMode || market !== 'futures') return;
+      if (market !== 'futures') return;
       if (!exchangePositionForSymbol) {
         flashTradeToast(
           bybitSnap
@@ -2622,6 +2953,13 @@ export function TradeScreen() {
       }
       if (!useRealExecution) {
         flashTradeToast('Connect Bybit in Account to update TP/SL.');
+        return;
+      }
+      if (!riskSettings.allowLiveExecution) {
+        flashTradeToast(
+          'Live execution is locked — enable it in Risk controls to push TP/SL changes to the exchange.',
+          6200,
+        );
         return;
       }
       const entry = exchangePositionForSymbol.entryPrice;
@@ -2670,7 +3008,7 @@ export function TradeScreen() {
         });
         setStopStr(Number.isFinite(stopPrice) && stopPrice > 0 ? formatQuoteNumber(stopPrice) : '');
         setTargetStr(Number.isFinite(targetPrice) && targetPrice > 0 ? formatQuoteNumber(targetPrice) : '');
-        setManageTpSlDirty(false);
+        if (isManageMode) setManageTpSlDirty(false);
         flashTradeToast('TP/SL updated — syncing account…');
         await refreshAccountSnapshots({ silent: false });
       } catch (e) {
@@ -2688,8 +3026,51 @@ export function TradeScreen() {
       market,
       orderSymbol,
       refreshAccountSnapshots,
+      riskSettings.allowLiveExecution,
       useRealExecution,
     ],
+  );
+
+  const liveChartTpSlDragEligible = useMemo(
+    () =>
+      !isManageMode &&
+      !isBotsReviewCockpit &&
+      !liveExecutionLocked &&
+      market === 'futures' &&
+      useRealExecution &&
+      riskSettings.allowLiveExecution &&
+      exchangePositionForSymbol != null &&
+      isExchangeBackedOpenLeg &&
+      orderPending == null,
+    [
+      exchangePositionForSymbol,
+      isBotsReviewCockpit,
+      isExchangeBackedOpenLeg,
+      isManageMode,
+      liveExecutionLocked,
+      market,
+      orderPending,
+      riskSettings.allowLiveExecution,
+      useRealExecution,
+    ],
+  );
+
+  const onDockChartLiveStopDragCommit = useCallback(
+    async (p: number) => {
+      if (!Number.isFinite(p) || p <= 0) return;
+      setStopStr(formatQuoteNumber(p));
+      await submitManageTradingStopFromNumbers(p, targetParsed);
+    },
+    [submitManageTradingStopFromNumbers, targetParsed],
+  );
+
+  const onDockChartLiveTargetDragCommit = useCallback(
+    async (p: number) => {
+      if (!Number.isFinite(p) || p <= 0) return;
+      setTargetStr(formatQuoteNumber(p));
+      await submitManageTradingStopFromNumbers(stopParsed, p);
+    },
+    [stopParsed, submitManageTradingStopFromNumbers],
   );
 
   const applyManageTradingStop = useCallback(async () => {
@@ -2799,6 +3180,7 @@ export function TradeScreen() {
         });
         return;
       }
+      pendingManualPartialClosePctRef.current = null;
       flashTradeToast(
         bybitSnap
           ? 'No matching open position on the exchange for this symbol — check pair and sync.'
@@ -2962,7 +3344,7 @@ export function TradeScreen() {
 
   const onReverseOrder = useCallback(() => {
     const openLegSide =
-      primaryOpenPosition?.side ??
+      primaryChartOpenPosition?.side ??
       (isManageMode && manageCtx ? manageCtx.side : undefined) ??
       exchangePositionForSymbol?.side;
     if (openLegSide !== 'long' && openLegSide !== 'short') {
@@ -2977,7 +3359,7 @@ export function TradeScreen() {
     flashTradeToast,
     isManageMode,
     manageCtx,
-    primaryOpenPosition?.side,
+    primaryChartOpenPosition?.side,
   ]);
 
   const chartPnlHeader = useMemo(() => {
@@ -3124,6 +3506,30 @@ export function TradeScreen() {
   }, [tradePairMenuOpen, tradeHeaderMoreOpen]);
 
   const tradeScrollRef = useRef<HTMLDivElement>(null);
+  const paperPreviewRef = useRef<HTMLDivElement>(null);
+  const scrollToPaperPreviewSection = useCallback(() => {
+    window.requestAnimationFrame(() => {
+      paperPreviewRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    });
+  }, []);
+
+  const [paperRealAccountNudgeVisible, setPaperRealAccountNudgeVisible] = useState(false);
+  const dismissPaperRealAccountNudge = useCallback(() => {
+    try {
+      sessionStorage.setItem(PAPER_REAL_ACCOUNT_NUDGE_DISMISS_KEY, '1');
+    } catch {
+      /* ignore */
+    }
+    setPaperRealAccountNudgeVisible(false);
+  }, []);
+  const onPaperPreviewInteraction = useCallback(() => {
+    try {
+      if (sessionStorage.getItem(PAPER_REAL_ACCOUNT_NUDGE_DISMISS_KEY) === '1') return;
+    } catch {
+      /* ignore */
+    }
+    setPaperRealAccountNudgeVisible(true);
+  }, []);
   const [setupFocusBanner, setSetupFocusBanner] = useState<string | null>(null);
   const onSetupFocusBannerCb = useCallback((label: string) => {
     setSetupFocusBanner(label);
@@ -3579,7 +3985,12 @@ export function TradeScreen() {
           className={`mx-auto flex w-full max-w-lg flex-col px-3 pb-0 ${hasActiveTradePosition ? 'gap-0 pt-1.5' : 'gap-1 pt-2'}`}
         >
           <div className="flex flex-col gap-1">
-            <MarketToggle value={market} onChange={setMarket} />
+            {!isManageMode && !isBotsReviewCockpit ? <MarketToggle value={market} onChange={setMarket} /> : null}
+            {!isManageMode && hideFreshSetupTradeHint && hasActiveTradePosition ? (
+              <p className="rounded-lg border border-white/[0.06] bg-white/[0.03] px-2 py-1.5 text-[9px] leading-snug text-zinc-400">
+                Review position · Managing exits · Suggestion only · Live changes require confirmation
+              </p>
+            ) : null}
             {!isManageMode ? (
               <ActivePositionsPanel
                 market={market}
@@ -3601,10 +4012,243 @@ export function TradeScreen() {
                 exitAiModeLabel={exitAiModeLabel}
                 exitStrategyLabel={exitStrategyLabel}
                 scenarioSummary={scenarioSummaryLine}
+                sigfloManagedLayer={sigfloManagedLayer}
+                liveMarkForLayer={
+                  hasActiveTradePosition && Number.isFinite(throttledOpenPnl.mark) && throttledOpenPnl.mark > 0
+                    ? throttledOpenPnl.mark
+                    : null
+                }
               />
             ) : null}
-            {!isManageMode ? <TradingControlTradeHint /> : null}
-            {!isManageMode ? (
+            {!isManageMode && !isBotsReviewCockpit && !hideFreshSetupTradeHint ? <TradingControlTradeHint /> : null}
+            {!isManageMode && isBotsReviewCockpit && botsReviewCockpitModel ? (
+              <div className="space-y-3 pb-1">
+                <DailyRiskGuardBanner model={dailyRiskGuard} />
+                <p className="text-[10px] leading-snug text-zinc-500">
+                  Engine review output for decision support. Not live exchange data. Outcomes are not guaranteed.
+                </p>
+                <TradeReviewHeader
+                  pair={botsReviewCockpitModel.pair}
+                  direction={botsReviewCockpitModel.direction}
+                  setupType={botsReviewCockpitModel.setupType}
+                  score={botsReviewCockpitModel.score}
+                  state={botsReviewCockpitModel.state}
+                  sourceEngine={botsReviewCockpitModel.sourceEngine}
+                />
+                {botsEnginePlanLevels ? (
+                  <div className="space-y-1.5">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className="text-[10px] leading-snug text-zinc-500">
+                        {dailyReviewLocked
+                          ? 'Plan levels are read-only while the daily risk guard is active.'
+                          : 'Drag stop or targets to adjust your plan'}
+                      </p>
+                      {botsPlanDirty && !dailyReviewLocked ? (
+                        <button
+                          type="button"
+                          onClick={resetBotsPlanToEngine}
+                          className="shrink-0 rounded-md border border-white/12 bg-white/[0.04] px-2 py-1 text-[10px] font-medium text-zinc-300 transition hover:border-[#00ffc8]/30 hover:text-zinc-100"
+                        >
+                          Reset to engine plan
+                        </button>
+                      ) : null}
+                    </div>
+                    <TradeMiniChart
+                      pair={botsEnginePlanLevels.pair}
+                      direction={botsEnginePlanLevels.direction}
+                      entryPrice={botsEnginePlanLevels.entryPrice}
+                      stopPrice={botsPlannedStop ?? botsEnginePlanLevels.stopPrice}
+                      targets={botsPlannedTargets ?? botsEnginePlanLevels.targets}
+                      interactiveLevels={!dailyReviewLocked}
+                      onPlannedStopChange={setBotsPlannedStop}
+                      onPlannedTargetsChange={setBotsPlannedTargets}
+                      onLevelsDragEnd={bumpBotsPaperPreviewPulse}
+                      planGeometryWarning={Boolean(botsPaperPreviewModel && !botsPaperPreviewModel.previewEnabled)}
+                      liquidationPrice={
+                        market === 'futures' &&
+                        Number.isFinite(metrics.liquidation) &&
+                        metrics.liquidation > 0
+                          ? metrics.liquidation
+                          : undefined
+                      }
+                    />
+                  </div>
+                ) : null}
+                <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3 backdrop-blur-sm">
+                  <h2 className="text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-500">Market context</h2>
+                  <p className="mt-1 text-[11px] leading-snug text-zinc-500">Spot / Perps / Paper</p>
+                  <div className="mt-2">
+                    <MarketToggle value={market} onChange={setMarket} disabled={dailyReviewLocked} />
+                  </div>
+                </div>
+                {botsReviewContext?.opportunityId && botsTradeOppLoading ? (
+                  <div className="space-y-2" aria-busy="true" aria-label="Loading review">
+                    <p className="text-xs text-zinc-500">Loading setup context…</p>
+                    <div className="h-24 animate-pulse rounded-2xl border border-white/10 bg-white/[0.04]" />
+                    <div className="h-24 animate-pulse rounded-2xl border border-white/10 bg-white/[0.04]" />
+                  </div>
+                ) : (
+                  <>
+                    <SetupThesisCard
+                      thesis={botsReviewCockpitModel.thesis}
+                      rationale={botsReviewCockpitModel.rationale}
+                      timeframeAlignment={botsReviewCockpitModel.timeframeAlignment}
+                    />
+                    <EntryPlanCard
+                      direction={botsReviewCockpitModel.direction}
+                      entryZone={botsReviewCockpitModel.entryZone}
+                      invalidation={botsReviewCockpitModel.invalidation}
+                      targets={botsReviewCockpitModel.targets}
+                    />
+                    <RiskReviewCard
+                      score={botsReviewCockpitModel.score}
+                      riskLabel={botsReviewCockpitModel.riskLabel}
+                      state={botsReviewCockpitModel.state}
+                      userRiskMode={riskSettings.riskMode}
+                      maxRiskPerTradePct={riskSettings.maxRiskPerTradePct}
+                      maxOpenPositions={riskSettings.maxOpenPositions}
+                      allowLiveExecution={riskSettings.allowLiveExecution}
+                      requireConfirmation={riskSettings.requireConfirmation}
+                      monitoredOpenCount={riskMonitoredOpenCount}
+                    />
+                    {hasActiveTradePosition ? (
+                      <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3 backdrop-blur-sm">
+                        <h2 className="text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-500">Exit automation</h2>
+                        <p className="mt-1 text-xs font-medium text-zinc-300">Manage active position</p>
+                        <p className="mt-2 text-[11px] leading-snug text-zinc-500">
+                          Shown only while this pair has an open position on your account. Entry from this Bots review
+                          stays locked; these controls adjust how Sigflo can assist with the position you already hold.
+                        </p>
+                        <ul className="mt-2 space-y-1 text-[11px] text-zinc-500">
+                          <li className="flex gap-2">
+                            <span className="text-[#00ffc8]/80" aria-hidden>
+                              ·
+                            </span>
+                            <span>Suggest stop move</span>
+                          </li>
+                          <li className="flex gap-2">
+                            <span className="text-[#00ffc8]/80" aria-hidden>
+                              ·
+                            </span>
+                            <span>Suggest partial take-profit</span>
+                          </li>
+                        </ul>
+                        <div className="mt-3">
+                          <ExitModePanel live={Boolean(hasActiveTradePosition)} showLiveBanner={false}>
+                            <ExitAutomationControls
+                              mode={exitAuto.mode}
+                              onModeChange={exitAuto.setMode}
+                              strategy={exitAuto.strategy}
+                              onStrategyChange={exitAuto.setStrategy}
+                              safeguards={exitAuto.safeguards}
+                              onSafeguardsChange={exitAuto.setSafeguards}
+                              customStrategyThresholds={exitAuto.customStrategyThresholds}
+                              onCustomStrategyThresholdsMerge={exitAuto.mergeCustomStrategyThresholds}
+                              onResetCustomStrategyThresholds={exitAuto.resetCustomStrategyThresholds}
+                              activity={exitAuto.activity}
+                              onClearActivity={exitAuto.clearActivity}
+                              compactActivity
+                              hasOpenPosition={hasActiveTradePosition}
+                              exitFlowState={exitFlow?.effective.state ?? null}
+                              exitFlowNextPlanned={exitFlow?.nextPlanned ?? null}
+                            />
+                            {serverExitEligible ? (
+                              <div className="mt-2 rounded-lg border border-white/[0.08] bg-white/[0.02] px-3 py-2.5">
+                                <label className="flex cursor-pointer items-start gap-2.5">
+                                  <input
+                                    type="checkbox"
+                                    className="mt-0.5 h-4 w-4 shrink-0 rounded border-white/20 bg-black/40 text-cyan-500 focus:ring-cyan-500/30"
+                                    checked={serverExitOvernightEnabled}
+                                    disabled={!serverExitOvernightHydrated}
+                                    onChange={(e) => {
+                                      const on = e.target.checked;
+                                      if (!on && exchangePositionForSymbol) {
+                                        void deleteExitAutomationWatch({
+                                          symbol: orderSymbol,
+                                          side: exchangePositionForSymbol.side,
+                                          positionIdx: exchangePositionForSymbol.positionIdx ?? 0,
+                                        }).catch(() => {});
+                                      }
+                                      setServerExitOvernightEnabled(on);
+                                    }}
+                                  />
+                                  <span className="text-[11px] leading-snug text-sigflo-muted">
+                                    <span className="font-semibold text-sigflo-text/90">Server overnight automation</span>
+                                    {' — '}
+                                    Runs Exit AI Auto on the Sigflo API while this device is off or asleep. Requires a
+                                    hosted backend with Postgres, migration 002, and env{' '}
+                                    <span className="font-mono text-[10px] text-cyan-200/85">
+                                      EXIT_AUTOMATION_WORKER_ENABLED=true
+                                    </span>
+                                    . If you keep this trade tab open with Auto on, leave this off to avoid duplicate
+                                    orders.
+                                  </span>
+                                </label>
+                              </div>
+                            ) : null}
+                          </ExitModePanel>
+                          <TradingControlExitBridge />
+                        </div>
+                      </div>
+                    ) : null}
+                    <ExecutionLockCard
+                      state={botsReviewCockpitModel.state}
+                      source="bots"
+                      onPaperPreview={scrollToPaperPreviewSection}
+                      allowLiveExecution={riskSettings.allowLiveExecution}
+                      requireConfirmation={riskSettings.requireConfirmation}
+                      paperModeDefault={riskSettings.paperModeDefault}
+                      maxOpenPositionsReached={maxOpenPositionsReached}
+                    />
+                    {botsPaperPreviewModel ? (
+                      <div ref={paperPreviewRef} id="sigflo-paper-trade-preview">
+                        <PaperTradePreview
+                          key={botsReviewContext?.opportunityId ?? 'paper-preview'}
+                          entryPrice={botsPaperPreviewModel.entryPrice}
+                          stopPrice={botsPaperPreviewModel.stopPrice}
+                          targets={botsPaperPreviewModel.targets}
+                          direction={botsPaperPreviewModel.direction}
+                          previewEnabled={botsPaperPreviewModel.previewEnabled}
+                          previewDisabledReason={botsPaperPreviewModel.previewDisabledReason}
+                          highlightPulseToken={botsPaperPulseToken}
+                          maxRiskPerTradePct={riskSettings.maxRiskPerTradePct}
+                          onInteraction={onPaperPreviewInteraction}
+                        />
+                      </div>
+                    ) : null}
+                    {isBotsReviewCockpit && botsPaperPreviewModel && paperRealAccountNudgeVisible ? (
+                      <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-3 py-3 backdrop-blur-sm">
+                        <p className="text-sm font-medium text-zinc-200">Ready to try this on your real account?</p>
+                        <p className="mt-1 text-[11px] leading-snug text-zinc-500">
+                          Linking is optional. You can keep using paper-style review until you are ready.
+                        </p>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              dismissPaperRealAccountNudge();
+                              navigate('/settings/exchange');
+                            }}
+                            className="rounded-lg border border-[#00ffc8]/35 bg-[#00ffc8]/10 px-3 py-2 text-xs font-semibold text-[#00ffc8] transition hover:bg-[#00ffc8]/15"
+                          >
+                            Connect exchange
+                          </button>
+                          <button
+                            type="button"
+                            onClick={dismissPaperRealAccountNudge}
+                            className="rounded-lg border border-white/10 px-3 py-2 text-xs font-medium text-zinc-400 transition hover:bg-white/[0.04]"
+                          >
+                            Not now
+                          </button>
+                        </div>
+                      </div>
+                    ) : null}
+                    <TradeReasoningTimeline items={botsReviewCockpitModel.timelineItems} />
+                  </>
+                )}
+              </div>
+            ) : null}
+            {!isManageMode && !isBotsReviewCockpit ? (
               <ScannerInsightCard
                 signal={selectedSignal}
                 status={scannerStatus}
@@ -3614,10 +4258,10 @@ export function TradeScreen() {
                 executionQuality={executionQuality}
               />
             ) : null}
-            {!isManageMode ? (
+            {!isManageMode && !isBotsReviewCockpit ? (
               <TradeChartScenarioStrip
                 mode="trade"
-                side={primaryOpenPosition?.side ?? side}
+                side={primaryChartOpenPosition?.side ?? side}
                 estimatedPnlUsd={liveUnrealized.pnlUsd}
                 estimatedPnlPct={liveUnrealized.movePct}
                 targetProfitUsd={metrics.targetProfitUsd}
@@ -3625,18 +4269,18 @@ export function TradeScreen() {
                 riskReward={mergedModel.riskReward}
                 probUp={scenarioProb.probUp}
                 probDown={scenarioProb.probDown}
-                marginUsd={primaryOpenPosition?.marginUsd ?? metrics.amountUsedUsd}
+                marginUsd={primaryChartOpenPosition?.marginUsd ?? metrics.amountUsedUsd}
                 estFeeUsd={estFeeUsd}
                 liqPrice={
                   market === 'futures'
-                    ? (primaryOpenPosition?.liquidationPrice ?? metrics.liquidation)
+                    ? (primaryChartOpenPosition?.liquidationPrice ?? metrics.liquidation)
                     : null
                 }
-                entry={primaryOpenPosition?.entryPrice ?? modelForMetrics.entry}
+                entry={primaryChartOpenPosition?.entryPrice ?? modelForMetrics.entry}
                 stop={modelForMetrics.stop}
                 target={modelForMetrics.target}
-                positionSizeUsd={primaryOpenPosition?.positionNotionalUsd ?? metrics.positionSizeUsd}
-                leverage={primaryOpenPosition?.leverage ?? leverage}
+                positionSizeUsd={primaryChartOpenPosition?.positionNotionalUsd ?? metrics.positionSizeUsd}
+                leverage={primaryChartOpenPosition?.leverage ?? leverage}
                 isFutures={market === 'futures'}
                 tradeScore={metrics.riskSummary.tradeScore}
                 setupScore={selectedSignal.setupScore}
@@ -3726,60 +4370,65 @@ export function TradeScreen() {
                 }}
               />
             ) : null}
-            <ExitModePanel live={Boolean(hasActiveTradePosition) || isManageMode}>
-              <ExitAutomationControls
-                mode={exitAuto.mode}
-                onModeChange={exitAuto.setMode}
-                strategy={exitAuto.strategy}
-                onStrategyChange={exitAuto.setStrategy}
-                safeguards={exitAuto.safeguards}
-                onSafeguardsChange={exitAuto.setSafeguards}
-                customStrategyThresholds={exitAuto.customStrategyThresholds}
-                onCustomStrategyThresholdsMerge={exitAuto.mergeCustomStrategyThresholds}
-                onResetCustomStrategyThresholds={exitAuto.resetCustomStrategyThresholds}
-                activity={exitAuto.activity}
-                onClearActivity={exitAuto.clearActivity}
-                compactActivity={!isManageMode}
-                hasOpenPosition={hasActiveTradePosition || isManageMode}
-                exitFlowState={exitFlow?.effective.state ?? null}
-                exitFlowNextPlanned={exitFlow?.nextPlanned ?? null}
-              />
-              {serverExitEligible ? (
-                <div className="mt-2 rounded-lg border border-white/[0.08] bg-white/[0.02] px-3 py-2.5">
-                  <label className="flex cursor-pointer items-start gap-2.5">
-                    <input
-                      type="checkbox"
-                      className="mt-0.5 h-4 w-4 shrink-0 rounded border-white/20 bg-black/40 text-cyan-500 focus:ring-cyan-500/30"
-                      checked={serverExitOvernightEnabled}
-                      disabled={!serverExitOvernightHydrated}
-                      onChange={(e) => {
-                        const on = e.target.checked;
-                        if (!on && exchangePositionForSymbol) {
-                          void deleteExitAutomationWatch({
-                            symbol: orderSymbol,
-                            side: exchangePositionForSymbol.side,
-                            positionIdx: exchangePositionForSymbol.positionIdx ?? 0,
-                          }).catch(() => {});
-                        }
-                        setServerExitOvernightEnabled(on);
-                      }}
-                    />
-                    <span className="text-[11px] leading-snug text-sigflo-muted">
-                      <span className="font-semibold text-sigflo-text/90">Server overnight automation</span>
-                      {' — '}
-                      Runs Exit AI Auto on the Sigflo API while this device is off or asleep. Requires a hosted
-                      backend with Postgres, migration 002, and env{' '}
-                      <span className="font-mono text-[10px] text-cyan-200/85">EXIT_AUTOMATION_WORKER_ENABLED=true</span>.
-                      If you keep this trade tab open with Auto on, leave this off to avoid duplicate orders.
-                    </span>
-                  </label>
-                </div>
-              ) : null}
-            </ExitModePanel>
-            <TradingControlExitBridge />
+            {!isBotsReviewCockpit ? (
+              <>
+                <ExitModePanel live={Boolean(hasActiveTradePosition) || isManageMode}>
+                  <ExitAutomationControls
+                    mode={exitAuto.mode}
+                    onModeChange={exitAuto.setMode}
+                    strategy={exitAuto.strategy}
+                    onStrategyChange={exitAuto.setStrategy}
+                    safeguards={exitAuto.safeguards}
+                    onSafeguardsChange={exitAuto.setSafeguards}
+                    customStrategyThresholds={exitAuto.customStrategyThresholds}
+                    onCustomStrategyThresholdsMerge={exitAuto.mergeCustomStrategyThresholds}
+                    onResetCustomStrategyThresholds={exitAuto.resetCustomStrategyThresholds}
+                    activity={exitAuto.activity}
+                    onClearActivity={exitAuto.clearActivity}
+                    compactActivity={!isManageMode}
+                    hasOpenPosition={hasActiveTradePosition || isManageMode}
+                    exitFlowState={exitFlow?.effective.state ?? null}
+                    exitFlowNextPlanned={exitFlow?.nextPlanned ?? null}
+                  />
+                  {serverExitEligible ? (
+                    <div className="mt-2 rounded-lg border border-white/[0.08] bg-white/[0.02] px-3 py-2.5">
+                      <label className="flex cursor-pointer items-start gap-2.5">
+                        <input
+                          type="checkbox"
+                          className="mt-0.5 h-4 w-4 shrink-0 rounded border-white/20 bg-black/40 text-cyan-500 focus:ring-cyan-500/30"
+                          checked={serverExitOvernightEnabled}
+                          disabled={!serverExitOvernightHydrated}
+                          onChange={(e) => {
+                            const on = e.target.checked;
+                            if (!on && exchangePositionForSymbol) {
+                              void deleteExitAutomationWatch({
+                                symbol: orderSymbol,
+                                side: exchangePositionForSymbol.side,
+                                positionIdx: exchangePositionForSymbol.positionIdx ?? 0,
+                              }).catch(() => {});
+                            }
+                            setServerExitOvernightEnabled(on);
+                          }}
+                        />
+                        <span className="text-[11px] leading-snug text-sigflo-muted">
+                          <span className="font-semibold text-sigflo-text/90">Server overnight automation</span>
+                          {' — '}
+                          Runs Exit AI Auto on the Sigflo API while this device is off or asleep. Requires a hosted
+                          backend with Postgres, migration 002, and env{' '}
+                          <span className="font-mono text-[10px] text-cyan-200/85">EXIT_AUTOMATION_WORKER_ENABLED=true</span>.
+                          If you keep this trade tab open with Auto on, leave this off to avoid duplicate orders.
+                        </span>
+                      </label>
+                    </div>
+                  ) : null}
+                </ExitModePanel>
+                <TradingControlExitBridge />
+              </>
+            ) : null}
           </div>
         </div>
 
+        {!isBotsReviewCockpit ? (
         <TradeControls
           manageDataInvalid={manageDataInvalid}
           ticketIntent={ticketIntent}
@@ -3848,6 +4497,7 @@ export function TradeScreen() {
           onPartialPositionScaleOut={partialScaleOutEligible ? onPartialPositionScaleOut : undefined}
           partialPositionScaleOutBusy={!!orderPending}
         />
+        ) : null}
       </div>
       </div>
 
@@ -3873,7 +4523,7 @@ export function TradeScreen() {
               <div className="grid w-full grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-[4.8px] px-[7px] py-[3px] sm:gap-x-[7px] sm:px-[10px]">
                 <div className="min-w-0 justify-self-start" />
                 <div className="flex min-w-0 w-full justify-self-stretch justify-start pl-0.5 sm:pl-1">
-                  {hasActiveTradePosition && primaryOpenPosition ? (
+                  {hasActiveTradePosition && isExchangeBackedOpenLeg ? (
                     <div className="flex w-full min-w-0 flex-col gap-1">
                       <div className="flex w-full min-w-0 flex-col gap-0.5">
                         <DockManageAdjustButtons
@@ -3895,6 +4545,30 @@ export function TradeScreen() {
                           onCloseAll={() => setCloseAllModalOpen(true)}
                         />
                       </div>
+                    </div>
+                  ) : hasActiveTradePosition && !isExchangeBackedOpenLeg ? (
+                    <div className="flex w-full min-w-0 flex-col gap-1 py-0.5">
+                      <p className="text-[10px] leading-snug text-zinc-500">
+                        Demo active position — use Exit automation above for suggestions. Suggestion only · Live
+                        changes require confirmation.
+                      </p>
+                    </div>
+                  ) : isBotsReviewCockpit && botsReviewCockpitModel ? (
+                    <div className="flex w-full min-w-0 flex-col gap-1.5 py-0.5">
+                      <p className="text-[10px] leading-snug text-zinc-500">
+                        {dailyReviewLocked
+                          ? 'Daily risk guard is on — new entries are paused; paper preview and your chart stay available.'
+                          : 'Review-only from Bots. No live entry — use the chart for context or open paper preview.'}
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          scrollToPaperPreviewSection();
+                        }}
+                        className="w-full rounded-lg border border-[#00ffc8]/30 bg-[#00ffc8]/10 py-2 text-xs font-semibold text-[#00ffc8] transition hover:bg-[#00ffc8]/14"
+                      >
+                        Paper trade preview
+                      </button>
                     </div>
                   ) : (
                     <DockSplitEntryButtons
@@ -4121,6 +4795,15 @@ export function TradeScreen() {
                   pnlHeaderLabel={chartPnlHeader.label}
                   pnlHeaderTone={chartPnlHeader.tone}
                   onSetupFocusBanner={onSetupFocusBannerCb}
+                  draggablePlanLevels={
+                    !isManageMode &&
+                    !isBotsReviewCockpit &&
+                    ((!hasActiveTradePosition && setupMode) || liveChartTpSlDragEligible)
+                  }
+                  onPlanStopChange={onDockChartPlanStopDrag}
+                  onPlanTargetChange={onDockChartPlanTargetDrag}
+                  onPlanStopDragEnd={liveChartTpSlDragEligible ? onDockChartLiveStopDragCommit : undefined}
+                  onPlanTargetDragEnd={liveChartTpSlDragEligible ? onDockChartLiveTargetDragCommit : undefined}
                   chartInnerChromeToggle={{
                     expanded: chartDockMaximized,
                     onToggle: toggleChartDockMaximized,
@@ -4148,6 +4831,11 @@ export function TradeScreen() {
           fraction={managePartialFraction}
           onFractionChange={setManagePartialFraction}
           onConfirm={(f) => {
+            pendingManualPartialClosePctRef.current = f;
+            exitAuto.pushActivity({
+              kind: 'exit_state',
+              message: `Manual partial close confirmed (${Math.round(f * 100)}%) — submitting…`,
+            });
             setManagePartialSheetOpen(false);
             onActivePartialClose(f);
           }}
@@ -4160,6 +4848,7 @@ export function TradeScreen() {
         <GuidedExecutionPanel
           open={guidedExecutionOpen}
           setup={guidedExecutionSetup}
+          previewOnly={isBotsReviewCockpit}
           onClose={() => setGuidedExecutionOpen(false)}
           onExecute={async () => {
             setGuidedExecutionOpen(false);

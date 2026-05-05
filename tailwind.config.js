@@ -76,13 +76,6 @@ export default {
           },
           '50%': { opacity: '1', filter: 'drop-shadow(0 0 7px rgba(0,255,200,0.28))' },
         },
-        /** Slow sheen across winning position cards */
-        'position-shimmer': {
-          '0%': { transform: 'translateX(-120%) skewX(-14deg)', opacity: '0' },
-          '12%': { opacity: '0.14' },
-          '55%': { opacity: '0.06' },
-          '100%': { transform: 'translateX(220%) skewX(-14deg)', opacity: '0' },
-        },
         /** Splash / boot: logo rotational drift */
         'sigflo-loader-spin-slow': {
           from: { transform: 'rotate(0deg)' },
@@ -98,11 +91,6 @@ export default {
           '0%, 100%': { transform: 'translateY(0)', opacity: '0.4' },
           '50%': { transform: 'translateY(-40px)', opacity: '1' },
         },
-        /** Progress bar specular sweep */
-        'sigflo-loader-beam': {
-          '0%': { transform: 'translateX(-120%)' },
-          '100%': { transform: 'translateX(320%)' },
-        },
         /** Compact mobile loader: logo breathing pulse */
         'sigflo-mobile-logo-pulse': {
           '0%, 100%': { transform: 'scale(1)', opacity: '0.92' },
@@ -114,12 +102,10 @@ export default {
         'fade-in-up': 'fade-in-up 0.35s ease-out',
         'glow-breathe': 'glow-breathe 4s ease-in-out infinite',
         'spark-glow': 'spark-glow 5s ease-in-out infinite',
-        'position-shimmer': 'position-shimmer 7.5s ease-in-out infinite',
         'sigflo-loader-spin-slow': 'sigflo-loader-spin-slow 18s linear infinite',
         'sigflo-loader-float-soft': 'sigflo-loader-float-soft 6s ease-in-out infinite',
         'sigflo-loader-orb-10': 'sigflo-loader-orb-float 10s ease-in-out infinite',
         'sigflo-loader-orb-14': 'sigflo-loader-orb-float 14s ease-in-out infinite',
-        'sigflo-loader-beam': 'sigflo-loader-beam 1.6s linear infinite',
         'sigflo-mobile-logo-pulse': 'sigflo-mobile-logo-pulse 2.2s ease-in-out infinite',
       },
     },

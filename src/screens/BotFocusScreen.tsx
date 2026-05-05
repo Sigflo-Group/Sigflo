@@ -351,9 +351,19 @@ export default function BotFocusScreen() {
     setChartSetupMode((v) => !v);
   }, []);
   const [setupFocusBanner, setSetupFocusBanner] = useState<string | null>(null);
+  const setupFocusBannerTimerRef = useRef<number | null>(null);
+  useEffect(() => {
+    return () => {
+      if (setupFocusBannerTimerRef.current != null) window.clearTimeout(setupFocusBannerTimerRef.current);
+    };
+  }, []);
   const onSetupFocusBannerCb = useCallback((label: string) => {
+    if (setupFocusBannerTimerRef.current != null) window.clearTimeout(setupFocusBannerTimerRef.current);
     setSetupFocusBanner(label);
-    window.setTimeout(() => setSetupFocusBanner(null), 4200);
+    setupFocusBannerTimerRef.current = window.setTimeout(() => {
+      setSetupFocusBanner(null);
+      setupFocusBannerTimerRef.current = null;
+    }, 4200);
   }, []);
   const chartSlotRef = useRef<HTMLDivElement | null>(null);
   const [fullChartPlotPx, setFullChartPlotPx] = useState(BOT_FOCUS_CHART_PLOT_PX);
@@ -505,20 +515,25 @@ export default function BotFocusScreen() {
   const chartModel = useMemo(() => {
     if (!baseModel || !bot) return baseModel;
     const levelsValidForBot = botSeededLevels && levelsValid(bot.detail.entry, bot.detail.stop, bot.detail.target);
+    const hasLiveSignalForPair = Boolean(focusSignal && !focusSignal.id.startsWith('tracked-'));
     const anchor =
       Number.isFinite(baseModel.lastPrice) && baseModel.lastPrice > 0
         ? baseModel.lastPrice
         : Number.isFinite(baseModel.entry) && baseModel.entry > 0
           ? baseModel.entry
           : 0;
-    /** Require a real chart anchor and matching magnitude — avoids merging BTC bot seeds onto alt charts during pair switches. */
+    /**
+     * Seeded bot levels are fallback-only. When a live signal exists for the selected pair, keep
+     * plan levels tied to live-derived chart context instead of static bot defaults.
+     */
     const applyBotLevels =
       levelsValidForBot &&
+      !hasLiveSignalForPair &&
       bot.detail.entry != null &&
       anchor > 0 &&
       botDetailMatchesChartScale(bot.detail.entry, anchor);
     return mergeModelWithBotLevels(baseModel, bot, applyBotLevels);
-  }, [baseModel, bot, botSeededLevels]);
+  }, [baseModel, bot, botSeededLevels, focusSignal]);
 
   /** Levels actually driving the chart / orders for the selected pair (live signal + anchor). */
   const hasDisplayableSetup = Boolean(
@@ -1010,9 +1025,19 @@ export default function BotFocusScreen() {
     }
   };
 
+  const tapFlashTimerRef = useRef<number | null>(null);
+  useEffect(() => {
+    return () => {
+      if (tapFlashTimerRef.current != null) window.clearTimeout(tapFlashTimerRef.current);
+    };
+  }, []);
   const flash = (id: string) => {
+    if (tapFlashTimerRef.current != null) window.clearTimeout(tapFlashTimerRef.current);
     setTapFlash(id);
-    window.setTimeout(() => setTapFlash(null), 160);
+    tapFlashTimerRef.current = window.setTimeout(() => {
+      setTapFlash(null);
+      tapFlashTimerRef.current = null;
+    }, 160);
   };
 
   useEffect(() => {

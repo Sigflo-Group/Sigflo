@@ -80,8 +80,8 @@ export default function MarketsScreen() {
         : 'bg-slate-500';
 
   return (
-    <div className="sigflo-markets-screen-root relative min-h-0 pt-[max(0.4rem,env(safe-area-inset-top))] sm:pt-[max(0.5rem,env(safe-area-inset-top))]">
-      <div className="relative z-10 mx-auto w-full max-w-none px-0 sm:max-w-md sm:px-3">
+    <div className="sigflo-markets-screen-root relative min-h-0 overflow-hidden pt-[max(0.4rem,env(safe-area-inset-top))] sm:overflow-visible sm:pt-[max(0.5rem,env(safe-area-inset-top))]">
+      <div className="relative z-10 mx-auto h-[calc(100dvh-9.75rem-env(safe-area-inset-top)-env(safe-area-inset-bottom))] min-h-0 w-full max-w-none overflow-y-auto overflow-x-hidden overscroll-y-contain touch-pan-y px-0 sm:h-auto sm:max-w-md sm:overflow-visible sm:px-3">
         {/* Header — base sizes ~10% up for mobile; sm+ unchanged */}
         <header className="mb-2.5 px-2.5 sm:mb-3 sm:px-0">
           <h1 className="text-[1.35rem] font-bold tracking-tight text-white sm:text-xl">Markets</h1>

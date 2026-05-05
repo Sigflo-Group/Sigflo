@@ -160,7 +160,7 @@ export function MarketCard({
             <div className="flex min-w-0 items-center gap-2 sm:gap-2">
               <div className="min-w-0 flex items-center gap-1.5 sm:gap-1">
                 {isTriggered ? <TriggeredFireMark hot={justTriggered || showJustTriggered} /> : null}
-                <h3 className="max-w-[42vw] truncate text-[14px] font-bold tracking-tight text-white sm:max-w-none sm:text-[15px]">
+                <h3 className="max-w-[34vw] truncate text-[14px] font-bold tracking-tight text-white min-[380px]:max-w-[42vw] sm:max-w-none sm:text-[15px]">
                   {row.pair}
                 </h3>
               </div>
@@ -175,7 +175,7 @@ export function MarketCard({
                   <span className={`relative inline-flex h-full w-full rounded-full ${uiStateStyle.dot}`} />
                 </span>
                 <span
-                  className={`max-w-[28vw] truncate sm:max-w-none ${
+                  className={`max-w-[22vw] truncate min-[380px]:max-w-[28vw] sm:max-w-none ${
                     isTriggered ? 'uppercase tracking-[0.11em] text-[#b2ffef] drop-shadow-[0_0_8px_rgba(0,255,200,0.45)]' : ''
                   }`}
                 >
@@ -191,7 +191,7 @@ export function MarketCard({
           </div>
 
           {/* Middle: mini chart (between status and price) */}
-          <div className="w-[110px] shrink-0 sm:w-[118px]">
+          <div className="w-[86px] shrink-0 min-[380px]:w-[110px] sm:w-[118px]">
             <div className="overflow-hidden rounded border border-white/[0.05] bg-[#08090d] px-1 py-0.5 sm:rounded-md sm:px-1 sm:py-0.5">
               <svg viewBox={`0 0 ${chartW} ${chartH}`} className="h-[24px] w-full sm:h-[30px]" aria-hidden>
                 <defs>
@@ -214,7 +214,7 @@ export function MarketCard({
           </div>
 
           {/* Right: price + change */}
-          <div className="w-[80px] shrink-0 text-right sm:w-auto">
+          <div className="w-[64px] shrink-0 text-right min-[380px]:w-[80px] sm:w-auto">
             <p className="text-[13px] font-bold tabular-nums text-white sm:text-[13px]">
               {Number.isFinite(row.lastPrice) ? `$${formatQuoteNumber(row.lastPrice)}` : '—'}
             </p>

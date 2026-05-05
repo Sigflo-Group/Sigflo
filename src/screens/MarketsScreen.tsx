@@ -83,7 +83,7 @@ export default function MarketsScreen() {
     <div className="sigflo-markets-screen-root relative min-h-0 overflow-hidden pt-[max(0.4rem,env(safe-area-inset-top))] sm:overflow-visible sm:pt-[max(0.5rem,env(safe-area-inset-top))]">
       <div className="relative z-10 mx-auto h-[calc(100dvh-9.75rem-env(safe-area-inset-top)-env(safe-area-inset-bottom))] min-h-0 w-full max-w-none overflow-y-auto overflow-x-hidden overscroll-y-contain touch-pan-y px-0 sm:h-auto sm:max-w-md sm:overflow-visible sm:px-3">
         {/* Header — base sizes ~10% up for mobile; sm+ unchanged */}
-        <header className="mb-2.5 px-2.5 sm:mb-3 sm:px-0">
+        <header className="mb-3.5 px-3 sm:mb-4 sm:px-0">
           <h1 className="text-[1.35rem] font-bold tracking-tight text-white sm:text-xl">Markets</h1>
           <div className="mt-1 flex items-center gap-2 text-[11px] text-sigflo-muted sm:mt-0.5 sm:gap-1.5 sm:text-[11px]">
             <span className={`h-2 w-2 shrink-0 rounded-full sm:h-1.5 sm:w-1.5 ${statusDot}`} />
@@ -134,7 +134,7 @@ export default function MarketsScreen() {
         </header>
 
         {/* Tabs */}
-        <div className="mb-2.5 mx-2.5 flex gap-1 rounded-lg border border-white/[0.06] bg-white/[0.02] p-1 sm:mb-3 sm:mx-0 sm:gap-1 sm:rounded-xl sm:p-0.5" role="tablist">
+        <div className="mb-3.5 mx-3 flex gap-1.5 rounded-xl border border-white/[0.06] bg-white/[0.02] p-1.5 sm:mb-4 sm:mx-0 sm:gap-1 sm:rounded-xl sm:p-0.5" role="tablist">
           {tabs.map(({ id, label }) => {
             const active = tab === id;
             return (
@@ -157,7 +157,7 @@ export default function MarketsScreen() {
         </div>
 
         {/* Market rows */}
-        <div className="space-y-1.5 px-2 sm:space-y-1.5 sm:px-0">
+        <div className="space-y-2.5 px-3 pb-3 sm:space-y-2 sm:px-0 sm:pb-2">
           {tab === 'movers' && !tickersLoading && moverRows.length === 0 ? (
             <p className="rounded-xl border border-white/[0.06] bg-sigflo-surface sigflo-panel-texture px-3.5 py-8 text-center text-[14px] leading-snug text-sigflo-muted sm:rounded-2xl sm:px-4 sm:py-8 sm:text-sm">
               No movers yet — check back later.

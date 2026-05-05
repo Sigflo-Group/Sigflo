@@ -13,6 +13,10 @@ import { sanitizeUserFacingHttpErrorMessage } from '@/lib/httpErrorMessage';
 import type { ExchangeId, ExchangeSnapshot } from '@/types/integrations';
 
 const MFA_TOTP_FRIENDLY_NAME = 'Sigflo Account';
+const EXCHANGE_API_DOCS_HREF: Record<ExchangeId, string> = {
+  bybit: 'https://bybit-exchange.github.io/docs/v5/intro',
+  mexc: 'https://mexcdevelop.github.io/apidocs/spot_v3_en/',
+};
 
 type RiskMode = 'Conservative' | 'Balanced' | 'Aggressive';
 
@@ -442,6 +446,15 @@ export default function ProfileScreen() {
                         API Keys
                       </a>
                       <a
+                        href={EXCHANGE_API_DOCS_HREF[exchange]}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        title={`Open ${exchange.toUpperCase()} API documentation in a new tab`}
+                        className="rounded-lg border border-white/[0.14] bg-white/[0.04] px-2 py-1 text-[11px] font-semibold text-sigflo-text transition hover:bg-white/[0.08]"
+                      >
+                        API Docs
+                      </a>
+                      <a
                         href={exchange === 'bybit' ? BYBIT_DEPOSIT_HREF : MEXC_DEPOSIT_HREF}
                         target="_blank"
                         rel="noopener noreferrer"
@@ -468,6 +481,15 @@ export default function ProfileScreen() {
                         className="rounded-lg border border-white/[0.14] bg-white/[0.04] px-2 py-1 text-[11px] font-semibold text-sigflo-text transition hover:bg-white/[0.08]"
                       >
                         API Keys
+                      </a>
+                      <a
+                        href={EXCHANGE_API_DOCS_HREF[exchange]}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        title={`Open ${exchange.toUpperCase()} API documentation in a new tab`}
+                        className="rounded-lg border border-white/[0.14] bg-white/[0.04] px-2 py-1 text-[11px] font-semibold text-sigflo-text transition hover:bg-white/[0.08]"
+                      >
+                        API Docs
                       </a>
                       <button
                         type="button"
@@ -544,6 +566,27 @@ export default function ProfileScreen() {
               className="w-full rounded-lg border border-white/[0.08] bg-black/30 px-2.5 py-2 text-sm text-white outline-none"
             />
           </div>
+          <p className="mt-2 text-[11px] text-sigflo-muted">
+            Need permissions help?{' '}
+            <a
+              href={EXCHANGE_API_DOCS_HREF[exchangeForm.exchange]}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-semibold text-sigflo-accent underline decoration-sigflo-accent/40 underline-offset-2 transition hover:decoration-sigflo-accent"
+            >
+              Open API docs
+            </a>{' '}
+            or{' '}
+            <a
+              href={exchangeForm.exchange === 'bybit' ? BYBIT_API_KEYS_HREF : MEXC_API_KEYS_HREF}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-semibold text-sigflo-accent underline decoration-sigflo-accent/40 underline-offset-2 transition hover:decoration-sigflo-accent"
+            >
+              API key settings
+            </a>
+            .
+          </p>
           <div className="mt-2 flex items-center gap-2">
             <button
               type="button"

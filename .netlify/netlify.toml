@@ -35,6 +35,9 @@ publish = "dist"
 
 [functions]
 
+[functions.emails]
+included_files = ["./emails/**"]
+
 [functions."*"]
 node_bundler = "esbuild"
 

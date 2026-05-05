@@ -136,7 +136,7 @@ export function MarketCard({
       aria-label={`Open trade for ${row.symbol}`}
     >
       <div
-        className={`rounded-lg border bg-sigflo-surface sigflo-panel-texture p-2.5 transition-all active:scale-[0.99] sm:rounded-xl sm:p-2.5 ${
+        className={`rounded-xl border bg-sigflo-surface sigflo-panel-texture p-3 transition-all active:scale-[0.99] sm:rounded-2xl sm:p-3.5 ${
           isTriggered
             ? `${uiStateStyle.card} sigflo-trigger-card-rest ${justTriggered ? 'sigflo-trigger-card-just' : ''} ${
                 isPrimaryTriggered
@@ -154,17 +154,17 @@ export function MarketCard({
           pressed ? 'scale-[0.992] shadow-[0_0_16px_-6px_rgba(0,255,200,0.5)]' : ''
         } group-hover:shadow-[0_8px_20px_-18px_rgba(0,0,0,0.55)] active:shadow-[0_0_14px_-8px_rgba(0,255,200,0.45)]`}
       >
-        <div className="flex items-start gap-2 sm:items-center sm:gap-2">
+        <div className="flex items-start gap-2.5 sm:items-center sm:gap-3">
           {/* Left: pair + status */}
           <div className="min-w-0 flex-1">
-            <div className="flex min-w-0 items-center gap-2 sm:gap-2">
-              <div className="min-w-0 flex items-center gap-1.5 sm:gap-1">
+            <div className="flex min-w-0 items-center gap-2.5 sm:gap-2">
+              <div className="min-w-0 flex items-center gap-1.5 sm:gap-1.5">
                 {isTriggered ? <TriggeredFireMark hot={justTriggered || showJustTriggered} /> : null}
                 <h3 className="max-w-[34vw] truncate text-[14px] font-bold tracking-tight text-white min-[380px]:max-w-[42vw] sm:max-w-none sm:text-[15px]">
                   {row.pair}
                 </h3>
               </div>
-              <span className={`min-w-0 inline-flex items-center gap-1 text-[10px] font-semibold sm:gap-1 sm:text-[10px] ${uiStateStyle.text}`}>
+              <span className={`min-w-0 inline-flex items-center gap-1.5 text-[10px] font-semibold sm:gap-1.5 sm:text-[10px] ${uiStateStyle.text}`}>
                 <span className={`relative flex ${isTriggered ? 'h-2 w-2' : 'h-1.5 w-1.5'}`}>
                   {uiStateStyle.pulse ? (
                     <>
@@ -184,16 +184,16 @@ export function MarketCard({
               </span>
             </div>
             {isTriggered && !showJustTriggered ? (
-              <p className={`pl-5 text-[10px] font-semibold text-[#9fffe9]/90 sm:pl-16 sm:text-[10px] ${justTriggered ? 'sigflo-trigger-entry-active sigflo-trigger-entry-shimmer' : ''}`}>
+              <p className={`pl-6 pt-0.5 text-[10px] font-semibold text-[#9fffe9]/90 sm:pl-16 sm:text-[10px] ${justTriggered ? 'sigflo-trigger-entry-active sigflo-trigger-entry-shimmer' : ''}`}>
                 Entry open
               </p>
             ) : null}
           </div>
 
           {/* Middle: mini chart (between status and price) */}
-          <div className="w-[86px] shrink-0 min-[380px]:w-[110px] sm:w-[118px]">
-            <div className="overflow-hidden rounded border border-white/[0.05] bg-[#08090d] px-1 py-0.5 sm:rounded-md sm:px-1 sm:py-0.5">
-              <svg viewBox={`0 0 ${chartW} ${chartH}`} className="h-[24px] w-full sm:h-[30px]" aria-hidden>
+          <div className="w-[86px] shrink-0 min-[380px]:w-[110px] sm:w-[122px]">
+            <div className="overflow-hidden rounded-md border border-white/[0.05] bg-[#08090d] px-1 py-1 sm:rounded-md sm:px-1 sm:py-0.5">
+              <svg viewBox={`0 0 ${chartW} ${chartH}`} className="h-[26px] w-full sm:h-[30px]" aria-hidden>
                 <defs>
                   <linearGradient id={`market-area-${row.symbol}`} x1="0" y1="0" x2="0" y2="1">
                     <stop offset="0%" stopColor={miniLineColor} stopOpacity="0.24" />

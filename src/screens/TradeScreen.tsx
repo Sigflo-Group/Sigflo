@@ -2691,7 +2691,10 @@ export function TradeScreen() {
   const executeTrade = useCallback(
     async (nextSide: TradeSide, opts?: { manageIntent?: 'add' | 'reverse'; bypassGuidedExecution?: boolean }) => {
       if (!isManageMode && isBotsReviewCockpit && dailyRiskGuard.status === 'locked') {
-        flashTradeToast('Daily risk limit reached — new entries paused for today.');
+        flashTradeToast('Daily risk limit reached — new entries paused for today.', 4200, {
+          label: 'Risk controls',
+          href: '/risk',
+        });
         return;
       }
       if (!isManageMode && !opts?.bypassGuidedExecution) {
@@ -2903,7 +2906,10 @@ export function TradeScreen() {
       }
 
       if (useRealExecution && !riskSettings.allowLiveExecution) {
-        flashTradeToast('Live execution is locked — enable it in Risk controls when you are ready to send orders.');
+        flashTradeToast('Live execution is locked — enable it in Risk controls when you are ready to send orders.', 5200, {
+          label: 'Risk controls',
+          href: '/risk',
+        });
       } else {
         flashTradeToast('Connect Bybit in Account to place real orders.');
       }
@@ -2959,6 +2965,7 @@ export function TradeScreen() {
         flashTradeToast(
           'Live execution is locked — enable it in Risk controls to push TP/SL changes to the exchange.',
           6200,
+          { label: 'Risk controls', href: '/risk' },
         );
         return;
       }

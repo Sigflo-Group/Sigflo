@@ -54,10 +54,20 @@ function SlideToExecute({
         requestAnimationFrame(() => setTrackW(el.clientWidth));
       }
     };
-    const ro = new ResizeObserver(measure);
-    ro.observe(el);
+    const onWindowResize = () => measure();
+    window.addEventListener('resize', onWindowResize, { passive: true });
+    let ro: ResizeObserver | null = null;
+    if (typeof ResizeObserver !== 'undefined') {
+      ro = new ResizeObserver(measure);
+      ro.observe(el);
+    }
     measure();
-    return () => ro.disconnect();
+    const t = window.setTimeout(measure, 80);
+    return () => {
+      window.clearTimeout(t);
+      window.removeEventListener('resize', onWindowResize);
+      ro?.disconnect();
+    };
   }, []);
 
   useEffect(() => {

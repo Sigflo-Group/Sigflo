@@ -165,7 +165,9 @@ export function buildTradeViewModelFromSignal(
     Number.isFinite(plannedE) &&
     Number.isFinite(plannedS) &&
     Number.isFinite(plannedT) &&
-    plannedE > 0
+    plannedE > 0 &&
+    plannedS > 0 &&
+    plannedT > 0
   ) {
     entry = plannedE;
     stop = plannedS;

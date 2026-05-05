@@ -1,13 +1,6 @@
-# To get started with Dependabot version updates, you'll need to specify which
-# package ecosystems to update and where the package manifests are located.
-# Please see the documentation for all configuration options:
-# https://docs.github.com/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
-
 version: 2
 
 updates:
-labels:
-  - "dependencies"
   # 🔹 Frontend (Vite / React app)
   - package-ecosystem: "npm"
     directory: "/"
@@ -24,7 +17,19 @@ labels:
     ignore:
       - dependency-name: "*"
         update-types: ["version-update:semver-major"]
-groups:
+
+    groups:
+      trading-risk:
+        patterns:
+          - "*ccxt*"
+          - "*bybit*"
+          - "*binance*"
+          - "*okx*"
+          - "*kucoin*"
+          - "*ws*"
+        labels:
+          - "risk:trading"
+
       react:
         patterns:
           - "react"
@@ -52,21 +57,7 @@ groups:
       misc:
         patterns:
           - "*"
-          
-  trading-risk:
-    patterns:
-      - "*ccxt*"
-      - "*bybit*"
-      - "*binance*"
-      - "*okx*"
-      - "*kucoin*"
-      - "*ws*"
-    labels:
-      - "risk:trading"
 
-  misc:
-    patterns:
-      - "*"
   # 🔹 Backend / trading engine
   - package-ecosystem: "npm"
     directory: "/backend"
@@ -83,26 +74,25 @@ groups:
     ignore:
       - dependency-name: "*"
         update-types: ["version-update:semver-major"]
-groups:
+
+    groups:
+      trading-risk:
+        patterns:
+          - "*ccxt*"
+          - "*ws*"
+        labels:
+          - "risk:trading"
+
       core:
         patterns:
           - "express"
           - "axios"
           - "cors"
 
-      trading:
-        patterns:
-          - "*ccxt*"
-          - "*ws*"
-
       misc:
         patterns:
           - "*"
 
-  - package-ecosystem: "github-actions"
-    directory: "/"
-    schedule:
-      interval: "weekly"
   # 🔹 GitHub Actions (CI/CD)
   - package-ecosystem: "github-actions"
     directory: "/"

@@ -217,7 +217,7 @@ export function SignalCard({
 
         {/* Entry + confidence + risk */}
         <div className="mt-7 flex items-end justify-between gap-3 text-xs">
-          <span className={`text-sigflo-muted ${isTriggered ? `sigflo-trigger-entry-active ${justTriggered ? 'sigflo-trigger-entry-shimmer' : ''}` : ''}`}>
+          <span className={`text-sigflo-muted ${isTriggered ? 'sigflo-trigger-entry-active' : ''}`}>
             Entry:{' '}
             <span className="animate-entry-pulse text-base font-bold tabular-nums tracking-tight text-white">
               {formatQuoteNumber(entryValue)}

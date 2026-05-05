@@ -70,6 +70,32 @@ function deriveLevels(side: TradeSide, ref: number, _setupScore: number): { stop
   return { entry, stop, target };
 }
 
+function fallbackChartCandles(refPrice: number, points = 64): TradeChartCandle[] {
+  const base = Number.isFinite(refPrice) && refPrice > 0 ? refPrice : 100;
+  const now = Date.now();
+  const stepMs = 60_000;
+  const out: TradeChartCandle[] = [];
+  let prev = base;
+  for (let i = 0; i < points; i += 1) {
+    const wiggle = Math.sin(i / 5) * 0.0018 * base;
+    const drift = ((i / Math.max(1, points - 1)) - 0.5) * 0.0022 * base;
+    const close = Math.max(0.0000001, base + wiggle + drift);
+    const open = prev;
+    const high = Math.max(open, close) * 1.0009;
+    const low = Math.min(open, close) * 0.9991;
+    out.push({
+      ts: now - (points - 1 - i) * stepMs,
+      open,
+      high,
+      low,
+      close,
+      volume: 0,
+    });
+    prev = close;
+  }
+  return out;
+}
+
 /** Long: stop < entry < target. Short: target < entry < stop. Fixes bad deep links / mixed data. */
 /**
  * When the exchange omits SL/TP on the position payload, keep plan levels only if they sit on the correct
@@ -212,6 +238,8 @@ export function buildTradeViewModelFromSignal(
     live.priceSeries && live.priceSeries.length > 20
       ? live.priceSeries
       : Array.from({ length: 48 }, (_, i) => 0.4 + (i / 47) * 0.45);
+  const chartCandles =
+    live.chartCandles && live.chartCandles.length > 20 ? live.chartCandles : fallbackChartCandles(lastPrice);
 
   const aiInsight: AiInsight = {
     trend: setupTypeToTrend(signal.setupType, side),
@@ -241,6 +269,6 @@ export function buildTradeViewModelFromSignal(
     riskReward,
     aiInsight,
     priceSeries,
-    chartCandles: live.chartCandles && live.chartCandles.length > 0 ? live.chartCandles : undefined,
+    chartCandles,
   };
 }

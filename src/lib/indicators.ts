@@ -20,14 +20,14 @@ export function rsi(values: number[], period: number): number[] {
   }
   let avgGain = gain / period;
   let avgLoss = loss / period;
-  out[period] = avgLoss === 0 ? 100 : 100 - 100 / (1 + avgGain / avgLoss);
+  out[period] = avgLoss === 0 ? (avgGain === 0 ? 50 : 100) : 100 - 100 / (1 + avgGain / avgLoss);
   for (let i = period + 1; i < values.length; i += 1) {
     const d = values[i] - values[i - 1];
     const up = d > 0 ? d : 0;
     const dn = d < 0 ? -d : 0;
     avgGain = (avgGain * (period - 1) + up) / period;
     avgLoss = (avgLoss * (period - 1) + dn) / period;
-    out[i] = avgLoss === 0 ? 100 : 100 - 100 / (1 + avgGain / avgLoss);
+    out[i] = avgLoss === 0 ? (avgGain === 0 ? 50 : 100) : 100 - 100 / (1 + avgGain / avgLoss);
   }
   return out;
 }

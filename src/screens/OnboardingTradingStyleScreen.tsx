@@ -3,7 +3,12 @@ import { Navigate, useNavigate } from 'react-router-dom';
 import { SigfloLogo } from '@/components/branding/SigfloLogo';
 import { getFeedRoute } from '@/config/appRoutes';
 import { useAuth } from '@/context/AuthContext';
-import { markTradingStyleOnboarded, type TradingStyleChoice } from '@/lib/tradingStyleOnboarding';
+import {
+  isTradingStyleOnboarded,
+  markTradingStyleOnboarded,
+  type TradingStyleChoice,
+} from '@/lib/tradingStyleOnboarding';
+import { isExchangeConnectOnboardingSeen } from '@/lib/exchangeConnectOnboarding';
 
 const OPTIONS: {
   choice: TradingStyleChoice;
@@ -38,13 +43,21 @@ export default function OnboardingTradingStyleScreen() {
   const pick = useCallback(
     (choice: TradingStyleChoice) => {
       markTradingStyleOnboarded(choice);
-      navigate(getFeedRoute(), { replace: true });
+      navigate('/onboarding/connect', { replace: true });
     },
     [navigate],
   );
 
   if (authMode !== 'supabase' || !user) {
     return <Navigate to={getFeedRoute()} replace />;
+  }
+
+  if (isTradingStyleOnboarded()) {
+    return isExchangeConnectOnboardingSeen() ? (
+      <Navigate to={getFeedRoute()} replace />
+    ) : (
+      <Navigate to="/onboarding/connect" replace />
+    );
   }
 
   return (

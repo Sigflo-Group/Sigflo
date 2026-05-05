@@ -37,6 +37,8 @@ export type GuidedExecutionPanelProps = {
     leverage: number;
   }) => Promise<void>;
   onViewPosition?: () => void;
+  /** When true, hides live submit controls — planning numbers only (e.g. Bots trade review). */
+  previewOnly?: boolean;
 };
 
 type UiState =
@@ -303,7 +305,14 @@ function ExecutionSuccessState({ onViewPosition }: { onViewPosition?: () => void
   );
 }
 
-export function GuidedExecutionPanel({ open, setup, onClose, onExecute, onViewPosition }: GuidedExecutionPanelProps) {
+export function GuidedExecutionPanel({
+  open,
+  setup,
+  onClose,
+  onExecute,
+  onViewPosition,
+  previewOnly = false,
+}: GuidedExecutionPanelProps) {
   const panelRef = useRef<HTMLDivElement | null>(null);
   const [adjustOpen, setAdjustOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -526,40 +535,56 @@ export function GuidedExecutionPanel({ open, setup, onClose, onExecute, onViewPo
               <p className="mt-3 text-xs leading-snug text-zinc-400">
                 You are responsible for all trades. This setup is generated from market data and may be incorrect.
               </p>
-              <p className="mt-1 text-[11px] text-zinc-500">Execution uses live market fills. Slippage may apply.</p>
+              <p className="mt-1 text-[11px] text-zinc-500">
+                {previewOnly
+                  ? 'Paper preview only. Outcomes are not guaranteed. Live execution stays disabled from this review.'
+                  : 'Execution uses live market fills. Slippage may apply.'}
+              </p>
 
-              <div className="mt-3 rounded-2xl border border-white/[0.08] bg-black/35 p-3">
-                <p className="text-sm font-semibold text-white">Execute Setup</p>
-                <div className="mt-2">
-                  {uiState === 'success' ? (
-                    <ExecutionSuccessState onViewPosition={onViewPosition} />
-                  ) : (
-                    <div className="space-y-2">
-                      <SlideToConfirm disabled={!canExecute} loading={submitting} success={success} onConfirm={() => void onSubmit()} />
-                      <button
-                        type="button"
-                        disabled={!canExecute || submitting}
-                        onClick={() => void onSubmit()}
-                        className="w-full rounded-xl border border-[#00ffc8]/30 bg-[#00ffc8]/12 px-3 py-2 text-sm font-semibold text-[#bafef1] hover:bg-[#00ffc8]/16 disabled:cursor-not-allowed disabled:opacity-45"
-                      >
-                        Confirm execution (keyboard)
-                      </button>
-                      {error ? (
-                        <div className="rounded-lg border border-rose-400/25 bg-rose-500/[0.08] p-2.5">
-                          <p className="text-xs font-medium text-rose-200">{error}</p>
-                          <button
-                            type="button"
-                            onClick={() => setError(null)}
-                            className="mt-1 text-xs font-semibold text-rose-100 underline underline-offset-2"
-                          >
-                            Review and try again
-                          </button>
-                        </div>
-                      ) : null}
-                    </div>
-                  )}
+              {previewOnly ? (
+                <div className="mt-3 rounded-2xl border border-white/10 bg-white/[0.04] p-3">
+                  <p className="text-sm font-semibold text-white">Paper trade preview</p>
+                  <p className="mt-1.5 text-xs leading-relaxed text-zinc-400">
+                    Adjust the draft above to stress-test the plan. Live orders are not available from the Bots review
+                    path — use the standard Trade screen without{' '}
+                    <span className="font-mono text-[10px] text-zinc-500">source=bots</span> when you are ready to
+                    execute with a linked account.
+                  </p>
                 </div>
-              </div>
+              ) : (
+                <div className="mt-3 rounded-2xl border border-white/[0.08] bg-black/35 p-3">
+                  <p className="text-sm font-semibold text-white">Execute Setup</p>
+                  <div className="mt-2">
+                    {uiState === 'success' ? (
+                      <ExecutionSuccessState onViewPosition={onViewPosition} />
+                    ) : (
+                      <div className="space-y-2">
+                        <SlideToConfirm disabled={!canExecute} loading={submitting} success={success} onConfirm={() => void onSubmit()} />
+                        <button
+                          type="button"
+                          disabled={!canExecute || submitting}
+                          onClick={() => void onSubmit()}
+                          className="w-full rounded-xl border border-[#00ffc8]/30 bg-[#00ffc8]/12 px-3 py-2 text-sm font-semibold text-[#bafef1] hover:bg-[#00ffc8]/16 disabled:cursor-not-allowed disabled:opacity-45"
+                        >
+                          Confirm execution (keyboard)
+                        </button>
+                        {error ? (
+                          <div className="rounded-lg border border-rose-400/25 bg-rose-500/[0.08] p-2.5">
+                            <p className="text-xs font-medium text-rose-200">{error}</p>
+                            <button
+                              type="button"
+                              onClick={() => setError(null)}
+                              className="mt-1 text-xs font-semibold text-rose-100 underline underline-offset-2"
+                            >
+                              Review and try again
+                            </button>
+                          </div>
+                        ) : null}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           </motion.div>
         </motion.div>

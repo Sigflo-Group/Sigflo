@@ -10,18 +10,22 @@ import { SIGFLO_MOBILE_LOADER_FEED_STATUSES } from '@/config/sigfloMobileLoaderS
 import { useAuth } from '@/context/AuthContext';
 import { useAuthProvider } from '@/providers/AuthProvider';
 import { isTradingStyleOnboarded } from '@/lib/tradingStyleOnboarding';
+import { isExchangeConnectOnboardingSeen } from '@/lib/exchangeConnectOnboarding';
 import AuthCallbackScreen from '@/screens/AuthCallbackScreen';
 import ResetPasswordScreen from '@/screens/ResetPasswordScreen';
 import BotDetailScreen from '@/screens/BotDetailScreen';
 import BotFocusScreen from '@/screens/BotFocusScreen';
 import BotSettingsScreen from '@/screens/BotSettingsScreen';
 import BotsScreen from '@/screens/BotsScreen';
+import RiskControlsScreen from '@/screens/RiskControlsScreen';
+import EngineDetailScreen from '@/screens/EngineDetailScreen';
 import { EngineDebugScreen } from '@/screens/EngineDebugScreen';
 import { FeedScreen } from '@/screens/FeedScreen';
 import BetaAdminScreen from '@/screens/BetaAdminScreen';
 import LoginScreen from '@/screens/LoginScreen';
 import MarketsScreen from '@/screens/MarketsScreen';
 import OnboardingTradingStyleScreen from '@/screens/OnboardingTradingStyleScreen';
+import OnboardingConnect from '@/screens/Onboarding/OnboardingConnect';
 import PortfolioScreen from '@/screens/PortfolioScreen';
 import PrivacyPolicyScreen from '@/screens/PrivacyPolicyScreen';
 import ProfileScreen from '@/screens/ProfileScreen';
@@ -44,11 +48,16 @@ function OnboardingGate() {
   const { user, authMode } = useAuth();
   const location = useLocation();
   if (authMode !== 'supabase' || !user) return <Outlet />;
-  const done = isTradingStyleOnboarded();
-  if (!done && location.pathname !== '/onboarding') {
+  const styleDone = isTradingStyleOnboarded();
+  const connectSeen = isExchangeConnectOnboardingSeen();
+  if (!styleDone && location.pathname !== '/onboarding') {
     return <Navigate to="/onboarding" replace />;
   }
-  if (done && location.pathname === '/onboarding') {
+  if (styleDone && !connectSeen && location.pathname !== '/onboarding/connect') {
+    return <Navigate to="/onboarding/connect" replace />;
+  }
+  const done = styleDone && connectSeen;
+  if (done && (location.pathname === '/onboarding' || location.pathname === '/onboarding/connect')) {
     return <Navigate to={getFeedRoute()} replace />;
   }
   return <Outlet />;
@@ -122,12 +131,15 @@ export default function App() {
             <Route path="/admin/beta" element={<BetaAdminScreen />} />
             <Route element={<BetaAccessGate />}>
               <Route path="/onboarding" element={<OnboardingTradingStyleScreen />} />
+              <Route path="/onboarding/connect" element={<OnboardingConnect />} />
               <Route element={<OnboardingGate />}>
                 <Route element={<SignalEngineProviderShell />}>
                   <Route element={<AppShell />}>
                     <Route path={feedRoute} element={<ProtectedRoute><FeedScreen /></ProtectedRoute>} />
                     <Route path="/markets" element={<MarketsScreen />} />
                     <Route path="/bots" element={<BotsScreen />} />
+                    <Route path="/risk" element={<RiskControlsScreen />} />
+                    <Route path="/engines/:engineId" element={<EngineDetailScreen />} />
                     <Route path="/bots/:botId/focus" element={<BotFocusScreen />} />
                     <Route path="/bots/:botId/settings" element={<BotSettingsScreen />} />
                     <Route path="/bots/:botId" element={<BotDetailScreen />} />

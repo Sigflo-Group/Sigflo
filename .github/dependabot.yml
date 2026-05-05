@@ -1,7 +1,7 @@
 version: 2
 
 updates:
-  # 🔹 Frontend (Vite / React app)
+  # Frontend
   - package-ecosystem: "npm"
     directory: "/"
     schedule:
@@ -19,23 +19,11 @@ updates:
         update-types: ["version-update:semver-major"]
 
     groups:
-  trading-risk:
-    patterns:
-      - "*ccxt*"
-      - "*bybit*"
-      - "*binance*"
-      - "*okx*"
-      - "*kucoin*"
-      - "*ws*"
-
-  react:
-    patterns:
-      - "react"
-      - "react-dom"
-
-  misc:
-    patterns:
-      - "*"
+      react:
+        patterns:
+          - "react"
+          - "react-dom"
+          - "@types/react*"
 
       vite:
         patterns:
@@ -44,22 +32,14 @@ updates:
 
       ui:
         patterns:
-          - "@headlessui/*"
-          - "@radix-ui/*"
           - "framer-motion"
           - "lucide-react"
-
-      linting:
-        patterns:
-          - "eslint*"
-          - "prettier"
-          - "@typescript-eslint/*"
 
       misc:
         patterns:
           - "*"
 
-  # 🔹 Backend / trading engine
+  # Backend
   - package-ecosystem: "npm"
     directory: "/backend"
     schedule:
@@ -77,32 +57,23 @@ updates:
         update-types: ["version-update:semver-major"]
 
     groups:
-      trading-risk:
-        patterns:
-          - "*ccxt*"
-          - "*ws*"
-        labels:
-          - "risk:trading"
-
       core:
         patterns:
           - "express"
           - "axios"
           - "cors"
 
+      trading-risk:
+        patterns:
+          - "*ccxt*"
+          - "*ws*"
+
       misc:
         patterns:
           - "*"
 
-  # 🔹 GitHub Actions (CI/CD)
+  # GitHub Actions
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "weekly"
-      day: "monday"
-      time: "07:00"
-    commit-message:
-      prefix: "ci"
-    labels:
-      - "ci"
-      - "dependencies"

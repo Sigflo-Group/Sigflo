@@ -423,7 +423,7 @@ export default function PortfolioScreen() {
 
           {connected && !loading && positions.length > 0 ? (
             <div className="space-y-4">
-              {positions.map((p, index) => {
+              {positions.map((p) => {
                 const current = p.markPrice ?? p.entryPrice;
                 const pnl = p.unrealizedPnl ?? 0;
                 const pnlPct =

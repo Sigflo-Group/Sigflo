@@ -22,7 +22,34 @@ updates:
     ignore:
       - dependency-name: "*"
         update-types: ["version-update:semver-major"]
+groups:
+      react:
+        patterns:
+          - "react"
+          - "react-dom"
+          - "@types/react*"
 
+      vite:
+        patterns:
+          - "vite"
+          - "@vitejs/*"
+
+      ui:
+        patterns:
+          - "@headlessui/*"
+          - "@radix-ui/*"
+          - "framer-motion"
+          - "lucide-react"
+
+      linting:
+        patterns:
+          - "eslint*"
+          - "prettier"
+          - "@typescript-eslint/*"
+
+      misc:
+        patterns:
+          - "*"
   # 🔹 Backend / trading engine
   - package-ecosystem: "npm"
     directory: "/backend"
@@ -39,7 +66,26 @@ updates:
     ignore:
       - dependency-name: "*"
         update-types: ["version-update:semver-major"]
+groups:
+      core:
+        patterns:
+          - "express"
+          - "axios"
+          - "cors"
 
+      trading:
+        patterns:
+          - "*ccxt*"
+          - "*ws*"
+
+      misc:
+        patterns:
+          - "*"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
   # 🔹 GitHub Actions (CI/CD)
   - package-ecosystem: "github-actions"
     directory: "/"

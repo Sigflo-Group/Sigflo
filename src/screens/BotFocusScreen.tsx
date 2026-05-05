@@ -1488,7 +1488,7 @@ export default function BotFocusScreen() {
         className={`fixed left-0 right-0 z-[35] border-t border-landing-border bg-landing-surface landing-panel-texture px-4 py-2.5 backdrop-blur-xl transition ${
           tapFlash === 'trade' ? 'brightness-105' : ''
         }`}
-        style={{ bottom: 'calc(4.65rem + env(safe-area-inset-bottom, 0px))' }}
+        style={{ bottom: 'calc(5.35rem + env(safe-area-inset-bottom, 0px))' }}
       >
         <button
           type="button"

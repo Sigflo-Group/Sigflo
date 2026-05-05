@@ -80,50 +80,50 @@ export default function MarketsScreen() {
         : 'bg-slate-500';
 
   return (
-    <div className="sigflo-markets-screen-root relative min-h-[100dvh] pb-[max(4.25rem,env(safe-area-inset-bottom))] pt-[max(0.35rem,env(safe-area-inset-top))] sm:pb-[max(4.75rem,env(safe-area-inset-bottom))] sm:pt-[max(0.5rem,env(safe-area-inset-top))]">
+    <div className="sigflo-markets-screen-root relative min-h-[100dvh] pb-[max(5.5rem,env(safe-area-inset-bottom))] pt-[max(0.4rem,env(safe-area-inset-top))] sm:pb-[max(5.5rem,env(safe-area-inset-bottom))] sm:pt-[max(0.5rem,env(safe-area-inset-top))]">
       <div className="relative z-10 mx-auto w-full max-w-none px-0 sm:max-w-md sm:px-3">
-        {/* Header */}
-        <header className="mb-2 px-2 sm:mb-3 sm:px-0">
-          <h1 className="text-[1.22rem] font-bold tracking-tight text-white sm:text-xl">Markets</h1>
-          <div className="mt-0.5 flex items-center gap-1.5 text-[10px] text-sigflo-muted sm:text-[11px]">
-            <span className={`h-1.5 w-1.5 rounded-full ${statusDot}`} />
+        {/* Header — base sizes ~10% up for mobile; sm+ unchanged */}
+        <header className="mb-2.5 px-2.5 sm:mb-3 sm:px-0">
+          <h1 className="text-[1.35rem] font-bold tracking-tight text-white sm:text-xl">Markets</h1>
+          <div className="mt-1 flex items-center gap-2 text-[11px] text-sigflo-muted sm:mt-0.5 sm:gap-1.5 sm:text-[11px]">
+            <span className={`h-2 w-2 shrink-0 rounded-full sm:h-1.5 sm:w-1.5 ${statusDot}`} />
             <span>
               {mode} · {rows.length} pair{rows.length === 1 ? '' : 's'}
               {tickersLoading ? ' · loading…' : ''}
             </span>
           </div>
-          <div className="mt-0.5 inline-flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[9px] font-medium text-sigflo-muted sm:text-[10px]">
+          <div className="mt-1 inline-flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] font-medium text-sigflo-muted sm:mt-0.5 sm:gap-x-1.5 sm:gap-y-0.5 sm:text-[10px]">
             <span className="inline-flex items-center gap-1">
-              <span className="h-1.5 w-1.5 rounded-full bg-slate-500" />
+              <span className="h-2 w-2 rounded-full bg-slate-500 sm:h-1.5 sm:w-1.5" />
               Forming
             </span>
             <span>·</span>
             <span className="inline-flex items-center gap-1">
-              <span className="h-1.5 w-1.5 rounded-full bg-cyan-300/95" />
+              <span className="h-2 w-2 rounded-full bg-cyan-300/95 sm:h-1.5 sm:w-1.5" />
               In Play
             </span>
             <span>·</span>
             <span className="inline-flex items-center gap-1 text-[#b2fff0] drop-shadow-[0_0_8px_rgba(0,255,200,0.35)]">
-              <span className="h-1.5 w-1.5 rounded-full bg-[#00ffc8] shadow-[0_0_8px_rgba(0,255,200,0.75)]" />
+              <span className="h-2 w-2 rounded-full bg-[#00ffc8] shadow-[0_0_8px_rgba(0,255,200,0.75)] sm:h-1.5 sm:w-1.5" />
               Triggered
             </span>
           </div>
-          <div className="mt-1 flex flex-wrap items-center justify-end gap-1 sm:mt-1.5 sm:gap-1.5">
+          <div className="mt-1.5 flex flex-wrap items-center justify-end gap-1.5 sm:mt-1.5 sm:gap-1.5">
             <button
               type="button"
               onClick={() => setNewsScanOpen(true)}
-              className="inline-flex items-center rounded-md border border-white/[0.1] bg-white/[0.04] px-2 py-1 text-[10px] font-semibold text-sigflo-text transition hover:border-cyan-400/25 hover:bg-white/[0.07] sm:rounded-lg sm:px-2 sm:py-1.5 sm:text-[11px]"
+              className="inline-flex items-center rounded-md border border-white/[0.1] bg-white/[0.04] px-2.5 py-1.5 text-[11px] font-semibold text-sigflo-text transition hover:border-cyan-400/25 hover:bg-white/[0.07] sm:rounded-lg sm:px-2 sm:py-1.5 sm:text-[11px]"
             >
               Today&apos;s brief
             </button>
             <button
               type="button"
               onClick={() => navigate(getFeedRoute())}
-              className="inline-flex items-center gap-1 rounded-md border border-sigflo-accent/26 bg-sigflo-accent/10 px-2 py-1 text-[10px] font-semibold text-sigflo-accent transition hover:border-sigflo-accent/40 hover:bg-sigflo-accent/14 sm:gap-1.5 sm:rounded-lg sm:px-2 sm:py-1.5 sm:text-[11px]"
+              className="inline-flex items-center gap-1.5 rounded-md border border-sigflo-accent/26 bg-sigflo-accent/10 px-2.5 py-1.5 text-[11px] font-semibold text-sigflo-accent transition hover:border-sigflo-accent/40 hover:bg-sigflo-accent/14 sm:gap-1.5 sm:rounded-lg sm:px-2 sm:py-1.5 sm:text-[11px]"
             >
-              <span className="relative flex h-1.5 w-1.5">
+              <span className="relative flex h-2 w-2 sm:h-1.5 sm:w-1.5">
                 <span className="absolute inline-flex h-full w-full animate-pulse-dot rounded-full bg-sigflo-accent [animation-duration:1.8s]" />
-                <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-sigflo-accent" />
+                <span className="relative inline-flex h-2 w-2 rounded-full bg-sigflo-accent sm:h-1.5 sm:w-1.5" />
               </span>
               <span className="sm:hidden">{triggeredNowCount} triggered</span>
               <span className="hidden sm:inline">
@@ -134,7 +134,7 @@ export default function MarketsScreen() {
         </header>
 
         {/* Tabs */}
-        <div className="mb-2 mx-2 flex gap-0.5 rounded-lg border border-white/[0.06] bg-white/[0.02] p-0.5 sm:mb-3 sm:mx-0 sm:gap-1 sm:rounded-xl sm:p-0.5" role="tablist">
+        <div className="mb-2.5 mx-2.5 flex gap-1 rounded-lg border border-white/[0.06] bg-white/[0.02] p-1 sm:mb-3 sm:mx-0 sm:gap-1 sm:rounded-xl sm:p-0.5" role="tablist">
           {tabs.map(({ id, label }) => {
             const active = tab === id;
             return (
@@ -144,7 +144,7 @@ export default function MarketsScreen() {
                 role="tab"
                 aria-selected={active}
                 onClick={() => setTab(id)}
-                className={`min-w-0 flex-1 rounded-md px-2 py-1 text-[10px] font-semibold transition sm:rounded-lg sm:px-2.5 sm:py-1.5 sm:text-xs ${
+                className={`min-w-0 flex-1 rounded-md px-2.5 py-1.5 text-[11px] font-semibold transition sm:rounded-lg sm:px-2.5 sm:py-1.5 sm:text-xs ${
                   active
                     ? 'bg-sigflo-accent/12 text-sigflo-accent ring-1 ring-sigflo-accent/25'
                     : 'text-sigflo-muted hover:text-sigflo-text'
@@ -157,14 +157,14 @@ export default function MarketsScreen() {
         </div>
 
         {/* Market rows */}
-        <div className="space-y-1 px-1.5 sm:space-y-1.5 sm:px-0">
+        <div className="space-y-1.5 px-2 sm:space-y-1.5 sm:px-0">
           {tab === 'movers' && !tickersLoading && moverRows.length === 0 ? (
-            <p className="rounded-xl border border-white/[0.06] bg-sigflo-surface sigflo-panel-texture px-3 py-7 text-center text-[13px] text-sigflo-muted sm:rounded-2xl sm:px-4 sm:py-8 sm:text-sm">
+            <p className="rounded-xl border border-white/[0.06] bg-sigflo-surface sigflo-panel-texture px-3.5 py-8 text-center text-[14px] leading-snug text-sigflo-muted sm:rounded-2xl sm:px-4 sm:py-8 sm:text-sm">
               No movers yet — check back later.
             </p>
           ) : null}
           {tab === 'watchlist' && watchlistRows.length === 0 ? (
-            <p className="rounded-xl border border-white/[0.06] bg-sigflo-surface sigflo-panel-texture px-3 py-7 text-center text-[13px] text-sigflo-muted sm:rounded-2xl sm:px-4 sm:py-8 sm:text-sm">
+            <p className="rounded-xl border border-white/[0.06] bg-sigflo-surface sigflo-panel-texture px-3.5 py-8 text-center text-[14px] leading-snug text-sigflo-muted sm:rounded-2xl sm:px-4 sm:py-8 sm:text-sm">
               No starred pairs yet. Open a chart on Trade and tap the star in the header to save markets here.
             </p>
           ) : null}

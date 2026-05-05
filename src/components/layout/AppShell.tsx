@@ -30,7 +30,7 @@ function AppShellMain() {
       />
       <main
         className={`relative flex-1 transition-[padding] duration-300 ease-out ${
-          hideTabBar ? 'pb-0' : 'pb-[calc(5.25rem+env(safe-area-inset-bottom))]'
+          hideTabBar ? 'pb-0' : 'pb-[calc(6rem+env(safe-area-inset-bottom))]'
         } ${botFocusScrollChain ? 'flex min-h-0 flex-col overflow-hidden' : ''}`}
       >
         <div

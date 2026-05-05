@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run *)",
+      "Bash(git pull *)",
+      "Bash(git stash *)",
+      "Bash(mv \"C:/dev/Sigflo/.claude/settings.local.json\" \"C:/dev/Sigflo/.claude/settings.local.json.bak\")",
+      "Bash(git checkout *)"
+    ]
+  }
+}

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { useAccountSnapshot } from '@/hooks/useAccountSnapshot';
@@ -40,6 +40,12 @@ export default function ProfileScreen() {
   const [mfaStatusLoading, setMfaStatusLoading] = useState<boolean>(false);
   const [googleSignInError, setGoogleSignInError] = useState<string | null>(null);
   const [totpCopyFlash, setTotpCopyFlash] = useState(false);
+  const totpCopyFlashTimerRef = useRef<number | null>(null);
+  useEffect(() => {
+    return () => {
+      if (totpCopyFlashTimerRef.current != null) window.clearTimeout(totpCopyFlashTimerRef.current);
+    };
+  }, []);
   const [totpSetup, setTotpSetup] = useState<{
     factorId: string;
     challengeId: string | null;
@@ -707,7 +713,11 @@ export default function ProfileScreen() {
                     try {
                       await navigator.clipboard.writeText(totpSetup.secret);
                       setTotpCopyFlash(true);
-                      window.setTimeout(() => setTotpCopyFlash(false), 2000);
+                      if (totpCopyFlashTimerRef.current != null) window.clearTimeout(totpCopyFlashTimerRef.current);
+                      totpCopyFlashTimerRef.current = window.setTimeout(() => {
+                        setTotpCopyFlash(false);
+                        totpCopyFlashTimerRef.current = null;
+                      }, 2000);
                     } catch {
                       setSecurityMessage('Could not copy — select the key and copy manually.');
                     }

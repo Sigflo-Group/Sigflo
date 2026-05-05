@@ -10,7 +10,10 @@ export type GuidedExecutionSetup = {
   setupScore: number;
   setupLabel: string;
   rationale: string;
+  /** Reference fill ≈ last traded (live). R:R and validation use this; SL/TP stay plan prices. */
   entry: number;
+  /** Plan / chart anchor when it differs from {@link entry} (shown as a caption). */
+  planEntry?: number;
   stop: number;
   target: number;
   positionSizeUsd: number;
@@ -34,6 +37,8 @@ export type GuidedExecutionPanelProps = {
     leverage: number;
   }) => Promise<void>;
   onViewPosition?: () => void;
+  /** When true, hides live submit controls — planning numbers only (e.g. Bots trade review). */
+  previewOnly?: boolean;
 };
 
 type UiState =
@@ -186,10 +191,15 @@ function SlideToConfirm({
   onConfirm: () => void;
 }) {
   const trackRef = useRef<HTMLDivElement | null>(null);
+  const progressRef = useRef(0);
   const [progress, setProgress] = useState(0);
   const [dragging, setDragging] = useState(false);
   const knobW = 46;
   const threshold = 0.86;
+
+  useEffect(() => {
+    progressRef.current = progress;
+  }, [progress]);
 
   useEffect(() => {
     if (loading || success) setProgress(1);
@@ -204,13 +214,15 @@ function SlideToConfirm({
     const onMove = (ev: PointerEvent) => {
       const maxX = Math.max(1, rect.width - knobW - 8);
       const x = clamp(ev.clientX - rect.left - knobW / 2 - 4, 0, maxX);
-      setProgress(x / maxX);
+      const next = x / maxX;
+      progressRef.current = next;
+      setProgress(next);
     };
     const onUp = () => {
       setDragging(false);
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
-      if (progress >= threshold) {
+      if (progressRef.current >= threshold) {
         setProgress(1);
         onConfirm();
       } else {
@@ -293,7 +305,14 @@ function ExecutionSuccessState({ onViewPosition }: { onViewPosition?: () => void
   );
 }
 
-export function GuidedExecutionPanel({ open, setup, onClose, onExecute, onViewPosition }: GuidedExecutionPanelProps) {
+export function GuidedExecutionPanel({
+  open,
+  setup,
+  onClose,
+  onExecute,
+  onViewPosition,
+  previewOnly = false,
+}: GuidedExecutionPanelProps) {
   const panelRef = useRef<HTMLDivElement | null>(null);
   const [adjustOpen, setAdjustOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -469,10 +488,15 @@ export function GuidedExecutionPanel({ open, setup, onClose, onExecute, onViewPo
               </p>
 
               <div className="grid grid-cols-3 gap-2">
-                <ExecutionRiskRow label="Entry" value={fmtPx(setup.entry)} />
+                <ExecutionRiskRow label={setup.planEntry != null ? 'Entry (live)' : 'Entry'} value={fmtPx(setup.entry)} />
                 <ExecutionRiskRow label="Stop" value={fmtPx(stop)} />
                 <ExecutionRiskRow label="Target" value={fmtPx(target)} />
               </div>
+              {setup.planEntry != null ? (
+                <p className="mt-1 text-[10px] leading-snug text-zinc-500">
+                  Plan entry {fmtPx(setup.planEntry)} · stop and target are the prices sent on the order
+                </p>
+              ) : null}
 
               <div className="mt-3 grid grid-cols-2 gap-2">
                 <ExecutionRiskRow label="Position Size" value={fmtUsd(positionSizeUsd)} />
@@ -511,40 +535,56 @@ export function GuidedExecutionPanel({ open, setup, onClose, onExecute, onViewPo
               <p className="mt-3 text-xs leading-snug text-zinc-400">
                 You are responsible for all trades. This setup is generated from market data and may be incorrect.
               </p>
-              <p className="mt-1 text-[11px] text-zinc-500">Execution uses live market fills. Slippage may apply.</p>
+              <p className="mt-1 text-[11px] text-zinc-500">
+                {previewOnly
+                  ? 'Paper preview only. Outcomes are not guaranteed. Live execution stays disabled from this review.'
+                  : 'Execution uses live market fills. Slippage may apply.'}
+              </p>
 
-              <div className="mt-3 rounded-2xl border border-white/[0.08] bg-black/35 p-3">
-                <p className="text-sm font-semibold text-white">Execute Setup</p>
-                <div className="mt-2">
-                  {uiState === 'success' ? (
-                    <ExecutionSuccessState onViewPosition={onViewPosition} />
-                  ) : (
-                    <div className="space-y-2">
-                      <SlideToConfirm disabled={!canExecute} loading={submitting} success={success} onConfirm={() => void onSubmit()} />
-                      <button
-                        type="button"
-                        disabled={!canExecute || submitting}
-                        onClick={() => void onSubmit()}
-                        className="w-full rounded-xl border border-[#00ffc8]/30 bg-[#00ffc8]/12 px-3 py-2 text-sm font-semibold text-[#bafef1] hover:bg-[#00ffc8]/16 disabled:cursor-not-allowed disabled:opacity-45"
-                      >
-                        Confirm execution (keyboard)
-                      </button>
-                      {error ? (
-                        <div className="rounded-lg border border-rose-400/25 bg-rose-500/[0.08] p-2.5">
-                          <p className="text-xs font-medium text-rose-200">{error}</p>
-                          <button
-                            type="button"
-                            onClick={() => setError(null)}
-                            className="mt-1 text-xs font-semibold text-rose-100 underline underline-offset-2"
-                          >
-                            Review and try again
-                          </button>
-                        </div>
-                      ) : null}
-                    </div>
-                  )}
+              {previewOnly ? (
+                <div className="mt-3 rounded-2xl border border-white/10 bg-white/[0.04] p-3">
+                  <p className="text-sm font-semibold text-white">Paper trade preview</p>
+                  <p className="mt-1.5 text-xs leading-relaxed text-zinc-400">
+                    Adjust the draft above to stress-test the plan. Live orders are not available from the Bots review
+                    path — use the standard Trade screen without{' '}
+                    <span className="font-mono text-[10px] text-zinc-500">source=bots</span> when you are ready to
+                    execute with a linked account.
+                  </p>
                 </div>
-              </div>
+              ) : (
+                <div className="mt-3 rounded-2xl border border-white/[0.08] bg-black/35 p-3">
+                  <p className="text-sm font-semibold text-white">Execute Setup</p>
+                  <div className="mt-2">
+                    {uiState === 'success' ? (
+                      <ExecutionSuccessState onViewPosition={onViewPosition} />
+                    ) : (
+                      <div className="space-y-2">
+                        <SlideToConfirm disabled={!canExecute} loading={submitting} success={success} onConfirm={() => void onSubmit()} />
+                        <button
+                          type="button"
+                          disabled={!canExecute || submitting}
+                          onClick={() => void onSubmit()}
+                          className="w-full rounded-xl border border-[#00ffc8]/30 bg-[#00ffc8]/12 px-3 py-2 text-sm font-semibold text-[#bafef1] hover:bg-[#00ffc8]/16 disabled:cursor-not-allowed disabled:opacity-45"
+                        >
+                          Confirm execution (keyboard)
+                        </button>
+                        {error ? (
+                          <div className="rounded-lg border border-rose-400/25 bg-rose-500/[0.08] p-2.5">
+                            <p className="text-xs font-medium text-rose-200">{error}</p>
+                            <button
+                              type="button"
+                              onClick={() => setError(null)}
+                              className="mt-1 text-xs font-semibold text-rose-100 underline underline-offset-2"
+                            >
+                              Review and try again
+                            </button>
+                          </div>
+                        ) : null}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           </motion.div>
         </motion.div>

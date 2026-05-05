@@ -97,12 +97,18 @@ export async function postTradeExecute(req: AuthedRequest, res: Response) {
   const account = await getBrokerAccountForUser(req.user.userId, intent.brokerAccountId);
   if (!account) return res.status(404).json({ error: 'Broker account not found' });
 
+  const entryPrice = Number(intent.entryPrice);
+  if (!Number.isFinite(entryPrice) || entryPrice <= 0) {
+    return res.status(422).json({ error: 'Execution intent is missing a valid entry price' });
+  }
+
   const broker = await executeBrokerOrder({
     account,
     symbol: intent.symbol,
     direction: intent.direction,
     positionSizeUsd: Number(intent.positionSizeUsd),
     leverage: Number(intent.leverage),
+    entryPrice,
   });
 
   const trade = await createTradeRow({
@@ -121,7 +127,7 @@ export async function postTradeExecute(req: AuthedRequest, res: Response) {
     brokerResponse: broker.brokerResponse,
   });
 
-  await consumeTradeIntent(intent.id, body.idempotencyKey);
+  await consumeTradeIntent(req.user.userId, intent.id, body.idempotencyKey);
   await writeAuditLog({
     userId: req.user.userId,
     requestId: req.requestId,

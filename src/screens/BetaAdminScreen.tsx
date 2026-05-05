@@ -32,7 +32,7 @@ export default function BetaAdminScreen() {
       const res = await postAdminBeta(token, { action: 'list', limit: 120 });
       const j = (await res.json()) as AdminBetaListResponse & { code?: string };
       if (!res.ok) {
-        setError(typeof j.error === 'string' ? j.error : `HTTP ${res.status}`);
+        setError(typeof j.error === 'string' ? j.error : `HTTP ${res.status ?? 'unknown'}`);
         setList([]);
         return;
       }

@@ -256,7 +256,8 @@ export function evaluateTimingLifecycle(args: {
     penalties.crowdedLevelPenalty * config.penaltyWeights.crowdedLevelPenalty +
     penalties.rrCompressionPenalty * config.penaltyWeights.rrCompressionPenalty;
 
-  const timingScore = clamp(Math.round(selected.timingScore - weightedPenalty), 0, 100);
+  const safeWeightedPenalty = Number.isFinite(weightedPenalty) ? weightedPenalty : 0;
+  const timingScore = clamp(Math.round(selected.timingScore - safeWeightedPenalty), 0, 100);
   const entryFreshnessScore = computeEntryFreshnessScore(penalties);
   const actionabilityScore = computeActionabilityScore(
     {

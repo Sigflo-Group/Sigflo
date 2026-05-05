@@ -212,7 +212,8 @@ export function ManagePartialCloseSheet({
 
   if (!open) return null;
 
-  const bottom = `max(0.75rem, env(safe-area-inset-bottom, 0px))`;
+  /** Keep the sheet above the persistent bottom trade controls so confirm actions are immediately visible. */
+  const bottom = `calc(max(0.75rem, env(safe-area-inset-bottom, 0px)) + 5.5rem)`;
 
   return (
     <>
@@ -264,6 +265,14 @@ export function ManagePartialCloseSheet({
             label="Slide to close slice →"
             onCommit={run}
           />
+          <button
+            type="button"
+            disabled={disabled || busy || localBusy}
+            onClick={run}
+            className="mt-2 w-full rounded-xl border border-landing-accent/35 bg-landing-accent-dim/35 py-2 text-[11px] font-bold text-landing-accent-hi transition hover:border-landing-accent/50 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-45"
+          >
+            {busy || localBusy ? 'Submitting…' : 'Confirm partial close'}
+          </button>
         </div>
       </div>
     </>

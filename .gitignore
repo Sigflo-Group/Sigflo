@@ -10,3 +10,6 @@ dist
 
 .vercel
 .env*.local
+
+# Claude local worktrees (nested repos; not part of Sigflo source)
+.claude/worktrees/

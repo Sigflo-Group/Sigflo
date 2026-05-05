@@ -1,12 +1,13 @@
+import { useEffect, useRef, type CSSProperties } from 'react';
 import type { ExitAiMode } from '@/types/aiExitAutomation';
 import type { ManageTradePositionContext } from '@/lib/manageTradeContext';
 import type { PositionBiasStat } from '@/lib/positionBiasStat';
-import type { PositionHealthResult } from '@/lib/positionHealth';
+import type { PositionHealthResult, PositionHealthStatus } from '@/lib/positionHealth';
 import type { ExitAiCoPilotModel } from '@/lib/exitAiCoPilot';
 import { ExitAiCoPilotBlock } from '@/components/trade/exit/ExitAiCoPilotBlock';
 import { formatQuoteNumber } from '@/lib/formatQuote';
 import type { TradeSide } from '@/types/trade';
-import type { CSSProperties } from 'react';
+import { playAlertSound } from '@/utils/sound';
 
 function fmtSignedUsd(n: number): string {
   const sign = n >= 0 ? '+' : '−';
@@ -138,6 +139,17 @@ export function ManagePositionControlPanel({
   const winning = pnlUsd >= 0;
   const staticActive = exitMode === 'manual';
   const aiActive = exitMode !== 'manual';
+
+  const prevHealthStatusRef = useRef<PositionHealthStatus | null>(null);
+  useEffect(() => {
+    const s = health.status;
+    const prev = prevHealthStatusRef.current;
+    prevHealthStatusRef.current = s;
+    if (prev == null) return;
+    if (prev === 'healthy' && s !== 'healthy') {
+      playAlertSound();
+    }
+  }, [health.status]);
 
   return (
     <div

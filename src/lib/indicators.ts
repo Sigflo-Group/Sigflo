@@ -20,14 +20,14 @@ export function rsi(values: number[], period: number): number[] {
   }
   let avgGain = gain / period;
   let avgLoss = loss / period;
-  out[period] = avgLoss === 0 ? 100 : 100 - 100 / (1 + avgGain / avgLoss);
+  out[period] = avgLoss === 0 ? (avgGain === 0 ? 50 : 100) : 100 - 100 / (1 + avgGain / avgLoss);
   for (let i = period + 1; i < values.length; i += 1) {
     const d = values[i] - values[i - 1];
     const up = d > 0 ? d : 0;
     const dn = d < 0 ? -d : 0;
     avgGain = (avgGain * (period - 1) + up) / period;
     avgLoss = (avgLoss * (period - 1) + dn) / period;
-    out[i] = avgLoss === 0 ? 100 : 100 - 100 / (1 + avgGain / avgLoss);
+    out[i] = avgLoss === 0 ? (avgGain === 0 ? 50 : 100) : 100 - 100 / (1 + avgGain / avgLoss);
   }
   return out;
 }
@@ -58,10 +58,12 @@ export function rollingAvg(values: number[], period: number): number[] {
 
 export function recentSwingHigh(candles: Candle[], lookback: number): number {
   const s = candles.slice(-lookback);
-  return s.reduce((m, c) => Math.max(m, c.high), s[0]?.high ?? 0);
+  if (s.length === 0) return 0;
+  return s.reduce((m, c) => Math.max(m, c.high), s[0].high);
 }
 
 export function recentSwingLow(candles: Candle[], lookback: number): number {
   const s = candles.slice(-lookback);
-  return s.reduce((m, c) => Math.min(m, c.low), s[0]?.low ?? 0);
+  if (s.length === 0) return 0;
+  return s.reduce((m, c) => Math.min(m, c.low), s[0].low);
 }

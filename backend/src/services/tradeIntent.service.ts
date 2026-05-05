@@ -30,6 +30,6 @@ export async function resolveTradeIntentByToken(userId: string, executionToken: 
   return getTradeIntentByTokenHash(userId, hash);
 }
 
-export async function consumeTradeIntent(intentId: string, idempotencyKey: string) {
-  await markTradeIntentUsed(intentId, idempotencyKey);
+export async function consumeTradeIntent(userId: string, intentId: string, idempotencyKey: string) {
+  await markTradeIntentUsed(userId, intentId, idempotencyKey);
 }

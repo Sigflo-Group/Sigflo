@@ -8,12 +8,6 @@ export type AdminBetaListResponse = {
   error?: string;
 };
 
-export type AdminBetaApproveResponse = {
-  ok?: boolean;
-  profile?: { id: string; email: string; approved: boolean };
-  error?: string;
-};
-
 export async function postAdminBeta(accessToken: string, body: Record<string, unknown>): Promise<Response> {
   return fetch(endpoint(), {
     method: 'POST',

@@ -483,7 +483,7 @@ export default function BotSettingsScreen() {
       {toast ? (
         <div
           className="pointer-events-none fixed left-1/2 z-[120] w-[min(22rem,calc(100vw-2rem))] -translate-x-1/2"
-          style={{ bottom: 'calc(5.5rem + env(safe-area-inset-bottom, 0px))' }}
+          style={{ bottom: 'calc(6rem + env(safe-area-inset-bottom, 0px))' }}
           role="status"
         >
           <div className="rounded-xl border border-[#00ffc8]/28 bg-black/92 px-3 py-2.5 text-center text-xs font-semibold text-[#b8fff0] shadow-[0_12px_40px_-12px_rgba(0,255,200,0.2)] backdrop-blur-md">

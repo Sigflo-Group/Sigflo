@@ -20,7 +20,7 @@ export async function fetchTradablePerpSymbols(): Promise<string[]> {
     '/v5/market/instruments-info?category=linear&limit=1000',
   );
   if (data.retCode !== 0) throw new Error(data.retMsg || 'Bybit instruments failed');
-  return data.result.list
+  return (data.result?.list ?? [])
     .filter((x) => x.status === 'Trading' && x.quoteCoin === 'USDT')
     .map((x) => x.symbol);
 }
@@ -49,7 +49,7 @@ export async function fetchTickers(symbols?: string[]): Promise<SymbolTicker[]> 
   const data = await getJson<BybitResp<{ list: Array<Record<string, string>> }>>('/v5/market/tickers?category=linear');
   if (data.retCode !== 0) throw new Error(data.retMsg || 'Bybit tickers failed');
   const symbolSet = symbols ? new Set(symbols) : undefined;
-  return data.result.list
+  return (data.result?.list ?? [])
     .filter((x) => (symbolSet ? symbolSet.has(String(x.symbol ?? '')) : true))
     .map((x) => {
       const markRaw = toNum(x.markPrice);
@@ -84,7 +84,7 @@ export async function fetchKlines(symbol: string, interval: KlineInterval, limit
   );
   if (data.retCode !== 0) throw new Error(data.retMsg || 'Bybit kline failed');
   // Bybit returns newest first.
-  return data.result.list
+  return (data.result?.list ?? [])
     .map((r) => ({
       ts: Number(r[0]),
       open: Number(r[1]),

@@ -18,6 +18,8 @@
   # If the site has NODE_ENV=production, npm omits devDependencies and `npm run build` fails
   # (`tsc` / `vite` not found). Keep devDeps for the build; Vite still emits a production bundle.
   NPM_CONFIG_PRODUCTION = "false"
+  # Prevent OOM during tsc + vite build on Netlify's build runners (default heap is ~512 MB).
+  NODE_OPTIONS = "--max-old-space-size=4096"
 
 # Bundle serverless functions (ESM imports from netlify/functions/lib/*).
 [functions]

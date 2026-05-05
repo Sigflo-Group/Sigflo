@@ -80,19 +80,19 @@ export default function MarketsScreen() {
         : 'bg-slate-500';
 
   return (
-    <div className="sigflo-markets-screen-root relative min-h-[100dvh] pb-[max(5rem,env(safe-area-inset-bottom))] pt-[max(0.45rem,env(safe-area-inset-top))] sm:pb-[max(5.5rem,env(safe-area-inset-bottom))] sm:pt-[max(0.75rem,env(safe-area-inset-top))]">
-      <div className="relative z-10 mx-auto w-full max-w-none px-0 sm:max-w-lg sm:px-4">
+    <div className="sigflo-markets-screen-root relative min-h-[100dvh] pb-[max(4.25rem,env(safe-area-inset-bottom))] pt-[max(0.35rem,env(safe-area-inset-top))] sm:pb-[max(4.75rem,env(safe-area-inset-bottom))] sm:pt-[max(0.5rem,env(safe-area-inset-top))]">
+      <div className="relative z-10 mx-auto w-full max-w-none px-0 sm:max-w-md sm:px-3">
         {/* Header */}
-        <header className="mb-3 px-3 sm:mb-4 sm:px-0">
-          <h1 className="text-[1.32rem] font-bold tracking-tight text-white sm:text-2xl">Markets</h1>
-          <div className="mt-1 flex items-center gap-2 text-[11px] text-sigflo-muted">
+        <header className="mb-2 px-2 sm:mb-3 sm:px-0">
+          <h1 className="text-[1.22rem] font-bold tracking-tight text-white sm:text-xl">Markets</h1>
+          <div className="mt-0.5 flex items-center gap-1.5 text-[10px] text-sigflo-muted sm:text-[11px]">
             <span className={`h-1.5 w-1.5 rounded-full ${statusDot}`} />
             <span>
               {mode} · {rows.length} pair{rows.length === 1 ? '' : 's'}
               {tickersLoading ? ' · loading…' : ''}
             </span>
           </div>
-          <div className="mt-1 inline-flex items-center gap-2 text-[10px] font-medium text-sigflo-muted">
+          <div className="mt-0.5 inline-flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[9px] font-medium text-sigflo-muted sm:text-[10px]">
             <span className="inline-flex items-center gap-1">
               <span className="h-1.5 w-1.5 rounded-full bg-slate-500" />
               Forming
@@ -108,18 +108,18 @@ export default function MarketsScreen() {
               Triggered
             </span>
           </div>
-          <div className="mt-1.5 flex flex-wrap items-center justify-end gap-1.5 sm:mt-2 sm:gap-2">
+          <div className="mt-1 flex flex-wrap items-center justify-end gap-1 sm:mt-1.5 sm:gap-1.5">
             <button
               type="button"
               onClick={() => setNewsScanOpen(true)}
-              className="inline-flex items-center rounded-lg border border-white/[0.1] bg-white/[0.04] px-2 py-1.5 text-[11px] font-semibold text-sigflo-text transition hover:border-cyan-400/25 hover:bg-white/[0.07] sm:px-2.5"
+              className="inline-flex items-center rounded-md border border-white/[0.1] bg-white/[0.04] px-2 py-1 text-[10px] font-semibold text-sigflo-text transition hover:border-cyan-400/25 hover:bg-white/[0.07] sm:rounded-lg sm:px-2 sm:py-1.5 sm:text-[11px]"
             >
               Today&apos;s brief
             </button>
             <button
               type="button"
               onClick={() => navigate(getFeedRoute())}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-sigflo-accent/26 bg-sigflo-accent/10 px-2 py-1.5 text-[11px] font-semibold text-sigflo-accent transition hover:border-sigflo-accent/40 hover:bg-sigflo-accent/14 sm:gap-2 sm:px-2.5"
+              className="inline-flex items-center gap-1 rounded-md border border-sigflo-accent/26 bg-sigflo-accent/10 px-2 py-1 text-[10px] font-semibold text-sigflo-accent transition hover:border-sigflo-accent/40 hover:bg-sigflo-accent/14 sm:gap-1.5 sm:rounded-lg sm:px-2 sm:py-1.5 sm:text-[11px]"
             >
               <span className="relative flex h-1.5 w-1.5">
                 <span className="absolute inline-flex h-full w-full animate-pulse-dot rounded-full bg-sigflo-accent [animation-duration:1.8s]" />
@@ -134,7 +134,7 @@ export default function MarketsScreen() {
         </header>
 
         {/* Tabs */}
-        <div className="mb-3 mx-3 flex gap-1 rounded-xl border border-white/[0.06] bg-white/[0.02] p-0.5 sm:mb-4 sm:mx-0 sm:p-1" role="tablist">
+        <div className="mb-2 mx-2 flex gap-0.5 rounded-lg border border-white/[0.06] bg-white/[0.02] p-0.5 sm:mb-3 sm:mx-0 sm:gap-1 sm:rounded-xl sm:p-0.5" role="tablist">
           {tabs.map(({ id, label }) => {
             const active = tab === id;
             return (
@@ -144,7 +144,7 @@ export default function MarketsScreen() {
                 role="tab"
                 aria-selected={active}
                 onClick={() => setTab(id)}
-                className={`min-w-0 flex-1 rounded-lg px-2 py-1.5 text-[11px] font-semibold transition sm:px-3 sm:py-2 sm:text-sm ${
+                className={`min-w-0 flex-1 rounded-md px-2 py-1 text-[10px] font-semibold transition sm:rounded-lg sm:px-2.5 sm:py-1.5 sm:text-xs ${
                   active
                     ? 'bg-sigflo-accent/12 text-sigflo-accent ring-1 ring-sigflo-accent/25'
                     : 'text-sigflo-muted hover:text-sigflo-text'
@@ -157,14 +157,14 @@ export default function MarketsScreen() {
         </div>
 
         {/* Market rows */}
-        <div className="space-y-1.5 px-2 sm:space-y-2 sm:px-0">
+        <div className="space-y-1 px-1.5 sm:space-y-1.5 sm:px-0">
           {tab === 'movers' && !tickersLoading && moverRows.length === 0 ? (
-            <p className="rounded-2xl border border-white/[0.06] bg-sigflo-surface sigflo-panel-texture px-4 py-10 text-center text-sm text-sigflo-muted">
+            <p className="rounded-xl border border-white/[0.06] bg-sigflo-surface sigflo-panel-texture px-3 py-7 text-center text-[13px] text-sigflo-muted sm:rounded-2xl sm:px-4 sm:py-8 sm:text-sm">
               No movers yet — check back later.
             </p>
           ) : null}
           {tab === 'watchlist' && watchlistRows.length === 0 ? (
-            <p className="rounded-2xl border border-white/[0.06] bg-sigflo-surface sigflo-panel-texture px-4 py-10 text-center text-sm text-sigflo-muted">
+            <p className="rounded-xl border border-white/[0.06] bg-sigflo-surface sigflo-panel-texture px-3 py-7 text-center text-[13px] text-sigflo-muted sm:rounded-2xl sm:px-4 sm:py-8 sm:text-sm">
               No starred pairs yet. Open a chart on Trade and tap the star in the header to save markets here.
             </p>
           ) : null}

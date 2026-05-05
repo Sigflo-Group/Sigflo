@@ -381,7 +381,14 @@ export function PriceChartCard({
     }
     if (!next && prev === true) {
       liveOverlayTouchedKeysRef.current.clear();
-      setVisibleLevels(chartOverlayPresetSetupLevels());
+      prevSetupOnRef.current = false;
+      // If still in Setup mode, keep entry/stop/target visible instead of blanking to all-off.
+      // Without this, levels stay hidden because effect 340's wasOn guard stays true.
+      if (setupModeLiveRef.current) {
+        setVisibleLevels({ entry: true, stop: true, target: true, liquidation: showLiquidation });
+      } else {
+        setVisibleLevels(chartOverlayPresetSetupLevels());
+      }
       return;
     }
   }, [liveTradeOverlayPreset, setupControlled, showLiquidation, model.liquidation]);

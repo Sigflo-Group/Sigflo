@@ -1,5 +1,5 @@
 import type { OpportunityCardModel } from '@/types/botSystem';
-import { formatFreshness, getScoreTier, getStateStyles } from '@/types/botSystem';
+import { formatFreshness, getScoreTier, getStateStyles, stateLabel } from '@/types/botSystem';
 
 export function OpportunityRowCard({
   opportunity,
@@ -64,7 +64,7 @@ export function OpportunityRowCard({
           }`}
         >
           <span className={`h-1.5 w-1.5 rounded-full ${muted ? 'bg-zinc-500' : stateStyles.dot}`} />
-          {opportunity.state}
+          {stateLabel(opportunity.state)}
         </span>
       </div>
       <p className={`mt-1 truncate text-xs font-semibold ${muted ? 'text-zinc-500' : 'text-zinc-300'}`}>{opportunity.setupType}</p>

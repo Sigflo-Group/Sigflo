@@ -93,6 +93,8 @@ function ExecutionRiskRow({ label, value }: { label: string; value: string }) {
 function ExecutionAdjustDrawer({
   open,
   disabled,
+  direction,
+  entry,
   positionSizeUsd,
   leverage,
   stop,
@@ -104,6 +106,8 @@ function ExecutionAdjustDrawer({
 }: {
   open: boolean;
   disabled: boolean;
+  direction: TradeDirection;
+  entry: number;
   positionSizeUsd: number;
   leverage: number;
   stop: number;
@@ -124,7 +128,7 @@ function ExecutionAdjustDrawer({
           className="overflow-hidden"
         >
           <div className="mt-2 grid grid-cols-2 gap-2 rounded-xl border border-white/[0.08] bg-black/20 p-2.5">
-            <label className="text-xs text-zinc-400">
+            <label className="text-sm text-zinc-300">
               Position Size
               <input
                 disabled={disabled}
@@ -136,7 +140,7 @@ function ExecutionAdjustDrawer({
                 className="mt-1 w-full rounded-lg border border-white/10 bg-black/35 px-2 py-1.5 text-sm text-white disabled:opacity-60"
               />
             </label>
-            <label className="text-xs text-zinc-400">
+            <label className="text-sm text-zinc-300">
               Leverage
               <input
                 disabled={disabled}
@@ -148,29 +152,34 @@ function ExecutionAdjustDrawer({
                 className="mt-1 w-full rounded-lg border border-white/10 bg-black/35 px-2 py-1.5 text-sm text-white disabled:opacity-60"
               />
             </label>
-            <label className="text-xs text-zinc-400">
+            <label className="text-sm text-zinc-300">
               Stop
               <input
                 disabled={disabled}
                 type="number"
                 value={stop}
-                min={0}
                 step={0.01}
                 onChange={(e) => onStop(Number(e.target.value))}
                 className="mt-1 w-full rounded-lg border border-white/10 bg-black/35 px-2 py-1.5 text-sm text-white disabled:opacity-60"
               />
+              <span className="mt-1.5 block text-xs leading-snug text-zinc-300/90">
+                Tip: use absolute price, or {direction === 'long' ? 'negative' : 'positive'} % like{' '}
+                {direction === 'long' ? '-0.2' : '+0.2'} from entry {fmtPx(entry)}.
+              </span>
             </label>
-            <label className="text-xs text-zinc-400">
+            <label className="text-sm text-zinc-300">
               Target
               <input
                 disabled={disabled}
                 type="number"
                 value={target}
-                min={0}
                 step={0.01}
                 onChange={(e) => onTarget(Number(e.target.value))}
                 className="mt-1 w-full rounded-lg border border-white/10 bg-black/35 px-2 py-1.5 text-sm text-white disabled:opacity-60"
               />
+              <span className="mt-1.5 block text-xs leading-snug text-zinc-300/90">
+                Tip: use absolute price, or {direction === 'long' ? 'positive' : 'negative'} % from entry.
+              </span>
             </label>
           </div>
         </motion.div>
@@ -356,6 +365,20 @@ export function GuidedExecutionPanel({
   const [stop, setStop] = useState(setup.stop);
   const [target, setTarget] = useState(setup.target);
 
+  const toRelativeLevelIfPercent = (raw: number, type: 'stop' | 'target'): number => {
+    if (!Number.isFinite(raw)) return raw;
+    // Compact percent input support: -0.2 / +0.2 means +/-0.2% around entry.
+    if (Math.abs(raw) > 5 || !(setup.entry > 0)) return raw;
+    if (setup.direction === 'long') {
+      if (type === 'stop' && raw < 0) return setup.entry * (1 + raw / 100);
+      if (type === 'target' && raw > 0) return setup.entry * (1 + raw / 100);
+      return raw;
+    }
+    if (type === 'stop' && raw > 0) return setup.entry * (1 + raw / 100);
+    if (type === 'target' && raw < 0) return setup.entry * (1 + raw / 100);
+    return raw;
+  };
+
   useEffect(() => {
     if (!open) return;
     setOpenedAt(Date.now());
@@ -419,15 +442,24 @@ export function GuidedExecutionPanel({
     return positionSizeUsd / leverage;
   }, [leverage, positionSizeUsd, setup.estimatedMarginUsd]);
 
-  const canExecute =
-    !submitting &&
-    !success &&
-    positionSizeUsd > 0 &&
-    leverage > 0 &&
-    stop > 0 &&
-    target > 0 &&
-    ((setup.direction === 'long' && stop < setup.entry && target > setup.entry) ||
-      (setup.direction === 'short' && stop > setup.entry && target < setup.entry));
+  const executeBlockReason = useMemo(() => {
+    if (submitting) return 'Order is submitting…';
+    if (success) return 'Order already confirmed';
+    if (!(positionSizeUsd > 0)) return 'Position size must be greater than 0';
+    if (!(leverage > 0)) return 'Leverage must be greater than 0';
+    if (!(stop > 0) || !(target > 0)) return 'Stop and target must be valid prices';
+    if (!(setup.entry > 0)) return 'Entry price is not ready yet';
+    if (setup.direction === 'long') {
+      if (!(stop < setup.entry)) return 'For longs, stop must be below entry';
+      if (!(target > setup.entry)) return 'For longs, target must be above entry';
+      return null;
+    }
+    if (!(stop > setup.entry)) return 'For shorts, stop must be above entry';
+    if (!(target < setup.entry)) return 'For shorts, target must be below entry';
+    return null;
+  }, [leverage, positionSizeUsd, setup.direction, setup.entry, stop, submitting, success, target]);
+
+  const canExecute = executeBlockReason == null;
 
   const onSubmit = async () => {
     if (!canExecute || submitting) return;
@@ -552,14 +584,16 @@ export function GuidedExecutionPanel({
                 <ExecutionAdjustDrawer
                   open={adjustOpen}
                   disabled={submitting}
+                  direction={setup.direction}
+                  entry={setup.entry}
                   positionSizeUsd={positionSizeUsd}
                   leverage={leverage}
                   stop={stop}
                   target={target}
                   onPositionSizeUsd={setPositionSizeUsd}
                   onLeverage={setLeverage}
-                  onStop={setStop}
-                  onTarget={setTarget}
+                  onStop={(v) => setStop(toRelativeLevelIfPercent(v, 'stop'))}
+                  onTarget={(v) => setTarget(toRelativeLevelIfPercent(v, 'target'))}
                 />
               </div>
 
@@ -599,6 +633,11 @@ export function GuidedExecutionPanel({
                         >
                           Confirm execution (keyboard)
                         </button>
+                        {!canExecute ? (
+                          <p className="rounded-lg border border-amber-400/20 bg-amber-500/[0.08] p-2 text-xs text-amber-100/90">
+                            {executeBlockReason}
+                          </p>
+                        ) : null}
                         {error ? (
                           <div className="rounded-lg border border-rose-400/25 bg-rose-500/[0.08] p-2.5">
                             <p className="text-xs font-medium text-rose-200">{error}</p>

@@ -51,6 +51,7 @@ import { formatQuoteNumber } from '@/lib/formatQuote';
 import { useCanGoBack } from '@/hooks/useCanGoBack';
 import { useExitAutomation } from '@/hooks/useExitAutomation';
 import { useAppAnnouncementsEnabled } from '@/hooks/useAppAnnouncementsEnabled';
+import { emitGlobalAnnouncement } from '@/lib/globalAnnouncements';
 import { useAccountSnapshot } from '@/hooks/useAccountSnapshot';
 import { useSignalEngine } from '@/hooks/useSignalEngine';
 import { useLiveTradeMarket, type TradeChartInterval } from '@/hooks/useLiveTradeMarket';
@@ -1901,6 +1902,7 @@ export function TradeScreen() {
   const [assistedExitAcknowledged, setAssistedExitAcknowledged] = useState(false);
   /** Raw state is hold but UI still shows trim/exit (stabilizer / threshold chatter) — auto-clear the bar after a beat. */
   const [assistedExitBarForceHidden, setAssistedExitBarForceHidden] = useState(false);
+  const assistedPopupArmedRef = useRef(false);
   const [serverExitOvernightEnabled, setServerExitOvernightEnabled] = useState(false);
   const [serverExitOvernightHydrated, setServerExitOvernightHydrated] = useState(false);
 
@@ -2258,6 +2260,21 @@ export function TradeScreen() {
     (isManageMode
       ? exchangePositionForSymbol != null && manageCtx != null
       : hasActiveTradePosition && isExchangeBackedOpenLeg);
+
+  useEffect(() => {
+    if (!showAssistedExitConfirmBar || !exitFlow) {
+      assistedPopupArmedRef.current = false;
+      return;
+    }
+    if (assistedPopupArmedRef.current) return;
+    assistedPopupArmedRef.current = true;
+    emitGlobalAnnouncement({
+      id: `assisted-exit-confirm-${Date.now()}`,
+      kind: 'ai_action',
+      title: 'Assisted Exit Confirmation Required',
+      subtitle: `${exitFlow.effective.headline} · ${exitFlow.nextPlanned}`,
+    });
+  }, [exitFlow, showAssistedExitConfirmBar]);
 
   const manageExitAiCoPilot = useMemo(
     () =>
@@ -2695,20 +2712,20 @@ export function TradeScreen() {
           label: 'Risk controls',
           href: '/risk',
         });
-        return;
+        return false;
       }
       if (!isManageMode && !opts?.bypassGuidedExecution) {
         setGuidedExecutionSide(nextSide);
         setGuidedExecutionOpen(true);
-        return;
+        return false;
       }
       if (!isManageMode && liveExecutionLocked) {
         flashTradeToast('Live execution locked — review-only flow from Bots.');
-        return;
+        return false;
       }
       if (!canExecute) {
         flashTradeToast(sizingValidation.reason ?? 'Set a valid position size before placing an order.');
-        return;
+        return false;
       }
       setSide(nextSide);
       setExecFlash(nextSide === 'long' ? 'long' : 'short');
@@ -2725,13 +2742,13 @@ export function TradeScreen() {
       }
       if (!Number.isFinite(entryMark) || entryMark <= 0) {
         flashTradeToast('No price yet — wait for the chart to load, then try again.');
-        return;
+        return false;
       }
 
       // Manage: same-side adds only — reversing is an explicit opposite-side market (see `onReverseOrder`).
       if (isManageMode && opts?.manageIntent !== 'reverse' && nextSide !== side) {
         flashTradeToast('Adding size uses your open direction — adjust side from Portfolio if needed.');
-        return;
+        return false;
       }
       if (isManageMode && market === 'futures' && !exchangePositionForSymbol) {
         flashTradeToast(
@@ -2739,7 +2756,7 @@ export function TradeScreen() {
             ? 'No open linear position on the exchange for this pair — confirm symbol or refresh Account.'
             : 'Connect Bybit in Account to add size.',
         );
-        return;
+        return false;
       }
 
       if (liveOrderSubmitEnabled) {
@@ -2806,7 +2823,7 @@ export function TradeScreen() {
                   'Close leg still open on the exchange after reverse step 1 — new entry was not sent. Refresh Account or retry.',
                   7000,
                 );
-                return;
+                return false;
               }
               await postBybitLinearOrder({
                 symbol: orderSymbol,
@@ -2894,15 +2911,16 @@ export function TradeScreen() {
                 }
               }
           }
+          return true;
         } catch (e) {
           reverseOrderInProgressRef.current = false;
           const tradeErr = resolveBybitTradeError(e, 'Order failed');
           setTermsRetrySide(tradeErr.cta ? nextSide : null);
           flashTradeToast(tradeErr.message, 5200, tradeErr.cta);
+          return false;
         } finally {
           setOrderPending(null);
         }
-        return;
       }
 
       if (useRealExecution && !riskSettings.allowLiveExecution) {
@@ -2913,6 +2931,7 @@ export function TradeScreen() {
       } else {
         flashTradeToast('Connect Bybit in Account to place real orders.');
       }
+      return false;
     },
     [
       amountUsd,
@@ -2948,18 +2967,18 @@ export function TradeScreen() {
 
   const submitManageTradingStopFromNumbers = useCallback(
     async (stopPrice: number, targetPrice: number) => {
-      if (market !== 'futures') return;
+      if (market !== 'futures') return false;
       if (!exchangePositionForSymbol) {
         flashTradeToast(
           bybitSnap
             ? 'No open linear position on the exchange for this pair — confirm symbol or refresh Account.'
             : 'Connect Bybit in Account to update TP/SL.',
         );
-        return;
+        return false;
       }
       if (!useRealExecution) {
         flashTradeToast('Connect Bybit in Account to update TP/SL.');
-        return;
+        return false;
       }
       if (!riskSettings.allowLiveExecution) {
         flashTradeToast(
@@ -2967,12 +2986,12 @@ export function TradeScreen() {
           6200,
           { label: 'Risk controls', href: '/risk' },
         );
-        return;
+        return false;
       }
       const entry = exchangePositionForSymbol.entryPrice;
       if (!Number.isFinite(entry) || entry <= 0) {
         flashTradeToast('Missing entry price — refresh Account sync.');
-        return;
+        return false;
       }
       const legSide = exchangePositionForSymbol.side;
       const { tpSl, skippedTarget, skippedStop } = linearTpSlStringsForOpen(
@@ -3018,8 +3037,10 @@ export function TradeScreen() {
         if (isManageMode) setManageTpSlDirty(false);
         flashTradeToast('TP/SL updated — syncing account…');
         await refreshAccountSnapshots({ silent: false });
+        return true;
       } catch (e) {
         flashTradeToast(formatBybitTradeErrorMessage(e, 'Failed to update TP/SL'), 5200);
+        return false;
       } finally {
         setOrderPending(null);
       }
@@ -3213,6 +3234,46 @@ export function TradeScreen() {
     [onActivePartialClose],
   );
 
+  const onExitAutomationSuggestStopMove = useCallback(
+    async (suggestedStop: number | null) => {
+      if (!(suggestedStop != null && Number.isFinite(suggestedStop) && suggestedStop > 0)) {
+        flashTradeToast('No valid stop suggestion right now — wait for live mark updates.');
+        return;
+      }
+      const applied = await submitManageTradingStopFromNumbers(suggestedStop, targetParsed);
+      if (!applied) {
+        exitAuto.pushActivity({
+          kind: 'exit_state',
+          message: `Suggested stop move blocked (~${formatQuoteNumber(suggestedStop)}) — review toast for reason.`,
+        });
+        return;
+      }
+      exitAuto.pushActivity({
+        kind: 'exit_state',
+        message: `Suggested stop move applied (~${formatQuoteNumber(suggestedStop)})`,
+      });
+    },
+    [exitAuto, flashTradeToast, submitManageTradingStopFromNumbers, targetParsed],
+  );
+
+  const onExitAutomationSuggestPartialTp = useCallback(() => {
+    setManagePartialFraction(0.25);
+    setManagePartialSheetOpen(true);
+    exitAuto.pushActivity({
+      kind: 'exit_state',
+      message: 'Suggested partial take-profit ready (25%) — confirm in the sheet to submit.',
+    });
+  }, [exitAuto]);
+
+  const onExitAutomationDisable = useCallback(() => {
+    exitAuto.setMode('manual');
+    exitAuto.pushActivity({
+      kind: 'mode_change',
+      message: 'Exit automation disabled — switched to Manual',
+    });
+    flashTradeToast('Exit automation set to Manual.');
+  }, [exitAuto, flashTradeToast]);
+
   const onActiveCloseAllConfirm = useCallback(() => {
     if (market === 'futures' && exchangePositionForSymbol) {
       void submitExchangeClose({ kind: 'linear', pos: exchangePositionForSymbol, fraction: 1 });
@@ -3252,6 +3313,12 @@ export function TradeScreen() {
 
     let blockedAdvancePrev = false;
     if (prev !== null && prev !== curr) {
+      emitGlobalAnnouncement({
+        id: `auto-exit-decision-${Date.now()}`,
+        kind: 'ai_action',
+        title: 'Auto Exit AI Decision',
+        subtitle: `${prev.toUpperCase()} → ${curr.toUpperCase()} near $${formatQuoteNumber(exitFlow.lastPrice)} · ${exitFlow.nextPlanned}`,
+      });
       const trimEdge = curr === 'trim' && prev === 'hold' && exitAuto.safeguards.allowPartialExits;
       const exitEdge =
         curr === 'exit' &&
@@ -4025,6 +4092,9 @@ export function TradeScreen() {
                     ? throttledOpenPnl.mark
                     : null
                 }
+                onSuggestStopMove={onExitAutomationSuggestStopMove}
+                onSuggestPartialTp={onExitAutomationSuggestPartialTp}
+                onDisableAutomation={onExitAutomationDisable}
               />
             ) : null}
             {!isManageMode && !isBotsReviewCockpit && !hideFreshSetupTradeHint ? <TradingControlTradeHint /> : null}
@@ -4860,8 +4930,11 @@ export function TradeScreen() {
           previewOnly={isBotsReviewCockpit}
           onClose={() => setGuidedExecutionOpen(false)}
           onExecute={async () => {
+            const ok = await executeTrade(guidedExecutionSide, { bypassGuidedExecution: true });
+            if (!ok) {
+              throw new Error('Order was not submitted.');
+            }
             setGuidedExecutionOpen(false);
-            await executeTrade(guidedExecutionSide, { bypassGuidedExecution: true });
           }}
           onViewPosition={() => {
             if (market === 'futures' && exchangePositionForSymbol) {

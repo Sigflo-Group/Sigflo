@@ -30,6 +30,9 @@ type ActivePositionsPanelProps = {
   sigfloManagedLayer: SigfloActivePosition | null;
   /** Live mark for the layer card / exit automation (e.g. throttled last). */
   liveMarkForLayer?: number | null;
+  onSuggestStopMove?: (suggestedStop: number | null) => void;
+  onSuggestPartialTp?: () => void;
+  onDisableAutomation?: () => void;
 };
 
 export function ActivePositionsPanel({
@@ -46,6 +49,9 @@ export function ActivePositionsPanel({
   onOpenManagePosition,
   sigfloManagedLayer,
   liveMarkForLayer,
+  onSuggestStopMove,
+  onSuggestPartialTp,
+  onDisableAutomation,
 }: ActivePositionsPanelProps) {
   const [nowMs, setNowMs] = useState(() => Date.now());
   useEffect(() => {
@@ -129,7 +135,13 @@ export function ActivePositionsPanel({
                     liveMarkPrice={liveMarkForLayer}
                     nowMs={nowMs}
                   />
-                  <ExitAutomationCard position={sigfloManagedLayer} liveMarkPrice={liveMarkForLayer} />
+                  <ExitAutomationCard
+                    position={sigfloManagedLayer}
+                    liveMarkPrice={liveMarkForLayer}
+                    onSuggestStopMove={onSuggestStopMove}
+                    onSuggestPartialTp={onSuggestPartialTp}
+                    onDisableAutomation={onDisableAutomation}
+                  />
                 </motion.div>
               ) : null}
               {showExchangeSpot && exchangeSpotDisplay ? (

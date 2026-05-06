@@ -35,6 +35,28 @@
     }
   }
 
+  /* Baseline interaction feedback so every enabled button has hover/press affordance. */
+  :where(button:not(:disabled)) {
+    transition:
+      filter 140ms ease,
+      background-color 140ms ease,
+      border-color 140ms ease,
+      color 140ms ease,
+      box-shadow 180ms ease,
+      transform 120ms ease;
+  }
+
+  :where(button:not(:disabled)):active {
+    transform: scale(0.99);
+  }
+
+  @media (hover: hover) and (pointer: fine) {
+    :where(button:not(:disabled)):hover {
+      filter: brightness(1.06);
+      box-shadow: 0 10px 24px -16px rgba(0, 0, 0, 0.55);
+    }
+  }
+
   ::selection {
     @apply bg-[rgba(0,255,200,0.25)] text-white;
   }
@@ -87,6 +109,50 @@
 }
 
 @layer components {
+  /* Shared tactile press feedback for key action buttons (mobile + desktop). */
+  .sigflo-pressable {
+    transform: translateZ(0);
+    transition:
+      transform 120ms cubic-bezier(0.2, 0.8, 0.2, 1),
+      box-shadow 180ms ease,
+      filter 180ms ease,
+      background-color 180ms ease;
+    will-change: transform, box-shadow, filter;
+  }
+
+  .sigflo-pressable:hover {
+    filter: brightness(1.04);
+  }
+
+  .sigflo-pressable:active {
+    transform: scale(0.975);
+    filter: brightness(1.08);
+  }
+
+  @media (hover: hover) and (pointer: fine) {
+    .sigflo-pressable {
+      cursor: pointer;
+    }
+
+    .sigflo-pressable:hover {
+      transform: translateY(-1px) scale(1.01);
+      filter: brightness(1.06);
+      box-shadow: 0 14px 30px -16px rgba(0, 0, 0, 0.55);
+    }
+
+    .sigflo-pressable:active {
+      transform: translateY(0) scale(0.985);
+      filter: brightness(1.1);
+    }
+  }
+
+  .sigflo-pressable:focus-visible {
+    outline: none;
+    box-shadow:
+      0 0 0 2px rgba(255, 255, 255, 0.14),
+      0 0 0 4px rgba(0, 255, 200, 0.2);
+  }
+
   /**
    * Subtle grid texture for dark panels. Shared by ::before (utility class) and
    * `.sigflo-panel-grid-overlay` (span inside `Card`); chart cards omit the overlay via `panelTexture={false}`.
@@ -276,6 +342,14 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .sigflo-pressable {
+    transition: background-color 120ms ease, filter 120ms ease;
+  }
+
+  .sigflo-pressable:active {
+    transform: none;
+  }
+
   .sigflo-bot-focus-trade-fab-tradable {
     animation: none;
     box-shadow:

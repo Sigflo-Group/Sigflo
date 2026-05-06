@@ -1,10 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSetupAlerts } from '@/hooks/useSetupAlerts';
 import { motion } from 'framer-motion';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import AutomationCommandBar from '@/components/bots/AutomationCommandBar';
 import EngineStatusCard from '@/components/bots/EngineStatusCard';
-import OpportunityRowCard from '@/components/bots/OpportunityRowCard';
+import OpportunityDecisionCard from '@/components/bots/OpportunityDecisionCard';
 import ActivePositionsStrip from '@/components/bots/ActivePositionsStrip';
 import PriorityOpportunityCard from '@/components/bots/PriorityOpportunityCard';
 import ReadyAlertSettings from '@/components/bots/ReadyAlertSettings';
@@ -52,6 +52,32 @@ function OpportunitiesSkeleton() {
   );
 }
 
+function extractNumericValues(text: string | null | undefined): number[] {
+  if (!text) return [];
+  const matches = text.match(/-?\d+(?:\.\d+)?/g);
+  if (!matches) return [];
+  return matches.map((m) => Number(m)).filter((n) => Number.isFinite(n));
+}
+
+function decisionPlanFromOpportunity(o: OpportunityCardModel): {
+  entryZone?: { min: number; max: number };
+  invalidation?: number;
+  targets?: number[];
+} {
+  const entryVals = extractNumericValues(o.entryZone ?? o.entryStatus);
+  const stopVals = extractNumericValues(o.invalidation);
+  const targetVals = (o.targets ?? []).flatMap((t) => extractNumericValues(t));
+  return {
+    entryZone: entryVals.length >= 2 ? { min: entryVals[0]!, max: entryVals[1]! } : entryVals.length === 1 ? { min: entryVals[0]!, max: entryVals[0]! } : undefined,
+    invalidation: stopVals.length ? stopVals[0] : undefined,
+    targets: targetVals.length ? targetVals : undefined,
+  };
+}
+
+function isFormingOpportunity(o: OpportunityCardModel): boolean {
+  return o.state === 'Building' || o.state === 'Watching';
+}
+
 export default function BotsScreen() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -66,9 +92,12 @@ export default function BotsScreen() {
   const [opportunityFilter, setOpportunityFilter] = useState<'all' | 'forming'>('all');
   const [locallyPausedEngineIds, setLocallyPausedEngineIds] = useState<ReadonlySet<string>>(() => new Set());
   const [lastSyncedAt, setLastSyncedAt] = useState<number | null>(null);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [lastSyncErrorAt, setLastSyncErrorAt] = useState<number | null>(null);
   const [scanLineTick, setScanLineTick] = useState(0);
   const [alertPrefs, setAlertPrefs] = useState<AlertPreference>(() => getAlertPreferences());
   const [showAlertSettings, setShowAlertSettings] = useState(readOpenAlertsFromUrl);
+  const [expandedOpportunityId, setExpandedOpportunityId] = useState<string | null>(null);
   const { highlightIds, commandBarFlashKey, setupReadyBanner } = useSetupAlerts(opportunities);
   const riskSettings = useRiskSettings();
   const dailyRiskGuard = useDailyRiskGuard();
@@ -124,35 +153,39 @@ export default function BotsScreen() {
     setSearchParams(next, { replace: true });
   }, [showAlertSettings, searchParams, setSearchParams]);
 
+  const refreshOpportunities = useCallback(async (opts?: { silent?: boolean }) => {
+    const silent = opts?.silent ?? false;
+    if (!silent) setIsLoading(true);
+    setIsSyncing(true);
+    setError(null);
+    try {
+      const list = await listOpportunities();
+      setOpportunities(list);
+      setLastSyncedAt(Date.now());
+      setLastSyncErrorAt(null);
+    } catch (e) {
+      const message = e instanceof Error && e.message ? e.message : 'Could not load opportunities.';
+      setError(message);
+      setLastSyncErrorAt(Date.now());
+      if (!silent) setOpportunities([]);
+    } finally {
+      setIsSyncing(false);
+      if (!silent) setIsLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
-    let cancelled = false;
     const repo = getOpportunityRepository();
     setIsDemoSource(repo.source === 'demo');
+    void refreshOpportunities();
+  }, [refreshOpportunities]);
 
-    const run = async () => {
-      setIsLoading(true);
-      setError(null);
-      try {
-        const list = await listOpportunities();
-        if (!cancelled) {
-          setOpportunities(list);
-          setLastSyncedAt(Date.now());
-        }
-      } catch {
-        if (!cancelled) {
-          setError('Could not load opportunities.');
-          setOpportunities([]);
-        }
-      } finally {
-        if (!cancelled) setIsLoading(false);
-      }
-    };
-
-    void run();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      void refreshOpportunities({ silent: true });
+    }, 10_000);
+    return () => window.clearInterval(id);
+  }, [refreshOpportunities]);
 
   const ranked = opportunities;
 
@@ -171,9 +204,7 @@ export default function BotsScreen() {
     return ranked
       .filter(
         (o) =>
-          (o.state === 'Building' || o.state === 'Watching') &&
-          o.score >= 55 &&
-          o.score <= 70 &&
+          isFormingOpportunity(o) &&
           (!hero || o.id !== hero.id),
       )
       .sort((a, b) => b.score - a.score);
@@ -186,7 +217,7 @@ export default function BotsScreen() {
       ranked.filter((o) => {
         if (hero && o.id === hero.id) return false;
         if (o.score < 55) return false;
-        if ((o.state === 'Building' || o.state === 'Watching') && o.score <= 70) return false;
+        if (isFormingOpportunity(o)) return false;
         return true;
       }),
     );
@@ -216,14 +247,37 @@ export default function BotsScreen() {
   }, [scanFreshSec, lastSyncedAt, scanLineTick]);
   const scanningLabel =
     scanAgeSec != null ? `Engines scanning · ${formatFreshness(scanAgeSec)}` : 'Engines scanning';
+  const liveReadout = useMemo(() => {
+    void scanLineTick;
+    const total = ranked.length;
+    const ready = ranked.filter((o) => o.state === 'Ready' || o.state === 'Triggered').length;
+    const forming = ranked.filter((o) => isFormingOpportunity(o)).length;
+    const age =
+      lastSyncedAt != null ? Math.max(1, Math.floor((Date.now() - lastSyncedAt) / 1000)) : null;
+    const ageLabel = age != null ? formatFreshness(age) : 'no sync yet';
+    if (isSyncing) {
+      return `Live readout: syncing now · ${total} tracked · ${forming} forming · ${ready} ready`;
+    }
+    if (lastSyncErrorAt != null && (lastSyncedAt == null || lastSyncErrorAt > lastSyncedAt)) {
+      return `Live readout: reconnecting · last successful update ${ageLabel}`;
+    }
+    if (!isDemoSource && total === 0) {
+      return 'Live readout: 0 tracked · no opportunities rows returned yet';
+    }
+    return `Live readout: live · ${total} tracked · ${forming} forming · ${ready} ready · updated ${ageLabel}`;
+  }, [ranked, lastSyncedAt, isSyncing, lastSyncErrorAt, scanLineTick, isDemoSource]);
 
   const engineIntel = useMemo(
     () => ({
       setupsForming: formingBand.length,
-      formingPairLabels: formingBand.slice(0, 2).map((o) => {
+      formingTopSetups: formingBand.slice(0, 2).map((o) => {
         const raw = o.pair.trim();
-        if (raw.includes('/')) return raw.split('/')[0]!.trim();
-        return raw.replace(/USDT$/i, '').replace(/USDC$/i, '') || raw;
+        const pair = raw.includes('/') ? raw : raw.replace(/USDT$/i, ' / USDT').replace(/USDC$/i, ' / USDC');
+        const explanation = o.rationale.trim().replace(/\s+/g, ' ');
+        return {
+          pair,
+          explanation: explanation.length > 84 ? `${explanation.slice(0, 81)}…` : explanation,
+        };
       }),
       latestActivityLine: buildLatestActivityLine(ranked),
     }),
@@ -249,11 +303,16 @@ export default function BotsScreen() {
     navigateToTradeReview(opp);
   };
   const onExplain = (id: string) => console.log('Why this setup', id);
-  const onSelectOpportunity = (id: string) => {
+  const onReviewOpportunity = (id: string) => {
     playUiTapSound();
     const opp = ranked.find((o) => o.id === id);
     if (!opp) return;
     navigateToTradeReview(opp);
+  };
+
+  const onToggleOpportunityExpand = (id: string) => {
+    playUiTapSound();
+    setExpandedOpportunityId((prev) => (prev === id ? null : id));
   };
 
   const onSelectActivePosition = (pairKey: string) => {
@@ -375,6 +434,7 @@ export default function BotsScreen() {
                 </button>
               </div>
             </div>
+            <p className="text-[10px] text-zinc-500">{liveReadout}</p>
             {showAlertSettings ? (
               <ReadyAlertSettings
                 value={alertPrefs}
@@ -406,12 +466,25 @@ export default function BotsScreen() {
           {isLoading ? null : filteredLiveRows.length > 0 ? (
             <div className="space-y-2">
               {filteredLiveRows.map((row: OpportunityCardModel) => (
-                <OpportunityRowCard
+                <OpportunityDecisionCard
                   key={row.id}
-                  opportunity={row}
-                  onSelect={onSelectOpportunity}
-                  alertHighlight={highlightIds.has(row.id)}
-                  reviewLocked={reviewLocked}
+                  id={row.id}
+                  pair={row.pair}
+                  strategy={row.setupType}
+                  direction={row.direction}
+                  state={row.state === 'Ready' || row.state === 'Triggered' || row.state === 'Building' || row.state === 'Watching' ? row.state : 'Watching'}
+                  score={row.score}
+                  explanation={row.rationale || row.thesis}
+                  {...decisionPlanFromOpportunity(row)}
+                  isExpanded={expandedOpportunityId === row.id}
+                  onToggleExpand={onToggleOpportunityExpand}
+                  onReview={
+                    reviewLocked
+                      ? undefined
+                      : () => {
+                          onReviewOpportunity(row.id);
+                        }
+                  }
                 />
               ))}
             </div>
@@ -444,13 +517,25 @@ export default function BotsScreen() {
             {formingSectionRows.length > 0 ? (
               <div className="space-y-2">
                 {formingSectionRows.map((row) => (
-                  <OpportunityRowCard
+                  <OpportunityDecisionCard
                     key={row.id}
-                    opportunity={row}
-                    variant="muted"
-                    onSelect={onSelectOpportunity}
-                    alertHighlight={highlightIds.has(row.id)}
-                    reviewLocked={reviewLocked}
+                    id={row.id}
+                    pair={row.pair}
+                    strategy={row.setupType}
+                    direction={row.direction}
+                    state={row.state === 'Ready' || row.state === 'Triggered' || row.state === 'Building' || row.state === 'Watching' ? row.state : 'Watching'}
+                    score={row.score}
+                    explanation={row.rationale || row.thesis}
+                    {...decisionPlanFromOpportunity(row)}
+                    isExpanded={expandedOpportunityId === row.id}
+                    onToggleExpand={onToggleOpportunityExpand}
+                    onReview={
+                      reviewLocked
+                        ? undefined
+                        : () => {
+                            onReviewOpportunity(row.id);
+                          }
+                    }
                   />
                 ))}
               </div>

@@ -313,6 +313,15 @@ export default function PortfolioScreen() {
     return sorted.slice(0, 10);
   }, [closedTrades]);
 
+  const realizedPnlByExchangeSymbol = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const t of closedTrades) {
+      const key = `${t.exchange}:${t.symbol}`;
+      map.set(key, (map.get(key) ?? 0) + t.closedPnl);
+    }
+    return map;
+  }, [closedTrades]);
+
   const displayNet = connected ? netWorth : null;
   const displayToday = connected ? todayPnl : null;
   const displayTodayPct = connected ? todayPct : null;
@@ -431,6 +440,8 @@ export default function PortfolioScreen() {
                     ? ((p.side === 'long' ? current - p.entryPrice : p.entryPrice - current) / p.entryPrice) * 100
                     : 0;
                 const up = pnl >= 0;
+                const realizedPnl = realizedPnlByExchangeSymbol.get(`${p.exchange}:${p.symbol}`) ?? 0;
+                const realizedUp = realizedPnl >= 0;
                 const ticker = liveTickersBySymbol[p.symbol];
                 const insight = positionMicroInsight({ side: p.side }, current, pnlPct, ticker);
                 const notional = positionNotionalUsd(p);
@@ -505,6 +516,13 @@ export default function PortfolioScreen() {
                             </p>
                             <p className={`mt-0.5 font-mono text-base font-semibold tabular-nums text-white/70`}>
                               {fmtSignedPct(pnlPct)} live
+                            </p>
+                            <p
+                              className={`mt-0.5 font-mono text-[11px] font-semibold tabular-nums ${
+                                realizedUp ? 'text-emerald-200/90' : 'text-rose-200/90'
+                              }`}
+                            >
+                              {fmtSignedUsd(realizedPnl)} realized
                             </p>
                           </div>
                           <p className="mt-1 text-[11px] text-white/45">

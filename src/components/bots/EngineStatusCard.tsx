@@ -1,3 +1,4 @@
+import { AnimatePresence, motion } from 'framer-motion';
 import type { EngineStatusModel } from '@/types/botSystem';
 import { playUiTapSound } from '@/utils/sound';
 
@@ -17,13 +18,37 @@ function stateLabel(state: EngineStatusModel['state'] | 'Paused'): string {
 }
 
 export type EngineScanIntel = {
-  /** Count of Building / Watching setups in the 55–70 band (global). */
+  /** Count of Building / Watching setups (global). */
   setupsForming: number;
-  /** Up to two pair labels for the forming list. */
-  formingPairLabels: string[];
+  /** Up to two forming setups (pair + plain-English explanation). */
+  formingTopSetups: { pair: string; explanation: string }[];
   /** One-line latest activity (e.g. pair + state + time). */
   latestActivityLine: string | null;
 };
+
+function AnimatedScanNumber({
+  value,
+  valueKey,
+}: {
+  value: number;
+  valueKey: string;
+}) {
+  return (
+    <span className="inline-flex min-w-[1.5ch] justify-end tabular-nums font-semibold text-zinc-200">
+      <AnimatePresence mode="wait" initial={false}>
+        <motion.span
+          key={valueKey}
+          initial={{ opacity: 0.45, y: 4 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0.25, y: -3 }}
+          transition={{ duration: 0.24, ease: 'easeOut' }}
+        >
+          {value}
+        </motion.span>
+      </AnimatePresence>
+    </span>
+  );
+}
 
 export function EngineStatusCard({
   engine,
@@ -43,7 +68,7 @@ export function EngineStatusCard({
   isPausedLocally?: boolean;
 }) {
   const formingCount = intel?.setupsForming ?? engine.liveCandidates;
-  const formingPairs = intel?.formingPairLabels ?? [];
+  const formingTopSetups = intel?.formingTopSetups ?? [];
   const latestBody = isPausedLocally
     ? 'Engine paused locally'
     : intel?.latestActivityLine?.trim() || engine.latestOutput;
@@ -77,15 +102,27 @@ export function EngineStatusCard({
       </div>
 
       <div className="mt-2 space-y-1 text-[11px] text-zinc-400">
-        <p>Scanning {engine.pairsWatched} pairs</p>
         <p>
-          {formingCount} setup{formingCount === 1 ? '' : 's'} forming
+          Scanning{' '}
+          <AnimatedScanNumber
+            value={engine.pairsWatched}
+            valueKey={`pairs-${engine.engineId}-${engine.pairsWatched}`}
+          />{' '}
+          pairs
         </p>
-        {formingPairs.length > 0 ? (
-          <ul className="mt-1 space-y-0.5 pl-3 text-zinc-500">
-            {formingPairs.map((pair) => (
-              <li key={pair} className="list-disc">
-                {pair}
+        <p>
+          <AnimatedScanNumber
+            value={formingCount}
+            valueKey={`forming-${engine.engineId}-${formingCount}`}
+          />{' '}
+          setup{formingCount === 1 ? '' : 's'} forming
+        </p>
+        {formingTopSetups.length > 0 ? (
+          <ul className="mt-1 space-y-1.5 text-zinc-500">
+            {formingTopSetups.map((item) => (
+              <li key={`${item.pair}-${item.explanation}`} className="rounded-lg border border-white/[0.06] bg-black/20 px-2 py-1">
+                <p className="text-[11px] font-semibold text-zinc-300">{item.pair}</p>
+                <p className="mt-0.5 text-[10px] leading-snug text-zinc-500">{item.explanation}</p>
               </li>
             ))}
           </ul>

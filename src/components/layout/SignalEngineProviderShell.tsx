@@ -1,6 +1,7 @@
 import { Outlet } from 'react-router-dom';
 import { AccountSnapshotProvider } from '@/context/AccountSnapshotContext';
 import { SignalEngineProvider } from '@/context/SignalEngineContext';
+import { ExitAiDecisionBridge } from '@/components/layout/ExitAiDecisionBridge';
 import { GlobalAnnouncementHost } from '@/components/layout/GlobalAnnouncementHost';
 
 /**
@@ -10,6 +11,7 @@ export function SignalEngineProviderShell() {
   return (
     <AccountSnapshotProvider pollMs={12_000}>
       <SignalEngineProvider>
+        <ExitAiDecisionBridge />
         <GlobalAnnouncementHost />
         <Outlet />
       </SignalEngineProvider>

@@ -5,26 +5,33 @@ import type { SigfloActivePosition } from '@/types/position';
 type ExitAutomationCardProps = {
   position: SigfloActivePosition;
   liveMarkPrice?: number | null;
-  onSuggestStopMove?: () => void;
+  onSuggestStopMove?: (suggestedStop: number | null) => void;
   onSuggestPartialTp?: () => void;
   onDisableAutomation?: () => void;
 };
 
-function suggestedStopMove(position: SigfloActivePosition, mark: number): string {
+function computeSuggestedStop(position: SigfloActivePosition, mark: number): number | null {
   const entry = position.entryPrice;
-  if (!(entry > 0) || !(mark > 0)) return '—';
+  if (!(entry > 0) || !(mark > 0)) return null;
   const trailPct = 0.35;
   if (position.direction === 'long') {
     const floor = entry * (1 - trailPct / 100);
     const fromMark = mark * (1 - trailPct / 100);
-    const next = Math.max(floor, fromMark, position.stopPrice ?? 0);
-    return `Raise toward ${formatQuoteNumber(next)} (trail ~${trailPct}%)`;
+    return Math.max(floor, fromMark, position.stopPrice ?? 0);
   }
   const cap = entry * (1 + trailPct / 100);
   const fromMark = mark * (1 + trailPct / 100);
   const cur = position.stopPrice;
   const next = Math.min(cap, fromMark, cur != null && cur > 0 ? cur : Infinity);
-  return `Tighten toward ${formatQuoteNumber(next)} (trail ~${trailPct}%)`;
+  return Number.isFinite(next) && next > 0 ? next : null;
+}
+
+function suggestedStopMoveLabel(position: SigfloActivePosition, mark: number): string {
+  const next = computeSuggestedStop(position, mark);
+  if (!(next != null && next > 0)) return '—';
+  return position.direction === 'long'
+    ? `Raise toward ${formatQuoteNumber(next)} (trail ~0.35%)`
+    : `Tighten toward ${formatQuoteNumber(next)} (trail ~0.35%)`;
 }
 
 function partialTpSuggestion(position: SigfloActivePosition): string {
@@ -62,12 +69,13 @@ export function ExitAutomationCard({
   const rows = useMemo(
     () => ({
       currentStop: position.stopPrice != null ? formatQuoteNumber(position.stopPrice) : 'None set',
-      suggestedStop: suggestedStopMove(position, mark),
+      suggestedStop: suggestedStopMoveLabel(position, mark),
       partialTp: partialTpSuggestion(position),
       risk: riskState(position, mark),
     }),
     [mark, position],
   );
+  const suggestedStop = useMemo(() => computeSuggestedStop(position, mark), [mark, position]);
 
   return (
     <div className="rounded-xl border border-cyan-500/20 bg-black/40 px-2 py-2 sm:px-2.5 sm:py-2.5">
@@ -81,7 +89,7 @@ export function ExitAutomationCard({
       </div>
 
       <div className="mt-2 flex flex-wrap gap-1.5">
-        <ActionBtn label="Suggest stop move" onClick={onSuggestStopMove} />
+        <ActionBtn label="Suggest stop move" onClick={onSuggestStopMove ? () => onSuggestStopMove(suggestedStop) : undefined} />
         <ActionBtn label="Suggest partial take-profit" onClick={onSuggestPartialTp} />
         <ActionBtn label="Disable automation" onClick={onDisableAutomation} tone="muted" />
       </div>
@@ -115,11 +123,12 @@ function ActionBtn({
     <button
       type="button"
       onClick={onClick}
+      disabled={!onClick}
       className={`rounded-md border px-2 py-1 text-[8px] font-bold uppercase tracking-wide transition sm:text-[9px] ${
         tone === 'muted'
           ? 'border-white/12 bg-white/[0.04] text-zinc-400 hover:border-white/18 hover:text-zinc-200'
           : 'border-cyan-400/35 bg-cyan-500/[0.08] text-cyan-100/95 hover:bg-cyan-500/14'
-      }`}
+      } disabled:cursor-not-allowed disabled:opacity-45`}
     >
       {label}
     </button>

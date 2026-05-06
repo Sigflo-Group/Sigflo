@@ -1,6 +1,6 @@
 import { playUiTapSound } from '@/utils/sound';
 import type { OpportunityCardModel } from '@/types/botSystem';
-import { formatFreshness, getScoreTier, getStateStyles } from '@/types/botSystem';
+import { formatFreshness, getScoreTier, getStateStyles, stateLabel } from '@/types/botSystem';
 
 function directionClass(direction: OpportunityCardModel['direction']): string {
   return direction === 'LONG'
@@ -55,7 +55,7 @@ export function PriorityOpportunityCard({
         </div>
         <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${stateStyles.pill}`}>
           <span className={`h-1.5 w-1.5 rounded-full ${stateStyles.dot}`} />
-          {opportunity.state}
+          {stateLabel(opportunity.state)}
         </span>
       </div>
 

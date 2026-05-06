@@ -155,3 +155,9 @@ export function getStateStyles(state: OpportunityState): { pill: string; dot: st
       return { pill: 'border-white/10 bg-white/[0.04] text-zinc-300', dot: 'bg-zinc-400' };
   }
 }
+
+/** UI-friendly state label mapping (keeps backend states stable, copy user-facing). */
+export function stateLabel(state: OpportunityState): string {
+  if (state === 'Ready') return 'Ready now';
+  return state;
+}

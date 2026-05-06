@@ -46,8 +46,9 @@ export function createSupabaseOpportunityRepository(client: SupabaseClient): Opp
       try {
         const { data, error } = await client.from('opportunities').select('*');
         if (error) {
-          console.warn('[opportunities] list failed:', error.message);
-          return [];
+          const message = error.message || 'Unknown Supabase error';
+          console.warn('[opportunities] list failed:', message);
+          throw new Error(`Supabase opportunities query failed: ${message}`);
         }
         const rows = (data ?? []) as unknown as OpportunityDbRow[];
         const cards: OpportunityCardModel[] = [];
@@ -58,7 +59,8 @@ export function createSupabaseOpportunityRepository(client: SupabaseClient): Opp
         return sortOpportunities(cards);
       } catch (e) {
         console.warn('[opportunities] list error:', e);
-        return [];
+        if (e instanceof Error) throw e;
+        throw new Error('Supabase opportunities query failed.');
       }
     },
     async getOpportunityById(id: string) {

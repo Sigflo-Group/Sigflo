@@ -15,7 +15,7 @@ export function AssistedExitConfirmBar(props: AssistedExitConfirmBarProps) {
       <button
         type="button"
         onClick={props.onConfirm}
-        className="mt-2 w-full rounded-xl bg-sigflo-accent py-2 text-[11px] font-bold uppercase tracking-wide text-sigflo-bg shadow-glow-sm transition hover:brightness-110 active:scale-[0.99]"
+        className="sigflo-pressable mt-2 w-full rounded-xl bg-sigflo-accent py-2 text-[11px] font-bold uppercase tracking-wide text-sigflo-bg shadow-glow-sm transition hover:brightness-110"
       >
         Confirm prepared exit
       </button>
@@ -23,7 +23,7 @@ export function AssistedExitConfirmBar(props: AssistedExitConfirmBarProps) {
         <button
           type="button"
           onClick={props.onDismiss}
-          className="mt-2 w-full rounded-lg py-1.5 text-[10px] font-semibold text-sigflo-muted transition hover:bg-white/[0.04] hover:text-white"
+          className="sigflo-pressable mt-2 w-full rounded-lg py-1.5 text-[10px] font-semibold text-sigflo-muted transition hover:bg-white/[0.04] hover:text-white"
         >
           Dismiss — switch Exit AI to Manual
         </button>

@@ -4115,6 +4115,7 @@ export function TradeScreen() {
                       maxRiskPerTradePct={riskSettings.maxRiskPerTradePct}
                       maxOpenPositions={riskSettings.maxOpenPositions}
                       allowLiveExecution={riskSettings.allowLiveExecution}
+                      reviewOnlyFromBotsPath={liveExecutionLocked}
                       requireConfirmation={riskSettings.requireConfirmation}
                       monitoredOpenCount={riskMonitoredOpenCount}
                     />
@@ -4203,6 +4204,7 @@ export function TradeScreen() {
                       source="bots"
                       onPaperPreview={scrollToPaperPreviewSection}
                       allowLiveExecution={riskSettings.allowLiveExecution}
+                      reviewOnlyFromBotsPath={liveExecutionLocked}
                       requireConfirmation={riskSettings.requireConfirmation}
                       paperModeDefault={riskSettings.paperModeDefault}
                       maxOpenPositionsReached={maxOpenPositionsReached}

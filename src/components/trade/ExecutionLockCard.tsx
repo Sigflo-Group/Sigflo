@@ -6,6 +6,8 @@ export type ExecutionLockCardProps = {
   source: 'bots' | 'manual';
   onPaperPreview: () => void;
   allowLiveExecution: boolean;
+  /** When true (e.g. `source=bots` trade URL), live entry is review-only regardless of {@link allowLiveExecution}. */
+  reviewOnlyFromBotsPath?: boolean;
   requireConfirmation: boolean;
   paperModeDefault: boolean;
   maxOpenPositionsReached?: boolean;
@@ -16,6 +18,7 @@ export function ExecutionLockCard({
   source,
   onPaperPreview,
   allowLiveExecution,
+  reviewOnlyFromBotsPath = false,
   requireConfirmation,
   paperModeDefault,
   maxOpenPositionsReached = false,
@@ -33,8 +36,10 @@ export function ExecutionLockCard({
         <div>
           <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-500">Execution</p>
           <p className="mt-1 text-xs text-zinc-400">
-            Review-only context{source === 'bots' ? ' · opened from Bots' : ''}. Sigflo will not send live orders from
-            this path unless you enable them in Risk controls.
+            Review-only context{source === 'bots' ? ' · opened from Bots' : ''}.
+            {reviewOnlyFromBotsPath
+              ? ' This screen never starts live market entries — open standard Trade (below) when Risk controls allow live execution.'
+              : ' Sigflo will not send live orders from this path unless you enable them in Risk controls.'}
           </p>
         </div>
       </div>
@@ -49,12 +54,30 @@ export function ExecutionLockCard({
       ) : null}
 
       <ul className="mt-3 space-y-1.5 text-[11px] leading-snug text-zinc-400">
+        {reviewOnlyFromBotsPath ? (
+          <li className="flex gap-2">
+            <span className="text-[#00ffc8]/70" aria-hidden>
+              ·
+            </span>
+            <span>
+              Bots review URL: live orders stay off here by design (not a Risk-controls bug). Use standard Trade to
+              execute.
+            </span>
+          </li>
+        ) : null}
         {!allowLiveExecution ? (
           <li className="flex gap-2">
             <span className="text-[#00ffc8]/70" aria-hidden>
               ·
             </span>
             <span>Live execution locked by risk controls</span>
+          </li>
+        ) : reviewOnlyFromBotsPath ? (
+          <li className="flex gap-2">
+            <span className="text-[#00ffc8]/70" aria-hidden>
+              ·
+            </span>
+            <span>Risk controls allow live execution on the standard Trade screen.</span>
           </li>
         ) : (
           <li className="flex gap-2">
@@ -96,6 +119,14 @@ export function ExecutionLockCard({
         >
           Risk controls
         </Link>
+        {reviewOnlyFromBotsPath && allowLiveExecution ? (
+          <Link
+            to="/trade"
+            className="flex w-full items-center justify-center rounded-xl border border-[#00ffc8]/30 bg-[#00ffc8]/8 py-2.5 text-sm font-semibold text-[#bafef1] transition hover:bg-[#00ffc8]/12"
+          >
+            Open standard Trade for live orders
+          </Link>
+        ) : null}
       </div>
     </motion.div>
   );

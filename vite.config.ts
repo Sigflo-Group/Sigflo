@@ -207,6 +207,11 @@ export default defineConfig(({ mode }) => {
     },
     server: {
       allowedHosts: true,
+      /**
+       * Netlify Dev (`netlify.toml` `[dev]` targetPort) must match this port. If Vite silently picked
+       * the next port (e.g. 5174), the proxy (e.g. :4000) would still forward to :5173 → blank/black UI.
+       */
+      strictPort: true,
       // Only proxy backend routes. `/api/ai/suggest` is handled above (and by Netlify in production).
       proxy: {
         '/api/integrations': { target: 'http://127.0.0.1:8787', changeOrigin: true },

@@ -1,9 +1,9 @@
-import { useCallback, useState } from 'react';
+import { useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { ExecutionSafetyCard } from '@/components/risk/ExecutionSafetyCard';
 import { RiskLimitCard } from '@/components/risk/RiskLimitCard';
 import { RiskModeSelector } from '@/components/risk/RiskModeSelector';
-import { getRiskSettings, saveRiskSettings } from '@/services/risk/riskSettings';
+import { getRiskSettings, saveRiskSettings, useRiskSettings } from '@/services/risk/riskSettings';
 import type { SigfloRiskMode, SigfloRiskSettings } from '@/types/risk';
 
 function NumField({
@@ -38,10 +38,10 @@ function NumField({
 }
 
 export default function RiskControlsScreen() {
-  const [draft, setDraft] = useState<SigfloRiskSettings>(() => getRiskSettings());
+  const draft = useRiskSettings();
 
   const persist = useCallback((patch: Partial<SigfloRiskSettings>) => {
-    setDraft((prev) => saveRiskSettings({ ...prev, ...patch }));
+    saveRiskSettings({ ...getRiskSettings(), ...patch });
   }, []);
 
   const setMode = useCallback((riskMode: SigfloRiskMode) => persist({ riskMode }), [persist]);

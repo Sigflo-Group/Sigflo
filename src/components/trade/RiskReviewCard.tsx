@@ -10,6 +10,8 @@ export type RiskReviewCardProps = {
   maxRiskPerTradePct?: number;
   maxOpenPositions?: number;
   allowLiveExecution?: boolean;
+  /** Bots review trade URL: live entry is off here even when {@link allowLiveExecution} is true. */
+  reviewOnlyFromBotsPath?: boolean;
   requireConfirmation?: boolean;
   monitoredOpenCount?: number;
 };
@@ -37,6 +39,7 @@ export function RiskReviewCard({
   maxRiskPerTradePct,
   maxOpenPositions,
   allowLiveExecution,
+  reviewOnlyFromBotsPath = false,
   requireConfirmation,
   monitoredOpenCount,
 }: RiskReviewCardProps) {
@@ -82,7 +85,13 @@ export function RiskReviewCard({
               <dt className="text-zinc-500">Execution readiness</dt>
               <dd className="space-y-1 text-[11px] font-normal leading-snug text-zinc-300">
                 <p className="text-zinc-200">{readinessCopy(state)}</p>
-                <p>{allowLiveExecution ? 'Live execution available in Risk controls.' : 'Live execution locked'}</p>
+                <p>
+                  {!allowLiveExecution
+                    ? 'Live execution locked in Risk controls.'
+                    : reviewOnlyFromBotsPath
+                      ? 'Live execution allowed in Risk controls — use standard Trade (not this Bots review URL) to send orders.'
+                      : 'Live execution available in Risk controls.'}
+                </p>
                 {requireConfirmation ? <p>Confirmation required</p> : <p>Confirmation optional</p>}
               </dd>
             </div>

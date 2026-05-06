@@ -194,7 +194,8 @@ function SlideToConfirm({
   const progressRef = useRef(0);
   const [progress, setProgress] = useState(0);
   const [dragging, setDragging] = useState(false);
-  const knobW = 46;
+  /** Matches Tailwind `w-12` (3rem) for hit geometry */
+  const knobPx = 48;
   const threshold = 0.86;
 
   useEffect(() => {
@@ -209,19 +210,48 @@ function SlideToConfirm({
     if (disabled || loading || success) return;
     const track = trackRef.current;
     if (!track) return;
-    const rect = track.getBoundingClientRect();
+    const pid = e.pointerId;
+    const knob = e.currentTarget;
+
+    // Mobile: stop the sheet / page from scrolling during horizontal drag
+    if (e.pointerType === 'touch' || e.pointerType === 'pen') {
+      e.preventDefault();
+    }
+
+    try {
+      knob.setPointerCapture(pid);
+    } catch {
+      /* Some WebKit builds: rely on window listeners */
+    }
+
     setDragging(true);
-    const onMove = (ev: PointerEvent) => {
-      const maxX = Math.max(1, rect.width - knobW - 8);
-      const x = clamp(ev.clientX - rect.left - knobW / 2 - 4, 0, maxX);
+
+    const syncFromClientX = (clientX: number) => {
+      const r = track.getBoundingClientRect();
+      const maxX = Math.max(1, r.width - knobPx - 8);
+      const x = clamp(clientX - r.left - knobPx / 2 - 4, 0, maxX);
       const next = x / maxX;
       progressRef.current = next;
       setProgress(next);
     };
-    const onUp = () => {
+    syncFromClientX(e.clientX);
+
+    const onMove = (ev: PointerEvent) => {
+      if (ev.pointerId !== pid) return;
+      syncFromClientX(ev.clientX);
+    };
+
+    const onEnd = (ev: PointerEvent) => {
+      if (ev.pointerId !== pid) return;
       setDragging(false);
       window.removeEventListener('pointermove', onMove);
-      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointerup', onEnd);
+      window.removeEventListener('pointercancel', onEnd);
+      try {
+        knob.releasePointerCapture(pid);
+      } catch {
+        /* ignore */
+      }
       if (progressRef.current >= threshold) {
         setProgress(1);
         onConfirm();
@@ -229,9 +259,10 @@ function SlideToConfirm({
         setProgress(0);
       }
     };
-    window.addEventListener('pointermove', onMove);
-    window.addEventListener('pointerup', onUp);
-    e.currentTarget.setPointerCapture?.(e.pointerId);
+
+    window.addEventListener('pointermove', onMove, { passive: true });
+    window.addEventListener('pointerup', onEnd);
+    window.addEventListener('pointercancel', onEnd);
   };
 
   const fillPct = `${Math.round(progress * 100)}%`;
@@ -242,7 +273,7 @@ function SlideToConfirm({
       <p className="text-center text-[11px] font-semibold uppercase tracking-[0.12em] text-zinc-400">Slide to execute</p>
       <div
         ref={trackRef}
-        className={`relative h-14 w-full overflow-hidden rounded-2xl border border-white/10 bg-white/[0.03] shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] ${
+        className={`relative h-14 w-full touch-none select-none overflow-hidden rounded-2xl border border-white/10 bg-white/[0.03] shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] ${
           disabled ? 'opacity-60' : ''
         }`}
       >
@@ -261,18 +292,18 @@ function SlideToConfirm({
         <div className="absolute inset-0 flex items-center justify-center">
           <span className="text-sm font-semibold text-zinc-100">{label}</span>
         </div>
-        <motion.button
+        <button
           type="button"
           onPointerDown={handlePointerDown}
           aria-label="Slide to execute"
           disabled={disabled || loading || success}
-          className="absolute top-1 z-10 h-12 w-12 rounded-xl border border-white/15 bg-[#0f1216] text-[#00ffc8] shadow-[0_0_20px_-10px_rgba(0,255,200,0.7)] disabled:cursor-not-allowed"
-          style={{ left: `min(calc(100% - 3.25rem), max(0.25rem, ${fillPct}))` }}
-          animate={{ scale: dragging ? 0.97 : 1 }}
-          transition={{ duration: 0.12 }}
+          className={`absolute top-1 z-10 h-12 w-12 touch-none select-none rounded-xl border border-white/15 bg-[#0f1216] text-[#00ffc8] shadow-[0_0_20px_-10px_rgba(0,255,200,0.7)] transition-transform duration-100 disabled:cursor-not-allowed ${
+            dragging ? 'scale-[0.97]' : 'scale-100'
+          }`}
+          style={{ left: `min(calc(100% - 3rem), max(0.25rem, ${fillPct}))` }}
         >
           →
-        </motion.button>
+        </button>
       </div>
     </div>
   );
@@ -537,7 +568,7 @@ export function GuidedExecutionPanel({
               </p>
               <p className="mt-1 text-[11px] text-zinc-500">
                 {previewOnly
-                  ? 'Paper preview only. Outcomes are not guaranteed. Live execution stays disabled from this review.'
+                  ? 'Paper preview only. This Bots review path does not submit live orders — even if Risk controls allow live trading elsewhere. Open standard Trade to execute.'
                   : 'Execution uses live market fills. Slippage may apply.'}
               </p>
 

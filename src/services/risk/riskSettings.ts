@@ -25,6 +25,14 @@ function coerceRiskMode(v: unknown): SigfloRiskMode {
   return DEFAULT_RISK_SETTINGS.riskMode;
 }
 
+/** LocalStorage / JSON sometimes yields non-boolean toggles; normalize so Risk UI matches execution gates. */
+function coerceBooleanField(value: unknown, defaultVal: boolean): boolean {
+  if (typeof value === 'boolean') return value;
+  if (value === 'true' || value === 1) return true;
+  if (value === 'false' || value === 0) return false;
+  return defaultVal;
+}
+
 export function coerceRiskSettings(raw: unknown): SigfloRiskSettings {
   if (!raw || typeof raw !== 'object') return { ...DEFAULT_RISK_SETTINGS };
   const o = raw as Record<string, unknown>;
@@ -33,11 +41,9 @@ export function coerceRiskSettings(raw: unknown): SigfloRiskSettings {
     maxRiskPerTradePct: clamp(Number(o.maxRiskPerTradePct), 0.1, 25),
     maxDailyLossPct: clamp(Number(o.maxDailyLossPct), 0.5, 50),
     maxOpenPositions: Math.round(clamp(Number(o.maxOpenPositions), 1, 25)),
-    allowLiveExecution: typeof o.allowLiveExecution === 'boolean' ? o.allowLiveExecution : DEFAULT_RISK_SETTINGS.allowLiveExecution,
-    requireConfirmation:
-      typeof o.requireConfirmation === 'boolean' ? o.requireConfirmation : DEFAULT_RISK_SETTINGS.requireConfirmation,
-    paperModeDefault:
-      typeof o.paperModeDefault === 'boolean' ? o.paperModeDefault : DEFAULT_RISK_SETTINGS.paperModeDefault,
+    allowLiveExecution: coerceBooleanField(o.allowLiveExecution, DEFAULT_RISK_SETTINGS.allowLiveExecution),
+    requireConfirmation: coerceBooleanField(o.requireConfirmation, DEFAULT_RISK_SETTINGS.requireConfirmation),
+    paperModeDefault: coerceBooleanField(o.paperModeDefault, DEFAULT_RISK_SETTINGS.paperModeDefault),
   };
 }
 

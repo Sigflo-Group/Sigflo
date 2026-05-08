@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { useAccountSnapshot } from '@/hooks/useAccountSnapshot';
 import { useBotStatuses } from '@/hooks/useBotStatuses';
@@ -22,6 +22,7 @@ type RiskMode = 'Conservative' | 'Balanced' | 'Aggressive';
 
 export default function ProfileScreen() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { user, loading: authLoading, authMode, signInWithGoogle, signOut } = useAuth();
   const [pushAlerts, setPushAlerts] = useState(true);
   const [highRiskAlerts, setHighRiskAlerts] = useState(false);
@@ -109,6 +110,12 @@ export default function ProfileScreen() {
   const apiConnected = !integrationsError && !snapshotError;
   const dataStatus = signalConnection === 'connected' ? 'Live' : signalConnection === 'reconnecting' ? 'Syncing' : 'Offline';
   const syncIssue = integrationsError || snapshotError;
+  const returnTo = useMemo(() => {
+    const raw = (searchParams.get('returnTo') ?? '').trim();
+    if (!raw.startsWith('/')) return null;
+    if (raw.startsWith('//')) return null;
+    return raw;
+  }, [searchParams]);
   const riskColor = useMemo(() => {
     if (riskMode === 'Conservative') return 'text-emerald-300';
     if (riskMode === 'Aggressive') return 'text-rose-300';
@@ -328,6 +335,15 @@ export default function ProfileScreen() {
     <div className="space-y-3.5 pb-6 pt-4">
       <div className="px-1">
         <h2 className="text-lg font-semibold tracking-tight text-white">Account</h2>
+        {returnTo ? (
+          <button
+            type="button"
+            onClick={() => navigate(returnTo)}
+            className="mt-2 rounded-lg border border-[#00ffc8]/28 bg-[#00ffc8]/10 px-2.5 py-1 text-[11px] font-semibold text-[#bafef1] transition hover:bg-[#00ffc8]/14"
+          >
+            Back to previous screen
+          </button>
+        ) : null}
       </div>
 
       <section className="rounded-2xl border border-white/[0.06] bg-sigflo-surface sigflo-panel-texture p-4 shadow-[0_0_28px_-20px_rgba(0,255,200,0.35)]">

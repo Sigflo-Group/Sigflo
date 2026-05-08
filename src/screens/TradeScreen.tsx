@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { AssistedExitConfirmBar } from '@/components/trade/AssistedExitConfirmBar';
 import { ExitAutomationControls } from '@/components/trade/ExitAutomationControls';
 import { TradeChartScenarioStrip, computeScenarioProbabilities } from '@/components/trade/TradeChartScenarioStrip';
@@ -320,6 +320,7 @@ function formatBotsQueryPair(pairParam: string): string {
 
 export function TradeScreen() {
   const navigate = useNavigate();
+  const location = useLocation();
   const canGoBack = useCanGoBack();
   const [params, setSearchParams] = useSearchParams();
   const botsReviewContext = useMemo(() => {
@@ -4306,7 +4307,8 @@ export function TradeScreen() {
                             type="button"
                             onClick={() => {
                               dismissPaperRealAccountNudge();
-                              navigate('/settings/exchange');
+                              const returnTo = `${location.pathname}${location.search}`;
+                              navigate(`/settings/exchange?returnTo=${encodeURIComponent(returnTo)}`);
                             }}
                             className="rounded-lg border border-[#00ffc8]/35 bg-[#00ffc8]/10 px-3 py-2 text-xs font-semibold text-[#00ffc8] transition hover:bg-[#00ffc8]/15"
                           >

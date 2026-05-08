@@ -1,7 +1,7 @@
 import type { TradeSide } from '@/types/trade';
 
 /** Where this row originated — broker wiring will add live sources later. */
-export type SigfloPositionSource = 'demo' | 'bybit' | 'manual';
+export type SigfloPositionSource = 'demo' | 'bybit' | 'manual' | 'bots-paper';
 
 export type SigfloMarginMode = 'cross' | 'isolated' | 'spot';
 

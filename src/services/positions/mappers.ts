@@ -16,12 +16,15 @@ function formatStripPairLabel(pair: string): string {
 }
 
 export function sigfloActiveToStripPosition(p: SigfloActivePosition): Position {
+  const isPaper = p.source === 'bots-paper' || p.source === 'demo';
   return {
     pairKey: normalizePositionPairKey(p.pair),
     pairLabel: formatStripPairLabel(p.pair),
     direction: p.direction,
     unrealizedPnl: p.unrealizedPnl,
     unrealizedPnlPct: p.unrealizedPnlPct,
+    isPaper,
+    sourceLabel: isPaper ? 'PAPER' : 'LIVE',
   };
 }
 

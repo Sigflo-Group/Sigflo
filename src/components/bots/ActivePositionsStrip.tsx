@@ -37,13 +37,26 @@ export default function ActivePositionsStrip({ positions, onSelectPosition }: Ac
               onClick={() => onSelectPosition?.(p.pairKey)}
               className="group flex min-w-[9.5rem] max-w-[11.5rem] shrink-0 snap-start flex-col rounded-xl border border-white/12 bg-white/[0.06] px-2.5 py-2 text-left shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] backdrop-blur-md transition hover:border-[#00ffc8]/35 hover:bg-white/[0.09] active:scale-[0.99]"
             >
-              <p className="truncate text-[10px] font-bold uppercase tracking-wide text-white/90">
-                {p.pairLabel} · {dirLabel}
-              </p>
+              <div className="flex items-center justify-between gap-1.5">
+                <p className="truncate text-[10px] font-bold uppercase tracking-wide text-white/90">
+                  {p.pairLabel} · {dirLabel}
+                </p>
+                <span
+                  className={`shrink-0 rounded border px-1 py-0.5 text-[7px] font-bold uppercase tracking-[0.08em] ${
+                    p.sourceLabel === 'PAPER'
+                      ? 'border-violet-300/35 bg-violet-500/12 text-violet-100'
+                      : 'border-emerald-300/35 bg-emerald-500/12 text-emerald-100'
+                  }`}
+                >
+                  {p.sourceLabel ?? (p.isPaper ? 'PAPER' : 'LIVE')}
+                </span>
+              </div>
               <p className={`mt-1 font-mono text-[11px] font-semibold tabular-nums ${pnlClass}`}>
                 {pnlUsd} · {roe}
               </p>
-              <p className="mt-1 text-[8px] font-semibold uppercase tracking-wide text-zinc-500">Managing exits</p>
+              <p className="mt-1 text-[8px] font-semibold uppercase tracking-wide text-zinc-500">
+                {p.isPaper ? 'Paper position' : 'Managing exits'}
+              </p>
               <span className="mt-1.5 text-[8px] font-semibold text-[#7ee8d3] underline-offset-2 group-hover:underline">
                 Review position
               </span>

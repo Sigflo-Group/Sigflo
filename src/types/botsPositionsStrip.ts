@@ -7,4 +7,6 @@ export type Position = {
   direction: TradeSide;
   unrealizedPnl: number;
   unrealizedPnlPct: number;
+  isPaper?: boolean;
+  sourceLabel?: 'LIVE' | 'PAPER';
 };

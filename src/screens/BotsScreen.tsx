@@ -16,12 +16,15 @@ import { mockSystemEvents } from '@/data/mockSystemEvents';
 import { buildLatestActivityLine } from '@/lib/botsOpportunityIntel';
 import { getAlertPreferences, saveAlertPreferences } from '@/services/alerts/alertPreferences';
 import { getOpportunityRepository, listOpportunities } from '@/services/opportunities';
-import { getPositionRepository, sigfloActiveToStripPosition } from '@/services/positions';
+import { getPositionRepository, sigfloActivePositionFromExchange, sigfloActiveToStripPosition } from '@/services/positions';
+import { DemoPositionRepository, DEMO_POSITIONS_CHANGED_EVENT } from '@/services/positions/demoPositionRepository';
 import { DailyRiskGuardBanner } from '@/components/risk/DailyRiskGuardBanner';
 import { riskGuardStatusLine, useDailyRiskGuard } from '@/services/risk/dailyRiskGuard';
 import { useRiskSettings } from '@/services/risk/riskSettings';
+import { useAccountSnapshot } from '@/hooks/useAccountSnapshot';
 import type { AlertPreference } from '@/types/alerts';
 import type { OpportunityCardModel } from '@/types/botSystem';
+import type { SigfloActivePosition } from '@/types/position';
 import { formatFreshness, sortOpportunities } from '@/types/botSystem';
 import { playUiTapSound } from '@/utils/sound';
 
@@ -78,6 +81,21 @@ function isFormingOpportunity(o: OpportunityCardModel): boolean {
   return o.state === 'Building' || o.state === 'Watching';
 }
 
+function isDbHydratedOpportunity(o: OpportunityCardModel): boolean {
+  if (!o.id.trim()) return false;
+  if (!Number.isFinite(o.score) || o.score <= 0) return false;
+  if (!o.thesis.trim() || !o.rationale.trim()) return false;
+  if (!o.entryZone || !o.invalidation || !o.targets?.length) return false;
+  return true;
+}
+
+function symbolToDisplayPair(symbol: string): string {
+  const s = symbol.trim().toUpperCase();
+  if (s.endsWith('USDT')) return `${s.slice(0, -4)} / USDT`;
+  if (s.endsWith('USDC')) return `${s.slice(0, -4)} / USDC`;
+  return s;
+}
+
 export default function BotsScreen() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -98,7 +116,10 @@ export default function BotsScreen() {
   const [alertPrefs, setAlertPrefs] = useState<AlertPreference>(() => getAlertPreferences());
   const [showAlertSettings, setShowAlertSettings] = useState(readOpenAlertsFromUrl);
   const [expandedOpportunityId, setExpandedOpportunityId] = useState<string | null>(null);
+  const [positionRevision, setPositionRevision] = useState(0);
+  const [paperTradeToast, setPaperTradeToast] = useState<string | null>(null);
   const { highlightIds, commandBarFlashKey, setupReadyBanner } = useSetupAlerts(opportunities);
+  const { items: accountSnapshots } = useAccountSnapshot();
   const riskSettings = useRiskSettings();
   const dailyRiskGuard = useDailyRiskGuard();
   const reviewLocked = dailyRiskGuard.status === 'locked';
@@ -164,10 +185,10 @@ export default function BotsScreen() {
       setLastSyncedAt(Date.now());
       setLastSyncErrorAt(null);
     } catch (e) {
-      const message = e instanceof Error && e.message ? e.message : 'Could not load opportunities.';
+      const message = e instanceof Error && e.message ? e.message : 'Could not load opportunities';
       setError(message);
-      setLastSyncErrorAt(Date.now());
       if (!silent) setOpportunities([]);
+      setLastSyncErrorAt(Date.now());
     } finally {
       setIsSyncing(false);
       if (!silent) setIsLoading(false);
@@ -187,11 +208,54 @@ export default function BotsScreen() {
     return () => window.clearInterval(id);
   }, [refreshOpportunities]);
 
+  useEffect(() => {
+    const onPositionsChanged = () => setPositionRevision((v) => v + 1);
+    window.addEventListener(DEMO_POSITIONS_CHANGED_EVENT, onPositionsChanged);
+    return () => window.removeEventListener(DEMO_POSITIONS_CHANGED_EVENT, onPositionsChanged);
+  }, []);
+
+  useEffect(() => {
+    if (!paperTradeToast) return;
+    const id = window.setTimeout(() => setPaperTradeToast(null), 1800);
+    return () => window.clearTimeout(id);
+  }, [paperTradeToast]);
+
   const ranked = opportunities;
+  const activeSectionRef = useRef<HTMLElement>(null);
+
+  const exchangeActivePositions = useMemo(() => {
+    const out: SigfloActivePosition[] = [];
+    for (const snap of accountSnapshots) {
+      if (snap.status !== 'connected') continue;
+      for (const p of snap.positions) {
+        if (!(Number.isFinite(p.size) && p.size > 0)) continue;
+        const mark =
+          p.markPrice != null && Number.isFinite(p.markPrice) && p.markPrice > 0 ? p.markPrice : p.entryPrice;
+        out.push(sigfloActivePositionFromExchange(p, symbolToDisplayPair(p.symbol), mark));
+      }
+    }
+    return out;
+  }, [accountSnapshots]);
+
+  const localActivePositions = useMemo(
+    () => getPositionRepository().listActivePositions(),
+    [positionRevision],
+  );
 
   const activeStripPositions = useMemo(
-    () => getPositionRepository().listActivePositions().map(sigfloActiveToStripPosition),
-    [],
+    () => {
+      const byPairKey = new Map<string, ReturnType<typeof sigfloActiveToStripPosition>>();
+      for (const p of exchangeActivePositions) {
+        const mapped = sigfloActiveToStripPosition(p);
+        byPairKey.set(mapped.pairKey, mapped);
+      }
+      for (const p of localActivePositions) {
+        const mapped = sigfloActiveToStripPosition(p);
+        if (!byPairKey.has(mapped.pairKey)) byPairKey.set(mapped.pairKey, mapped);
+      }
+      return [...byPairKey.values()];
+    },
+    [exchangeActivePositions, localActivePositions],
   );
 
   const hero = useMemo(() => {
@@ -293,7 +357,14 @@ export default function BotsScreen() {
       state: opportunity.state,
       direction: opportunity.direction,
       opportunityId: opportunity.id,
+      score: String(opportunity.score),
+      thesis: opportunity.thesis,
+      rationale: opportunity.rationale,
     });
+    if (opportunity.entryZone) q.set('entryZone', opportunity.entryZone);
+    if (opportunity.invalidation) q.set('invalidation', opportunity.invalidation);
+    if (opportunity.targets?.length) q.set('targets', opportunity.targets.join('|'));
+    if (opportunity.timeframeAlignment?.length) q.set('timeframeAlignment', opportunity.timeframeAlignment.join('|'));
     navigate(`/trade?${q.toString()}`);
   };
 
@@ -303,13 +374,6 @@ export default function BotsScreen() {
     navigateToTradeReview(opp);
   };
   const onExplain = (id: string) => console.log('Why this setup', id);
-  const onReviewOpportunity = (id: string) => {
-    playUiTapSound();
-    const opp = ranked.find((o) => o.id === id);
-    if (!opp) return;
-    navigateToTradeReview(opp);
-  };
-
   const onToggleOpportunityExpand = (id: string) => {
     playUiTapSound();
     setExpandedOpportunityId((prev) => (prev === id ? null : id));
@@ -318,6 +382,43 @@ export default function BotsScreen() {
   const onSelectActivePosition = (pairKey: string) => {
     playUiTapSound();
     navigate(`/trade?pair=${encodeURIComponent(pairKey)}&source=position`);
+  };
+
+  const onQuickPaperTrade = (opportunity: OpportunityCardModel) => {
+    const plan = decisionPlanFromOpportunity(opportunity);
+    if (!plan.entryZone || plan.invalidation == null) return;
+    const entryPrice = (plan.entryZone.min + plan.entryZone.max) / 2;
+    const pair = opportunity.pair.includes('/') ? opportunity.pair : `${opportunity.pair} / USDT`;
+    const id =
+      typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+        ? crypto.randomUUID()
+        : `bots-paper-${Date.now()}`;
+    const next: SigfloActivePosition = {
+      id,
+      pair,
+      direction: opportunity.direction === 'SHORT' ? 'short' : 'long',
+      entryPrice,
+      markPrice: entryPrice,
+      size: 1000,
+      leverage: 1,
+      marginMode: 'cross',
+      unrealizedPnl: 0,
+      unrealizedPnlPct: 0,
+      stopPrice: plan.invalidation,
+      liquidationPrice: null,
+      targets: plan.targets ?? [],
+      openedAt: Date.now(),
+      source: 'bots-paper',
+    };
+    const repo = getPositionRepository();
+    if (repo instanceof DemoPositionRepository) {
+      repo.addPosition(next);
+    }
+    setPaperTradeToast('Paper trade opened');
+    setExpandedOpportunityId(null);
+    window.requestAnimationFrame(() => {
+      activeSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    });
   };
   const onViewEngine = (id: string) => {
     playUiTapSound();
@@ -376,9 +477,14 @@ export default function BotsScreen() {
         ) : null}
 
         {activeStripPositions.length > 0 ? (
-          <motion.section custom={1} initial="hidden" animate="visible" variants={sectionVariants}>
+          <motion.section ref={activeSectionRef} custom={1} initial="hidden" animate="visible" variants={sectionVariants}>
             <ActivePositionsStrip positions={activeStripPositions} onSelectPosition={onSelectActivePosition} />
           </motion.section>
+        ) : null}
+        {paperTradeToast ? (
+          <div className="fixed bottom-24 left-1/2 z-40 -translate-x-1/2 rounded-lg border border-[#00ffc8]/30 bg-[#0b1512] px-3 py-1.5 text-xs font-medium text-[#bafef1] shadow-lg">
+            {paperTradeToast}
+          </div>
         ) : null}
 
         <motion.section custom={2} initial="hidden" animate="visible" variants={sectionVariants}>
@@ -478,13 +584,9 @@ export default function BotsScreen() {
                   {...decisionPlanFromOpportunity(row)}
                   isExpanded={expandedOpportunityId === row.id}
                   onToggleExpand={onToggleOpportunityExpand}
-                  onReview={
-                    reviewLocked
-                      ? undefined
-                      : () => {
-                          onReviewOpportunity(row.id);
-                        }
-                  }
+                  onQuickPaperTrade={() => onQuickPaperTrade(row)}
+                  quickPaperTradeDisabled={!decisionPlanFromOpportunity(row).entryZone || decisionPlanFromOpportunity(row).invalidation == null}
+                  debugHydration={{ isDbHydrated: isDbHydratedOpportunity(row), opportunityId: row.id }}
                 />
               ))}
             </div>
@@ -529,13 +631,9 @@ export default function BotsScreen() {
                     {...decisionPlanFromOpportunity(row)}
                     isExpanded={expandedOpportunityId === row.id}
                     onToggleExpand={onToggleOpportunityExpand}
-                    onReview={
-                      reviewLocked
-                        ? undefined
-                        : () => {
-                            onReviewOpportunity(row.id);
-                          }
-                    }
+                    onQuickPaperTrade={() => onQuickPaperTrade(row)}
+                    quickPaperTradeDisabled={!decisionPlanFromOpportunity(row).entryZone || decisionPlanFromOpportunity(row).invalidation == null}
+                    debugHydration={{ isDbHydrated: isDbHydratedOpportunity(row), opportunityId: row.id }}
                   />
                 ))}
               </div>

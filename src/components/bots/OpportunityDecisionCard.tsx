@@ -14,6 +14,9 @@ type OpportunityDecisionCardProps = {
   isExpanded?: boolean;
   onToggleExpand?: (id: string) => void;
   onReview?: () => void;
+  onQuickPaperTrade?: () => void;
+  quickPaperTradeDisabled?: boolean;
+  debugHydration?: { isDbHydrated: boolean; opportunityId: string };
 };
 
 const HEADLINES = {
@@ -213,6 +216,11 @@ export function OpportunityDecisionCard(props: OpportunityDecisionCardProps) {
               </div>
 
               <p className="mt-3 line-clamp-2 text-[11px] leading-snug text-zinc-300">{text || subtext}</p>
+              {import.meta.env.DEV && props.debugHydration ? (
+                <p className="mt-2 rounded-md border border-white/10 bg-black/25 px-2 py-1 font-mono text-[10px] text-zinc-400">
+                  db-hydrated {props.debugHydration.isDbHydrated ? 'yes' : 'no'} · id {props.debugHydration.opportunityId}
+                </p>
+              ) : null}
 
               <div className="mt-3 grid grid-cols-3 gap-2 rounded-xl border border-white/[0.07] bg-black/20 px-2 py-2 text-[11px]">
                 <div>
@@ -232,11 +240,11 @@ export function OpportunityDecisionCard(props: OpportunityDecisionCardProps) {
               <div className="mt-3 grid grid-cols-2 gap-2">
                 <button
                   type="button"
-                  onClick={props.onReview}
-                  disabled={!props.onReview}
-                  className="rounded-xl border border-[#00ffc8]/30 bg-[#00ffc8]/10 py-2 text-[11px] font-semibold text-[#bafef1] transition hover:bg-[#00ffc8]/14 disabled:cursor-not-allowed disabled:opacity-50"
+                  onClick={props.onQuickPaperTrade}
+                  disabled={!props.onQuickPaperTrade || props.quickPaperTradeDisabled}
+                  className="h-10 rounded-xl bg-[#00ffc8] py-2 text-[11px] font-medium text-black transition hover:bg-[#00f2bd] disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  Review trade →
+                  Paper trade this setup
                 </button>
                 <button
                   type="button"

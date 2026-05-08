@@ -1,17 +1,23 @@
 import { isSupabaseConfigured, supabase } from '@/lib/supabase';
-import { demoOpportunityRepository } from '@/services/opportunities/demoOpportunityRepository';
 import { createSupabaseOpportunityRepository } from '@/services/opportunities/supabaseOpportunityRepository';
 import type { OpportunityRepository } from '@/services/opportunities/opportunityRepository';
 import type { OpportunityCardModel } from '@/types/botSystem';
 
 let cachedRepository: OpportunityRepository | null = null;
 
+const liveOnlyRepository: OpportunityRepository = {
+  source: 'supabase',
+  async listOpportunities() {
+    throw new Error('Live opportunities unavailable: Supabase is not configured.');
+  },
+  async getOpportunityById() {
+    return undefined;
+  },
+};
+
 export function getOpportunityRepository(): OpportunityRepository {
   if (!cachedRepository) {
-    cachedRepository =
-      isSupabaseConfigured() && supabase
-        ? createSupabaseOpportunityRepository(supabase)
-        : demoOpportunityRepository;
+    cachedRepository = isSupabaseConfigured() && supabase ? createSupabaseOpportunityRepository(supabase) : liveOnlyRepository;
   }
   return cachedRepository;
 }

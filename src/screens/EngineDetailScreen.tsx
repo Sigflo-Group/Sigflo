@@ -74,7 +74,14 @@ export default function EngineDetailScreen() {
         state: opportunity.state,
         direction: opportunity.direction,
         opportunityId: opportunity.id,
+        score: String(opportunity.score),
+        thesis: opportunity.thesis,
+        rationale: opportunity.rationale,
       });
+      if (opportunity.entryZone) q.set('entryZone', opportunity.entryZone);
+      if (opportunity.invalidation) q.set('invalidation', opportunity.invalidation);
+      if (opportunity.targets?.length) q.set('targets', opportunity.targets.join('|'));
+      if (opportunity.timeframeAlignment?.length) q.set('timeframeAlignment', opportunity.timeframeAlignment.join('|'));
       navigate(`/trade?${q.toString()}`);
     },
     [navigate],

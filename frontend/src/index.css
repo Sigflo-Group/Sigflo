@@ -1,0 +1,1319 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    @apply scroll-smooth bg-sigflo-bg text-sigflo-text;
+    /** ~15px root instead of 16px — scales rem-based UI down slightly so the app feels less “zoomed in”. */
+    font-size: 93.75%;
+    /** Stop mobile Safari/Chrome from auto-boosting text size (reads as extra zoom). */
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+  body {
+    @apply min-h-[100dvh] antialiased;
+  }
+
+  /**
+   * Touch-friendly controls (~44px / 2.75rem minimum height).
+   * - Small phone widths: always (thumb-first layouts).
+   * - `pointer: coarse`: tablets / touch laptops even when the viewport is wide.
+   * Opt out on a control with class `sigflo-touch-keep-compact` (rare density-critical UI).
+   */
+  @media (max-width: 639.98px), (pointer: coarse) {
+    :where(
+        button:not(:disabled),
+        input[type='submit']:not(:disabled),
+        input[type='button']:not(:disabled),
+        input[type='reset']:not(:disabled)
+      ):not(.sigflo-touch-keep-compact) {
+      min-height: 2.75rem;
+    }
+    :where([role='tab']):not(.sigflo-touch-keep-compact) {
+      min-height: 2.75rem;
+    }
+  }
+
+  /* Baseline interaction feedback so every enabled button has hover/press affordance. */
+  :where(button:not(:disabled)) {
+    transition:
+      filter 140ms ease,
+      background-color 140ms ease,
+      border-color 140ms ease,
+      color 140ms ease,
+      box-shadow 180ms ease,
+      transform 120ms ease;
+  }
+
+  :where(button:not(:disabled)):active {
+    transform: scale(0.99);
+  }
+
+  @media (hover: hover) and (pointer: fine) {
+    :where(button:not(:disabled)):hover {
+      filter: brightness(1.06);
+      box-shadow: 0 10px 24px -16px rgba(0, 0, 0, 0.55);
+    }
+  }
+
+  ::selection {
+    @apply bg-[rgba(0,255,200,0.25)] text-white;
+  }
+
+  /**
+   * Dark-theme scrollbars (Win/Chrome/Edge/Safari + Firefox).
+   * Hides arrow buttons on WebKit for a cleaner premium look.
+   */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.2) rgba(255, 255, 255, 0.04);
+  }
+
+  *::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  *::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.04);
+    border-radius: 100px;
+  }
+
+  *::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.18);
+    border-radius: 100px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
+
+  *::-webkit-scrollbar-thumb:hover {
+    background: rgba(0, 255, 200, 0.28);
+    background-clip: padding-box;
+  }
+
+  *::-webkit-scrollbar-thumb:active {
+    background: rgba(0, 255, 200, 0.38);
+    background-clip: padding-box;
+  }
+
+  *::-webkit-scrollbar-button {
+    display: none;
+    width: 0;
+    height: 0;
+  }
+
+  *::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+}
+
+@layer components {
+  /* Shared tactile press feedback for key action buttons (mobile + desktop). */
+  .sigflo-pressable {
+    transform: translateZ(0);
+    transition:
+      transform 120ms cubic-bezier(0.2, 0.8, 0.2, 1),
+      box-shadow 180ms ease,
+      filter 180ms ease,
+      background-color 180ms ease;
+    will-change: transform, box-shadow, filter;
+  }
+
+  .sigflo-pressable:hover {
+    filter: brightness(1.04);
+  }
+
+  .sigflo-pressable:active {
+    transform: scale(0.975);
+    filter: brightness(1.08);
+  }
+
+  @media (hover: hover) and (pointer: fine) {
+    .sigflo-pressable {
+      cursor: pointer;
+    }
+
+    .sigflo-pressable:hover {
+      transform: translateY(-1px) scale(1.01);
+      filter: brightness(1.06);
+      box-shadow: 0 14px 30px -16px rgba(0, 0, 0, 0.55);
+    }
+
+    .sigflo-pressable:active {
+      transform: translateY(0) scale(0.985);
+      filter: brightness(1.1);
+    }
+  }
+
+  .sigflo-pressable:focus-visible {
+    outline: none;
+    box-shadow:
+      0 0 0 2px rgba(255, 255, 255, 0.14),
+      0 0 0 4px rgba(0, 255, 200, 0.2);
+  }
+
+  /**
+   * Subtle grid texture for dark panels. Shared by ::before (utility class) and
+   * `.sigflo-panel-grid-overlay` (span inside `Card`); chart cards omit the overlay via `panelTexture={false}`.
+   * z-index: -1 paints under in-flow content; avoid `bg-…/80` on the same node — alpha lets the grid show
+   * through and look like it sits on top of nested dark insets. Prefer opaque panel fills with texture.
+   */
+  .sigflo-panel-texture::before,
+  .sigflo-panel-grid-overlay {
+    opacity: 0.19;
+    background-image:
+      repeating-linear-gradient(
+        0deg,
+        transparent 0,
+        transparent 10px,
+        rgba(255, 255, 255, 0.065) 10px,
+        rgba(255, 255, 255, 0.065) 11px
+      ),
+      repeating-linear-gradient(
+        90deg,
+        transparent 0,
+        transparent 10px,
+        rgba(255, 255, 255, 0.048) 10px,
+        rgba(255, 255, 255, 0.048) 11px
+      );
+  }
+
+  .sigflo-panel-texture::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    z-index: -1;
+  }
+
+  .sigflo-panel-grid-overlay {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    z-index: -1;
+  }
+
+  .sigflo-panel-texture {
+    position: relative;
+    isolation: isolate;
+  }
+
+  /** Bots review: very subtle locked-state border emphasis (no heavy glow). */
+  @keyframes sigflo-exec-lock-border-pulse {
+    0%,
+    100% {
+      border-color: rgba(255, 255, 255, 0.1);
+      box-shadow: 0 0 0 0 rgba(0, 255, 200, 0);
+    }
+    50% {
+      border-color: rgba(0, 255, 200, 0.22);
+      box-shadow: 0 0 0 1px rgba(0, 255, 200, 0.06);
+    }
+  }
+
+  .sigflo-exec-lock-card {
+    animation: sigflo-exec-lock-border-pulse 4.5s ease-in-out infinite;
+  }
+
+  .landing-panel-texture::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    z-index: -1;
+    opacity: 0.2;
+    background-image:
+      repeating-linear-gradient(
+        0deg,
+        transparent 0,
+        transparent 11px,
+        rgba(255, 255, 255, 0.07) 11px,
+        rgba(255, 255, 255, 0.07) 12px
+      ),
+      repeating-linear-gradient(
+        90deg,
+        transparent 0,
+        transparent 11px,
+        rgba(0, 200, 120, 0.055) 11px,
+        rgba(0, 200, 120, 0.055) 12px
+      );
+  }
+
+  .landing-panel-texture {
+    position: relative;
+    isolation: isolate;
+  }
+
+  /**
+   * Bot Focus readability pass:
+   * keep panel texture cues but reduce haze so copy remains crisp on dense sections.
+   */
+  .sigflo-bot-focus-root .landing-panel-texture::before {
+    opacity: 0.14;
+  }
+
+  /**
+   * Markets screen root: base fill + soft mint/cyan radials on ::before/::after (animated).
+   * Main content needs `relative z-10` so it stacks above the glow layers.
+   */
+  .sigflo-markets-screen-root {
+    position: relative;
+    isolation: isolate;
+    background-color: #050505;
+  }
+
+  .sigflo-markets-screen-root::before,
+  .sigflo-markets-screen-root::after {
+    content: '';
+    position: absolute;
+    inset: -14%;
+    pointer-events: none;
+    z-index: 0;
+    background-repeat: no-repeat;
+    background-size: 100% 100%;
+  }
+
+  .sigflo-markets-screen-root::before {
+    background-image: radial-gradient(
+      ellipse 120% 70% at 50% -8%,
+      rgba(0, 255, 200, 0.038),
+      transparent 58%
+    );
+    animation: sigflo-markets-radial-mint 16s ease-in-out infinite;
+  }
+
+  .sigflo-markets-screen-root::after {
+    background-image: radial-gradient(
+      ellipse 65% 55% at 100% 100%,
+      rgba(56, 189, 248, 0.025),
+      transparent 62%
+    );
+    animation: sigflo-markets-radial-cyan 22s ease-in-out infinite;
+    animation-delay: -4.5s;
+  }
+}
+
+@keyframes sigflo-markets-radial-mint {
+  0%,
+  100% {
+    opacity: 0.88;
+    transform: scale(1) translate3d(0, 0, 0);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.08) translate3d(-1.2%, 0.85%, 0);
+  }
+}
+
+@keyframes sigflo-markets-radial-cyan {
+  0%,
+  100% {
+    opacity: 0.82;
+    transform: scale(1.04) translate3d(0, 0, 0);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.12) translate3d(1.4%, -1.35%, 0);
+  }
+}
+
+/** Bot focus full-chart — circular Trade FAB when execution is allowed */
+@keyframes sigflo-bot-focus-trade-fab-tradable {
+  0%,
+  100% {
+    box-shadow:
+      0 8px 28px -8px rgba(0, 255, 200, 0.52),
+      0 0 20px -6px rgba(0, 255, 200, 0.38);
+    filter: brightness(1) drop-shadow(0 0 6px rgba(0, 255, 200, 0.4));
+  }
+  50% {
+    box-shadow:
+      0 14px 48px -6px rgba(0, 255, 200, 0.92),
+      0 0 40px 2px rgba(0, 255, 200, 0.55);
+    filter: brightness(1.1) drop-shadow(0 0 20px rgba(0, 255, 200, 0.72));
+  }
+}
+
+.sigflo-bot-focus-trade-fab-tradable {
+  animation: sigflo-bot-focus-trade-fab-tradable 1.75s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sigflo-pressable {
+    transition: background-color 120ms ease, filter 120ms ease;
+  }
+
+  .sigflo-pressable:active {
+    transform: none;
+  }
+
+  .sigflo-bot-focus-trade-fab-tradable {
+    animation: none;
+    box-shadow:
+      0 10px 36px -8px rgba(0, 255, 200, 0.65),
+      0 0 28px 0 rgba(0, 255, 200, 0.42);
+    filter: drop-shadow(0 0 12px rgba(0, 255, 200, 0.5));
+  }
+
+  .sigflo-markets-screen-root::before,
+  .sigflo-markets-screen-root::after {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.sigflo-number-input::-webkit-outer-spin-button,
+.sigflo-number-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.sigflo-number-input {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+@keyframes sigflo-splash-glow-pulse {
+  0%,
+  100% {
+    opacity: 0.55;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.95;
+    transform: scale(1.08);
+  }
+}
+
+@keyframes sigflo-splash-glow-pulse-delayed {
+  0%,
+  100% {
+    opacity: 0.35;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.75;
+    transform: scale(1.12);
+  }
+}
+
+.sigflo-splash-glow-pulse {
+  animation: sigflo-splash-glow-pulse 2.4s ease-in-out infinite;
+}
+
+.sigflo-splash-glow-pulse-delayed {
+  animation: sigflo-splash-glow-pulse-delayed 2.8s ease-in-out infinite;
+  animation-delay: 0.35s;
+}
+
+@keyframes sigflo-splash-logo-drift {
+  0%,
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  50% {
+    opacity: 0.94;
+    transform: translateY(-3px);
+  }
+}
+
+.sigflo-splash-logo-drift {
+  animation: sigflo-splash-logo-drift 2.6s ease-in-out infinite;
+}
+
+@keyframes sigflo-splash-tagline-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.sigflo-splash-tagline-fade {
+  animation: sigflo-splash-tagline-fade 0.45s ease-out forwards;
+}
+
+@keyframes sigflo-entry-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+    text-shadow: 0 0 8px rgba(255, 255, 255, 0.22);
+  }
+  50% {
+    opacity: 0.92;
+    transform: scale(1.03);
+    text-shadow: 0 0 12px rgba(255, 255, 255, 0.34);
+  }
+}
+
+.animate-entry-pulse {
+  animation: sigflo-entry-pulse 2.2s ease-in-out infinite;
+  display: inline-block;
+  will-change: transform, opacity;
+}
+
+/* Trade scenario strip — chevron: slow, soft breathe (calm affordance). */
+@keyframes sigflo-scenario-chevron-fade {
+  0%,
+  100% {
+    opacity: 0.72;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes sigflo-scenario-chevron-bounce {
+  0%,
+  100% {
+    transform: scale(0.97);
+  }
+  50% {
+    transform: scale(1.05);
+  }
+}
+
+.sigflo-scenario-chevron-pulse {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  animation: sigflo-scenario-chevron-fade 2.8s cubic-bezier(0.45, 0.05, 0.55, 0.95) infinite;
+  transform-origin: center;
+  will-change: opacity;
+}
+
+.sigflo-scenario-chevron-pulse svg {
+  transform-origin: center;
+  animation: sigflo-scenario-chevron-bounce 2.8s cubic-bezier(0.45, 0.05, 0.55, 0.95) infinite;
+  will-change: transform;
+}
+
+.sigflo-scenario-chevron-pulse-open {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transform-origin: center;
+}
+
+.sigflo-scenario-chevron-pulse-open svg {
+  filter: drop-shadow(0 0 4px rgba(96, 165, 250, 0.45));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sigflo-scenario-chevron-pulse,
+  .sigflo-scenario-chevron-pulse svg {
+    animation: none;
+  }
+  .sigflo-scenario-chevron-pulse {
+    opacity: 1;
+  }
+  .sigflo-scenario-chevron-pulse svg {
+    transform: none;
+  }
+}
+
+/* Bots screen — single focal card (“setup forming” hero). */
+@keyframes sigflo-bot-spotlight-glow {
+  0%,
+  100% {
+    box-shadow:
+      0 0 22px -12px rgba(251, 191, 36, 0.22),
+      0 0 40px -20px rgba(0, 255, 200, 0.08),
+      inset 0 1px 0 0 rgba(255, 255, 255, 0.05);
+  }
+  50% {
+    box-shadow:
+      0 0 28px -10px rgba(251, 191, 36, 0.3),
+      0 0 48px -18px rgba(0, 255, 200, 0.12),
+      inset 0 1px 0 0 rgba(255, 255, 255, 0.06);
+  }
+}
+
+.sigflo-bot-card-spotlight {
+  animation: sigflo-bot-spotlight-glow 2.9s ease-in-out infinite;
+  will-change: box-shadow;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sigflo-bot-card-spotlight {
+    animation: none;
+    box-shadow:
+      0 0 24px -12px rgba(251, 191, 36, 0.26),
+      0 0 44px -18px rgba(0, 255, 200, 0.1),
+      inset 0 1px 0 0 rgba(255, 255, 255, 0.05);
+  }
+}
+
+/* BotCard — expanded thinking layer (lifted surface, #00C878 family). */
+.sigflo-bot-card--expanded {
+  box-shadow:
+    0 0 22px -12px rgba(0, 200, 120, 0.14),
+    0 12px 36px rgba(0, 0, 0, 0.38),
+    inset 0 1px 0 0 rgba(255, 255, 255, 0.05);
+}
+
+@keyframes sigflo-bot-forming-ring {
+  0%,
+  100% {
+    box-shadow: 0 0 14px -10px rgba(251, 191, 36, 0.16);
+  }
+  50% {
+    box-shadow: 0 0 20px -10px rgba(251, 191, 36, 0.24);
+  }
+}
+
+.sigflo-bot-forming-pulse {
+  animation: sigflo-bot-forming-ring 2.6s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sigflo-bot-forming-pulse {
+    animation: none;
+  }
+}
+
+/* Setup focus — soft ring pulse when framing entry / stop / target. */
+@keyframes sigflo-chart-setup-focus-glow {
+  0%,
+  100% {
+    box-shadow:
+      inset 0 0 0 1px rgba(0, 255, 200, 0.18),
+      0 0 20px -10px rgba(0, 255, 200, 0.25);
+  }
+  50% {
+    box-shadow:
+      inset 0 0 0 1px rgba(0, 255, 200, 0.42),
+      0 0 32px -8px rgba(0, 255, 200, 0.45);
+  }
+}
+
+.sigflo-chart-setup-focus-pulse {
+  animation: sigflo-chart-setup-focus-glow 1.15s ease-in-out 2;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sigflo-chart-setup-focus-pulse {
+    animation: none;
+    box-shadow: inset 0 0 0 1px rgba(0, 255, 200, 0.35);
+  }
+}
+
+/* Trade plan zones — premium setup visualization (PriceChartCard + View on chart). */
+@keyframes sigflo-trade-plan-zone-reveal {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes sigflo-trade-plan-line-reveal {
+  from {
+    opacity: 0;
+    transform: scaleX(0.92);
+  }
+  to {
+    opacity: 1;
+    transform: scaleX(1);
+  }
+}
+
+@keyframes sigflo-exit-zone-pulse {
+  0%,
+  100% {
+    filter: brightness(1);
+  }
+  50% {
+    filter: brightness(1.12);
+  }
+}
+
+.sigflo-trade-plan-line--entry {
+  border-radius: 0.5px;
+  background: rgba(45, 212, 191, 0.92);
+  box-shadow: 0 0 3px rgba(45, 212, 191, 0.2);
+}
+
+.sigflo-trade-plan-line--stop {
+  border-radius: 0.5px;
+  /* High-contrast core so the line reads on dark chart and above the red danger zone */
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.88) 0%,
+    rgba(254, 226, 226, 0.88) 45%,
+    rgba(251, 113, 133, 0.98) 100%
+  );
+  box-shadow: 0 0 4px rgba(248, 113, 113, 0.28);
+}
+
+.sigflo-trade-plan-line--target {
+  border-radius: 0.5px;
+  background: rgba(74, 222, 128, 0.88);
+  box-shadow: 0 0 3px rgba(74, 222, 128, 0.2);
+}
+
+.sigflo-trade-plan--focus-in .sigflo-trade-plan-zone {
+  animation: sigflo-trade-plan-zone-reveal 0.78s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.sigflo-trade-plan--focus-in .sigflo-trade-plan-line {
+  animation: sigflo-trade-plan-line-reveal 0.58s cubic-bezier(0.22, 1, 0.36, 1) both;
+  transform-origin: left center;
+}
+
+.sigflo-exit-zone-pulse {
+  animation: sigflo-exit-zone-pulse 2.8s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sigflo-trade-plan--focus-in .sigflo-trade-plan-zone,
+  .sigflo-trade-plan--focus-in .sigflo-trade-plan-line {
+    animation: none;
+  }
+  .sigflo-exit-zone-pulse {
+    animation: none;
+  }
+}
+
+/* Price chart dock — chevron: soft cyan glow + pulse (expand/collapse affordance). */
+@keyframes sigflo-chart-dock-chevron-glow {
+  0%,
+  100% {
+    color: rgb(148 163 184);
+    box-shadow:
+      0 0 0 0 rgba(34, 211, 238, 0),
+      0 0 0 0 rgba(34, 211, 238, 0);
+    filter: drop-shadow(0 0 0 transparent);
+  }
+  50% {
+    color: rgb(207 250 254);
+    box-shadow:
+      0 0 12px 2px rgba(34, 211, 238, 0.28),
+      0 0 26px 7px rgba(34, 211, 238, 0.12);
+    filter: drop-shadow(0 0 5px rgba(34, 211, 238, 0.45));
+  }
+}
+
+@keyframes sigflo-chart-dock-chevron-breathe {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.072);
+  }
+}
+
+.sigflo-chart-dock-chevron-btn {
+  position: relative;
+  transform-origin: center;
+  color: rgb(148 163 184);
+  animation:
+    sigflo-chart-dock-chevron-glow 2.4s ease-in-out infinite,
+    sigflo-chart-dock-chevron-breathe 2.4s ease-in-out infinite;
+  will-change: box-shadow, filter, color, transform;
+}
+
+.sigflo-chart-dock-chevron-btn svg {
+  display: block;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sigflo-chart-dock-chevron-btn {
+    animation: none;
+    color: rgb(203 213 225);
+    box-shadow: none;
+    filter: none;
+    transform: none;
+  }
+}
+
+/* Trade screen header — triggered state: soft halo + premium affordance */
+@keyframes sigflo-trade-triggered-halo {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(0, 255, 200, 0);
+  }
+  50% {
+    box-shadow: 0 0 16px 3px rgba(0, 255, 200, 0.18);
+  }
+}
+
+@keyframes sigflo-trade-triggered-dot-glow {
+  0%,
+  100% {
+    opacity: 1;
+    filter: drop-shadow(0 0 3px rgba(0, 255, 200, 0.45));
+  }
+  50% {
+    opacity: 0.88;
+    filter: drop-shadow(0 0 7px rgba(0, 255, 200, 0.75));
+  }
+}
+
+.sigflo-trade-header-triggered {
+  animation: sigflo-trade-triggered-halo 2.8s ease-in-out infinite;
+}
+
+.sigflo-trade-header-triggered .sigflo-trade-triggered-dot-wrap {
+  animation: sigflo-trade-triggered-dot-glow 2s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sigflo-trade-header-triggered {
+    animation: none;
+    box-shadow: 0 0 12px -4px rgba(0, 255, 200, 0.2);
+  }
+  .sigflo-trade-header-triggered .sigflo-trade-triggered-dot-wrap {
+    animation: none;
+    filter: drop-shadow(0 0 4px rgba(0, 255, 200, 0.4));
+  }
+}
+
+@keyframes sigflo-trigger-card-in {
+  0% {
+    transform: translateY(0) scale(1);
+  }
+  45% {
+    transform: translateY(-2px) scale(1.01);
+  }
+  100% {
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes sigflo-trigger-border-pulse {
+  0% {
+    box-shadow: 0 8px 20px -18px rgba(0, 255, 200, 0.35);
+  }
+  45% {
+    box-shadow: 0 0 0 2px rgba(0, 255, 200, 0.22), 0 18px 42px -20px rgba(0, 255, 200, 0.78);
+  }
+  100% {
+    box-shadow: 0 12px 28px -18px rgba(0, 255, 200, 0.46);
+  }
+}
+
+@keyframes sigflo-trigger-dot-pop {
+  0% {
+    transform: scale(0.85);
+    opacity: 0.9;
+  }
+  55% {
+    transform: scale(1.15);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes sigflo-trigger-dot-idle {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.045);
+  }
+}
+
+@keyframes sigflo-trigger-dot-halo {
+  0% {
+    transform: scale(0.9);
+    opacity: 0.42;
+  }
+  100% {
+    transform: scale(2.15);
+    opacity: 0;
+  }
+}
+
+@keyframes sigflo-trigger-entry-on {
+  0% {
+    filter: brightness(1);
+    text-shadow: none;
+  }
+  100% {
+    filter: brightness(1.12);
+    text-shadow: 0 0 10px rgba(0, 255, 200, 0.25);
+  }
+}
+
+@keyframes fade-in-up {
+  0% {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/** Pre-trade panel: red glow when liq risk is high or trade score is very low. */
+@keyframes sigflo-high-risk-panel-pulse {
+  0%,
+  100% {
+    border-color: rgba(248, 113, 113, 0.35);
+    box-shadow: 0 0 0 0 rgba(248, 113, 113, 0), 0 12px 32px -20px rgba(248, 113, 113, 0.18);
+  }
+  50% {
+    border-color: rgba(248, 113, 113, 0.65);
+    box-shadow:
+      0 0 0 1px rgba(248, 113, 113, 0.35),
+      0 14px 40px -14px rgba(248, 113, 113, 0.42);
+  }
+}
+
+.sigflo-high-risk-panel-pulse {
+  animation: sigflo-high-risk-panel-pulse 1.65s ease-in-out infinite;
+  will-change: box-shadow, border-color;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sigflo-high-risk-panel-pulse {
+    animation: none;
+    border-color: rgba(248, 113, 113, 0.5);
+    box-shadow: 0 0 0 1px rgba(248, 113, 113, 0.25);
+  }
+}
+
+.sigflo-trigger-card-rest {
+  border-color: rgba(0, 255, 200, 0.5);
+  box-shadow: 0 12px 28px -18px rgba(0, 255, 200, 0.46);
+}
+
+.sigflo-trigger-card-just {
+  animation:
+    sigflo-trigger-card-in 220ms ease-out,
+    sigflo-trigger-border-pulse 700ms ease-out;
+}
+
+.sigflo-trigger-card-rest:active {
+  transform: scale(0.985);
+  box-shadow: 0 0 0 2px rgba(0, 255, 200, 0.25), 0 16px 34px -16px rgba(0, 255, 200, 0.72);
+}
+
+.sigflo-trigger-dot {
+  animation: sigflo-trigger-dot-idle 1800ms ease-in-out infinite;
+  will-change: transform;
+}
+
+.sigflo-trigger-dot-just {
+  animation: sigflo-trigger-dot-pop 180ms ease-out;
+}
+
+.sigflo-trigger-dot-halo {
+  animation: sigflo-trigger-dot-halo 500ms ease-out forwards;
+}
+
+.sigflo-trigger-entry-active {
+  animation: sigflo-trigger-entry-on 250ms ease-out forwards;
+}
+
+/** Position partial close — range control in dock (thumb-friendly, teal accent). */
+.sigflo-partial-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+}
+.sigflo-partial-slider:focus-visible {
+  outline: none;
+}
+.sigflo-partial-slider:focus-visible::-webkit-slider-thumb {
+  box-shadow: 0 0 0 3px rgba(34, 211, 238, 0.35);
+}
+.sigflo-partial-slider:focus-visible::-moz-range-thumb {
+  box-shadow: 0 0 0 3px rgba(34, 211, 238, 0.35);
+}
+.sigflo-partial-slider::-webkit-slider-runnable-track {
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+.sigflo-partial-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  margin-top: -6px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, rgba(103, 232, 249, 0.95), rgba(6, 182, 212, 0.95));
+  border: 1px solid rgba(165, 243, 252, 0.35);
+  box-shadow: 0 0 12px -4px rgba(34, 211, 238, 0.55);
+}
+.sigflo-partial-slider::-moz-range-track {
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+.sigflo-partial-slider::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border: none;
+  border-radius: 999px;
+  background: linear-gradient(180deg, rgba(103, 232, 249, 0.95), rgba(6, 182, 212, 0.95));
+  border: 1px solid rgba(165, 243, 252, 0.35);
+  box-shadow: 0 0 12px -4px rgba(34, 211, 238, 0.55);
+}
+
+.sigflo-partial-slider--compact::-webkit-slider-runnable-track {
+  height: 3px;
+}
+.sigflo-partial-slider--compact::-webkit-slider-thumb {
+  width: 11px;
+  height: 11px;
+  margin-top: -4px;
+  box-shadow: 0 0 6px -2px rgba(34, 211, 238, 0.45);
+}
+.sigflo-partial-slider--compact::-moz-range-track {
+  height: 3px;
+}
+.sigflo-partial-slider--compact::-moz-range-thumb {
+  width: 11px;
+  height: 11px;
+  box-shadow: 0 0 6px -2px rgba(34, 211, 238, 0.45);
+}
+
+/** Stop / target %-from-entry sliders (clean track, color-coded thumb). */
+.sigflo-level-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+  height: 24px;
+}
+.sigflo-level-slider:focus-visible {
+  outline: none;
+}
+.sigflo-level-slider::-webkit-slider-runnable-track {
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.09);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+}
+.sigflo-level-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  margin-top: -6px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  box-shadow: 0 2px 10px -2px rgba(0, 0, 0, 0.45);
+}
+.sigflo-level-slider--rose::-webkit-slider-thumb {
+  background: linear-gradient(180deg, rgba(251, 113, 133, 0.98), rgba(225, 29, 72, 0.95));
+  box-shadow: 0 0 14px -3px rgba(244, 63, 94, 0.55);
+}
+.sigflo-level-slider--emerald::-webkit-slider-thumb {
+  background: linear-gradient(180deg, rgba(52, 211, 153, 0.98), rgba(5, 150, 105, 0.95));
+  box-shadow: 0 0 14px -3px rgba(16, 185, 129, 0.5);
+}
+.sigflo-level-slider:focus-visible::-webkit-slider-thumb {
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.12), 0 0 14px -3px rgba(16, 185, 129, 0.35);
+}
+.sigflo-level-slider--rose:focus-visible::-webkit-slider-thumb {
+  box-shadow: 0 0 0 3px rgba(251, 113, 133, 0.35), 0 0 14px -3px rgba(244, 63, 94, 0.45);
+}
+.sigflo-level-slider--emerald:focus-visible::-webkit-slider-thumb {
+  box-shadow: 0 0 0 3px rgba(52, 211, 153, 0.35), 0 0 14px -3px rgba(16, 185, 129, 0.45);
+}
+.sigflo-level-slider::-moz-range-track {
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.09);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+}
+.sigflo-level-slider::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+.sigflo-level-slider--rose::-moz-range-thumb {
+  background: linear-gradient(180deg, rgba(251, 113, 133, 0.98), rgba(225, 29, 72, 0.95));
+  box-shadow: 0 0 14px -3px rgba(244, 63, 94, 0.55);
+}
+.sigflo-level-slider--emerald::-moz-range-thumb {
+  background: linear-gradient(180deg, rgba(52, 211, 153, 0.98), rgba(5, 150, 105, 0.95));
+  box-shadow: 0 0 14px -3px rgba(16, 185, 129, 0.5);
+}
+
+/**
+ * LiveMarketStrip — horizontal ticker (duplicate row; move by half total width).
+ * Uses translate3d so the animation reliably runs (Tailwind keyframes used translate() which
+ * some builds/browsers handled poorly for this loop).
+ */
+@keyframes sigflo-live-ticker-scroll {
+  from {
+    transform: translate3d(0, 0, 0);
+  }
+  to {
+    transform: translate3d(-50%, 0, 0);
+  }
+}
+
+.sigflo-live-ticker-track {
+  display: flex;
+  width: max-content;
+  animation: sigflo-live-ticker-scroll 56s linear infinite;
+  will-change: transform;
+  backface-visibility: hidden;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sigflo-live-ticker-track {
+    animation: none;
+    transform: none;
+  }
+}
+
+/* —— BotsScreen · ScanningStateCard + engine scan row (CSS-only; calm, premium) —— */
+
+@keyframes sigflo-card-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes sigflo-orbit {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes sigflo-sweep {
+  0% {
+    transform: translateX(-120%);
+  }
+  100% {
+    transform: translateX(120%);
+  }
+}
+
+@keyframes sigflo-soft-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.62;
+  }
+}
+
+@keyframes sigflo-engine-dot-pulse {
+  0%,
+  100% {
+    opacity: 0.55;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.08);
+  }
+}
+
+.sigflo-scanning-card {
+  animation: sigflo-card-in 300ms ease-out both;
+}
+
+.sigflo-radar {
+  position: relative;
+  width: 72px;
+  height: 72px;
+}
+
+.sigflo-radar__glow {
+  position: absolute;
+  inset: 4px;
+  border-radius: 999px;
+  background: radial-gradient(circle, rgba(0, 255, 200, 0.12) 0%, transparent 68%);
+  pointer-events: none;
+}
+
+.sigflo-radar__ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.2);
+  pointer-events: none;
+}
+
+.sigflo-radar__orbit {
+  position: absolute;
+  inset: 0;
+  animation: sigflo-orbit 12s linear infinite;
+}
+
+.sigflo-radar__dot {
+  position: absolute;
+  top: 5px;
+  left: 50%;
+  width: 6px;
+  height: 6px;
+  margin-left: -3px;
+  border-radius: 999px;
+  background: rgba(0, 255, 200, 0.88);
+  box-shadow: 0 0 10px rgba(0, 255, 200, 0.35);
+}
+
+.sigflo-scanning-sweep-line {
+  position: relative;
+}
+
+.sigflo-scanning-sweep-line__bar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  width: 42%;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(0, 255, 200, 0.22),
+    rgba(0, 255, 200, 0.08),
+    transparent
+  );
+  animation: sigflo-sweep 5.5s ease-in-out infinite;
+  will-change: transform;
+}
+
+.sigflo-scanning-chip {
+  animation: sigflo-soft-pulse 3.2s ease-in-out infinite;
+}
+
+.sigflo-scanning-foot-dot {
+  width: 5px;
+  height: 5px;
+  box-shadow: 0 0 8px rgba(0, 255, 200, 0.25);
+}
+
+.sigflo-engine-scan-dot {
+  width: 5px;
+  height: 5px;
+  animation: sigflo-engine-dot-pulse 2.4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sigflo-scanning-card {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+
+  .sigflo-radar__orbit {
+    animation: none;
+    transform: rotate(42deg);
+  }
+
+  .sigflo-scanning-sweep-line__bar {
+    animation: none;
+    transform: none;
+    opacity: 0.35;
+    left: 30%;
+    width: 40%;
+  }
+
+  .sigflo-scanning-chip {
+    animation: none;
+    opacity: 1;
+  }
+
+  .sigflo-engine-scan-dot {
+    animation: none;
+    opacity: 0.85;
+    transform: none;
+  }
+
+  .animate-sigflo-highlight {
+    animation: none;
+    box-shadow: none;
+  }
+
+  .sigflo-cmdbar-ready-pulse {
+    animation: none;
+  }
+}
+
+/* —— Setup Ready micro-feedback (Bots alerts) —— */
+
+@keyframes sigflo-highlight {
+  0% {
+    box-shadow: 0 0 0 rgba(0, 255, 200, 0);
+    border-color: rgba(255, 255, 255, 0.1);
+  }
+  35% {
+    box-shadow: 0 0 20px rgba(0, 255, 200, 0.22);
+    border-color: rgba(0, 255, 200, 0.55);
+  }
+  100% {
+    box-shadow: 0 0 0 rgba(0, 255, 200, 0);
+    border-color: rgba(255, 255, 255, 0.1);
+  }
+}
+
+.animate-sigflo-highlight {
+  animation: sigflo-highlight 2s ease-out forwards;
+}
+
+@keyframes sigflo-paper-preview-pulse {
+  0% {
+    box-shadow: 0 0 0 rgba(0, 255, 200, 0);
+    border-color: rgba(255, 255, 255, 0.1);
+  }
+  40% {
+    box-shadow: 0 0 28px rgba(0, 255, 200, 0.2);
+    border-color: rgba(0, 255, 200, 0.45);
+  }
+  100% {
+    box-shadow: 0 0 0 rgba(0, 255, 200, 0);
+    border-color: rgba(255, 255, 255, 0.1);
+  }
+}
+
+.animate-sigflo-paper-preview-pulse {
+  animation: sigflo-paper-preview-pulse 1.25s ease-out forwards;
+}
+
+@keyframes sigflo-cmdbar-ready-pulse {
+  0% {
+    transform: scale(1);
+    opacity: 1;
+    filter: brightness(1);
+  }
+  40% {
+    transform: scale(1.35);
+    opacity: 1;
+    filter: brightness(1.25);
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+    filter: brightness(1);
+  }
+}
+
+.sigflo-cmdbar-ready-pulse {
+  animation: sigflo-cmdbar-ready-pulse 0.85s ease-out 1;
+}

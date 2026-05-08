@@ -1,0 +1,87 @@
+import type { SimulatedActivePosition } from '@/types/activePosition';
+import type { PositionItem } from '@/types/integrations';
+import type { Position } from '@/types/botsPositionsStrip';
+import type { SigfloActivePosition } from '@/types/position';
+import { normalizePositionPairKey } from '@/services/positions/positionRepository';
+import type { MarketMode } from '@/types/trade';
+
+function formatStripPairLabel(pair: string): string {
+  const t = pair.trim();
+  if (t.includes('/')) return t.replace(/\s*\/\s*/g, ' / ');
+  const u = t.toUpperCase();
+  const base = u.replace(/USDT$/i, '').replace(/USDC$/i, '').replace(/[^A-Z0-9]/g, '');
+  if (base && u.endsWith('USDT')) return `${base} / USDT`;
+  if (base && u.endsWith('USDC')) return `${base} / USDC`;
+  return t || '—';
+}
+
+export function sigfloActiveToStripPosition(p: SigfloActivePosition): Position {
+  const isPaper = p.source === 'bots-paper' || p.source === 'demo';
+  return {
+    pairKey: normalizePositionPairKey(p.pair),
+    pairLabel: formatStripPairLabel(p.pair),
+    direction: p.direction,
+    unrealizedPnl: p.unrealizedPnl,
+    unrealizedPnlPct: p.unrealizedPnlPct,
+    isPaper,
+    sourceLabel: isPaper ? 'PAPER' : 'LIVE',
+  };
+}
+
+export function sigfloActivePositionFromExchange(
+  p: PositionItem,
+  displayPair: string,
+  liveMark: number,
+): SigfloActivePosition {
+  const mark =
+    p.markPrice != null && Number.isFinite(p.markPrice) && p.markPrice > 0 ? p.markPrice : liveMark;
+  const lev = p.leverage != null && p.leverage > 0 ? p.leverage : 1;
+  const notional = Math.abs(p.size) * (mark > 0 ? mark : p.entryPrice);
+  const margin =
+    p.positionIM != null && p.positionIM > 0 ? p.positionIM : notional / Math.max(1, lev);
+  const pnlUsd =
+    p.unrealizedPnl != null && Number.isFinite(p.unrealizedPnl) ? p.unrealizedPnl : 0;
+  const pnlPct = margin > 0 ? (pnlUsd / margin) * 100 : 0;
+  const targets: number[] = [];
+  if (p.takeProfitPrice != null && Number.isFinite(p.takeProfitPrice) && p.takeProfitPrice > 0) {
+    targets.push(p.takeProfitPrice);
+  }
+
+  return {
+    id: `bybit:${p.symbol}:${p.side}`,
+    pair: displayPair,
+    direction: p.side,
+    entryPrice: p.entryPrice,
+    markPrice: mark > 0 ? mark : p.entryPrice,
+    size: p.size,
+    leverage: lev,
+    marginMode: 'cross',
+    unrealizedPnl: pnlUsd,
+    unrealizedPnlPct: pnlPct,
+    stopPrice: p.stopLossPrice ?? null,
+    liquidationPrice: p.liqPrice ?? null,
+    targets,
+    openedAt: p.openedAtMs ?? Date.now(),
+    source: 'bybit',
+  };
+}
+
+export function simulatedFromSigfloActive(p: SigfloActivePosition, market: MarketMode): SimulatedActivePosition {
+  const m = Number.isFinite(p.markPrice) && p.markPrice > 0 ? p.markPrice : p.entryPrice;
+  const notional = Math.abs(p.size) * m;
+  const margin = notional / Math.max(1, p.leverage);
+  return {
+    id: p.id,
+    symbol: p.pair,
+    side: p.direction,
+    market,
+    leverage: p.leverage,
+    entryPrice: p.entryPrice,
+    positionNotionalUsd: notional,
+    marginUsd: Math.max(1e-9, margin),
+    liquidationPrice: p.liquidationPrice,
+    takeProfitPrice: p.targets[0] ?? null,
+    stopLossPrice: p.stopPrice,
+    openedAtMs: p.openedAt,
+  };
+}

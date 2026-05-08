@@ -1,0 +1,15 @@
+node_modules
+dist
+*.local
+.env
+.env.*
+.DS_Store
+
+# Local Netlify folder
+.netlify
+
+.vercel
+.env*.local
+
+# Claude local worktrees (nested repos; not part of Sigflo source)
+.claude/worktrees/

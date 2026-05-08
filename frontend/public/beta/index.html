@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Sigflo Beta Disclaimer</title>
+    <style>
+      :root {
+        --bg: #050505;
+        --panel-2: rgba(255,255,255,0.03);
+        --border: rgba(255,255,255,0.08);
+        --text: rgba(255,255,255,0.92);
+        --muted: rgba(255,255,255,0.62);
+        --accent: #00ffc8;
+        --max: 1180px;
+        --content: 760px;
+        --radius: 22px;
+      }
+      * { box-sizing: border-box; }
+      html { scroll-behavior: smooth; }
+      body {
+        margin: 0;
+        background: radial-gradient(circle at top, rgba(0,255,200,0.08), transparent 28%), var(--bg);
+        color: var(--text);
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        line-height: 1.7;
+      }
+      a { color: var(--accent); text-decoration: none; }
+      .page { width: min(calc(100% - 32px), var(--max)); margin: 0 auto; padding: 32px 0 72px; }
+      .hero, .intro, .section, .callout {
+        border: 1px solid var(--border);
+        background: linear-gradient(180deg, rgba(255,255,255,0.025), rgba(255,255,255,0.015));
+        box-shadow: 0 10px 40px rgba(0,0,0,0.28);
+      }
+      .hero { padding: 72px 32px; border-radius: 32px; }
+      .eyebrow {
+        display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px;
+        border-radius: 999px; border: 1px solid rgba(0,255,200,0.16);
+        background: rgba(0,255,200,0.07); color: var(--accent);
+        font-size: 12px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase;
+      }
+      .hero h1 { margin: 18px 0 14px; font-size: clamp(40px, 7vw, 64px); line-height: 1.05; letter-spacing: -0.04em; }
+      .hero p { margin: 0; max-width: 760px; color: var(--muted); font-size: 17px; }
+      .hero-meta { margin-top: 22px; color: var(--muted); font-size: 14px; }
+      .content { max-width: var(--content); margin: 28px auto 0; }
+      .intro, .section, .callout { padding: 28px; border-radius: var(--radius); }
+      .section, .callout { margin-top: 18px; }
+      .section h2 { margin: 0 0 14px; font-size: 24px; line-height: 1.2; letter-spacing: -0.02em; }
+      .section h2 span { color: var(--accent); }
+      .intro p, .section p, .callout p { margin: 0; color: rgba(255,255,255,0.86); }
+      .section p + p, .section ul { margin-top: 14px; }
+      .section ul { padding-left: 20px; color: rgba(255,255,255,0.86); }
+      .section li + li { margin-top: 10px; }
+      .callout { background: linear-gradient(180deg, rgba(0,255,200,0.09), rgba(255,255,255,0.015)); }
+      .links { margin-top: 28px; display: flex; flex-wrap: wrap; gap: 12px; }
+      .links a {
+        display: inline-flex; align-items: center; padding: 12px 16px; border-radius: 999px;
+        border: 1px solid var(--border); background: rgba(255,255,255,0.03); color: rgba(255,255,255,0.86); font-size: 14px;
+      }
+      @media (max-width: 640px) {
+        .page { width: min(calc(100% - 20px), var(--max)); padding-top: 16px; }
+        .hero { padding: 32px 20px; border-radius: 24px; }
+        .intro, .section, .callout { padding: 20px; border-radius: 18px; }
+        .hero h1 { font-size: 38px; }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="page">
+
+      <section class="hero">
+<div class="eyebrow">
+  <img src="/sigflo-mark.png" style="height:16px; margin-right:6px;" />
+  Sigflo Legal
+</div>
+        
+        <h1>Beta Disclaimer</h1>
+        <p>Sigflo is currently in beta. This means the product is live, but still evolving.</p>
+        <p class="hero-meta">Last updated: April 15, 2026</p>
+      </section>
+
+      <section class="content">
+        <div class="intro">
+          <p>Sigflo is currently provided as a beta product. By accessing or using Sigflo during this stage, you understand and accept that the platform is still under active development, testing, and refinement.</p>
+          <p style="margin-top: 14px;">Beta access allows users to experience the product early, but it also comes with additional limitations and risks.</p>
+        </div>
+
+        <section class="section">
+          <h2><span>1.</span> Product Still in Development</h2>
+          <p>Sigflo beta features may be incomplete, experimental, or subject to change. Certain tools, workflows, integrations, and interface elements may not yet behave consistently or as expected.</p>
+          <p>Functionality may be added, revised, limited, or removed at any time without notice.</p>
+        </section>
+
+        <section class="section">
+          <h2><span>2.</span> Potential Bugs and Errors</h2>
+          <p>During beta, the platform may contain bugs, defects, broken flows, inaccurate displays, duplicated information, syncing issues, or unexpected behavior.</p>
+          <ul>
+            <li>Parts of the platform may fail.</li>
+            <li>Signals or analytics may be miscalculated or incomplete.</li>
+            <li>Charts or data views may not always update correctly.</li>
+            <li>Alerts may arrive late or not at all.</li>
+            <li>Integrations may disconnect or behave inconsistently.</li>
+          </ul>
+        </section>
+<section class="section">
+          <h2><span>3.</span> Data Quality and Timing</h2>
+          <p>Market data, summaries, metrics, and AI-generated outputs shown in Sigflo beta may be delayed, incomplete, unavailable, or inaccurate.</p>
+          <p>Beta users should not rely on Sigflo as their sole source of truth for making, managing, or exiting trades.</p>
+        </section>
+
+        <section class="section">
+          <h2><span>4.</span> No Guarantee of Availability</h2>
+          <p>Beta access may be interrupted, paused, restricted, or withdrawn at any time. We do not guarantee continuous availability of the platform or any feature during beta.</p>
+          <p>There may be scheduled or unscheduled maintenance, outages, or service disruptions.</p>
+        </section>
+
+        <section class="section">
+          <h2><span>5.</span> User Assumes Risk</h2>
+          <p>By using Sigflo beta, you accept that you are using a pre-release product at your own risk.</p>
+          <ul>
+            <li>Verify information independently.</li>
+            <li>Monitor your own positions and broker accounts.</li>
+            <li>Decide whether any feature or output should be acted upon.</li>
+            <li>Manage your own trading risk at all times.</li>
+          </ul>
+        </section>
+
+        <section class="section">
+          <h2><span>6.</span> No Liability for Beta Issues</h2>
+          <p>To the fullest extent permitted by law, Sigflo is not liable for losses, damages, missed opportunities, or other consequences arising from the use of beta features, beta data, or beta integrations.</p>
+          <p>This includes losses resulting from bugs, data issues, outages, UI errors, delayed information, feature changes, or unavailable services.</p>
+        </section>
+
+        <section class="section">
+          <h2><span>7.</span> Feedback and Improvement</h2>
+          <p>By participating in beta, you acknowledge that Sigflo may use feedback, reports, and usage insights to improve the platform.</p>
+          <p>We appreciate beta feedback, but we are not obligated to implement any requested feature, fix, or timeline.</p>
+        </section>
+
+        <section class="section">
+          <h2><span>8.</span> Continued Use</h2>
+          <p>Your continued use of Sigflo beta confirms that you understand the beta nature of the product and accept the risks and limitations described above.</p>
+          <p>If you are not comfortable using an evolving product, you should not use the beta version of Sigflo.</p>
+        </section>
+
+        <div class="callout">
+          <p><strong>Sigflo beta is an early version of the product.</strong> It is designed to be useful, but it is still being refined. Use it thoughtfully, verify independently, and assume features may change.</p>
+        </div>
+
+        <div class="links">
+          <a href="/terms">Terms of Use</a>
+          <a href="/privacy">Privacy Policy</a>
+          <a href="/disclosure">Risk Disclosure</a>
+          <a href="/support">Support</a>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>

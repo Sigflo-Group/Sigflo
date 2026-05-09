@@ -1,14 +1,14 @@
-functionsDirectory = "C:\\dev\\sigflo\\netlify\\functions"
+functionsDirectory = "C:\\dev\\Sigflo\\netlify\\functions"
 functionsDirectoryOrigin = "config-v1"
 headersOrigin = "config"
 redirectsOrigin = "config"
 
 [build]
-publish = "C:\\dev\\sigflo\\dist"
+publish = "C:\\dev\\Sigflo\\dist"
 publishOrigin = "config"
 commandOrigin = "config"
 command = "npm run build"
-functions = "C:\\dev\\sigflo\\netlify\\functions"
+functions = "C:\\dev\\Sigflo\\netlify\\functions"
 
 [build.environment]
 NODE_VERSION = "22"

@@ -2,6 +2,7 @@ import { SigfloLogo } from '@/components/branding/SigfloLogo';
 import { feedActionablePath, getFeedRoute } from '@/config/appRoutes';
 import { useCanGoBack } from '@/hooks/useCanGoBack';
 import { useSignalEngine } from '@/hooks/useSignalEngine';
+import { emitGlobalAnnouncement } from '@/lib/globalAnnouncements';
 import { isFeedActionableOpportunity } from '@/lib/marketScannerRows';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 
@@ -23,7 +24,7 @@ export function AppTopBar() {
   const taglineVisible = showAppTagline(pathname);
   const p = pathname.replace(/\/$/, '') || '/';
   const showBrandingLogo = p !== '/trade';
-  const { signals, loading } = useSignalEngine();
+  const { signals, loading, proIntelligenceMode, setProIntelligenceMode } = useSignalEngine();
   /** Must match Feed → Actionable filter (`isFeedActionableOpportunity`), since the badge links there. */
   const actionableCount = signals.filter(isFeedActionableOpportunity).length;
 
@@ -83,6 +84,31 @@ export function AppTopBar() {
                 ? '1 setup'
                 : `${actionableCount} setups`}
         </Link>
+        <button
+          type="button"
+          onClick={() => {
+            const next = !proIntelligenceMode;
+            setProIntelligenceMode(next);
+            emitGlobalAnnouncement({
+              id: `pro-intel-${Date.now()}`,
+              kind: 'ai_action',
+              title: next ? 'Pro Intelligence Mode enabled' : 'Pro Intelligence Mode disabled',
+              subtitle: next
+                ? 'Advanced analytics are now available.'
+                : 'Default streamlined view restored.',
+            });
+          }}
+          className={`inline-flex min-h-[2.75rem] shrink-0 items-center rounded-full border px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-[0.12em] transition sm:min-h-0 sm:h-7 sm:px-2 ${
+            proIntelligenceMode
+              ? 'border-cyan-300/35 bg-cyan-500/12 text-cyan-100 hover:bg-cyan-500/18'
+              : 'border-white/[0.1] bg-white/[0.04] text-sigflo-muted hover:text-sigflo-text'
+          }`}
+          aria-pressed={proIntelligenceMode}
+          aria-label={proIntelligenceMode ? 'Disable Pro Intelligence Mode' : 'Enable Pro Intelligence Mode'}
+          title={proIntelligenceMode ? 'Pro Intelligence Mode on' : 'Pro Intelligence Mode off'}
+        >
+          {proIntelligenceMode ? 'Pro On' : 'Pro Off'}
+        </button>
       </div>
     </header>
   );

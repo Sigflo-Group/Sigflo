@@ -1,11 +1,11 @@
 import type { CryptoSignal } from '@/types/signal';
 
 function setupLabel(score: number): string {
-  if (score >= 85) return 'Elite';
-  if (score >= 70) return 'Strong';
-  if (score >= 55) return 'OK';
-  if (score >= 40) return 'Weak';
-  return 'Avoid';
+  if (score >= 85) return 'High Conviction';
+  if (score >= 75) return 'Strong';
+  if (score >= 60) return 'Moderate';
+  if (score >= 45) return 'Developing';
+  return 'No Trade';
 }
 
 function riskShort(tag: string): string {
@@ -14,15 +14,24 @@ function riskShort(tag: string): string {
 
 function actionLine(signal: CryptoSignal): string {
   if (signal.setupType === 'overextended') return 'Too aggressive — reduce size';
-  if (signal.setupScore >= 85) return 'Strong setup — entry active';
-  if (signal.setupScore >= 70) return 'Good setup — entry active';
-  if (signal.setupScore >= 55) return 'Wait for confirmation';
-  return 'Risk high — lower leverage';
+  if (signal.setupScore >= 85) return 'High-quality continuation conditions — execution can be active.';
+  if (signal.setupScore >= 75) return 'Strong alignment — execution conditions are favorable.';
+  if (signal.setupScore >= 60) return 'Moderate setup — balanced execution with confirmation.';
+  if (signal.setupScore >= 45) return 'Developing setup — keep on watchlist for clearer confirmation.';
+  return 'Unclear conditions — no-trade stance until structure improves.';
 }
 
 export function SetupContextCard({ signal }: { signal: CryptoSignal }) {
   const setupColor =
-    signal.setupScore >= 70 ? 'text-sigflo-accent' : signal.setupScore >= 55 ? 'text-amber-300' : 'text-rose-400';
+    signal.setupScore >= 85
+      ? 'text-amber-300'
+      : signal.setupScore >= 75
+        ? 'text-sigflo-accent'
+        : signal.setupScore >= 60
+          ? 'text-sky-300'
+          : signal.setupScore >= 45
+            ? 'text-cyan-300'
+            : 'text-rose-400';
   const riskColor =
     signal.riskTag === 'High Risk' ? 'text-rose-400' : signal.riskTag === 'Low Risk' ? 'text-emerald-400' : 'text-sigflo-muted';
 

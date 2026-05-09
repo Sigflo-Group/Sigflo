@@ -25,8 +25,20 @@ export function ActivePositionCard({ position, liveMarkPrice, nowMs }: ActivePos
     liveMarkPrice != null && Number.isFinite(liveMarkPrice) && liveMarkPrice > 0
       ? liveMarkPrice
       : position.markPrice;
-  const pnlUsd = position.unrealizedPnl;
-  const pnlPct = position.unrealizedPnlPct;
+  const hasLiveMark = Number.isFinite(mark) && mark > 0;
+  const canRepricePnl = hasLiveMark && Math.abs(position.size) > 0;
+  const derivedPnlUsd = canRepricePnl
+    ? position.direction === 'long'
+      ? (mark - position.entryPrice) * Math.abs(position.size)
+      : (position.entryPrice - mark) * Math.abs(position.size)
+    : position.unrealizedPnl;
+  const entryNotional = Math.abs(position.size) * Math.max(position.entryPrice, 0);
+  const marginBase = Math.max(entryNotional / Math.max(1, position.leverage), 1e-9);
+  const derivedPnlPct = canRepricePnl
+    ? (derivedPnlUsd / marginBase) * 100
+    : position.unrealizedPnlPct;
+  const pnlUsd = Number.isFinite(derivedPnlUsd) ? derivedPnlUsd : position.unrealizedPnl;
+  const pnlPct = Number.isFinite(derivedPnlPct) ? derivedPnlPct : position.unrealizedPnlPct;
 
   useEffect(() => {
     prevPnlRef.current = pnlUsd;

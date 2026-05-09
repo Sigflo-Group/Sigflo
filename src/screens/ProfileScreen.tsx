@@ -10,6 +10,7 @@ import { formatFundingBalance } from '@/lib/formatFundingBalance';
 import { getOAuthRedirectToProfile } from '@/lib/oauthRedirectOrigin';
 import { BYBIT_API_KEYS_HREF, BYBIT_DEPOSIT_HREF, MEXC_API_KEYS_HREF, MEXC_DEPOSIT_HREF } from '@/lib/exchangeTransferUrls';
 import { sanitizeUserFacingHttpErrorMessage } from '@/lib/httpErrorMessage';
+import { playUiTapSound } from '@/utils/sound';
 import type { ExchangeId, ExchangeSnapshot } from '@/types/integrations';
 
 const MFA_TOTP_FRIENDLY_NAME = 'Sigflo Account';
@@ -36,6 +37,7 @@ export default function ProfileScreen() {
   } | null>(null);
   const [connectError, setConnectError] = useState<string | null>(null);
   const [connectBusy, setConnectBusy] = useState(false);
+  const [connectPanelFlash, setConnectPanelFlash] = useState(false);
   const [disconnectTarget, setDisconnectTarget] = useState<ExchangeId | null>(null);
   const [disconnectBusy, setDisconnectBusy] = useState(false);
   const [syncBusy, setSyncBusy] = useState(false);
@@ -44,13 +46,30 @@ export default function ProfileScreen() {
   const [mfaEnabled, setMfaEnabled] = useState<boolean>(false);
   const [mfaStatusLoading, setMfaStatusLoading] = useState<boolean>(false);
   const [googleSignInError, setGoogleSignInError] = useState<string | null>(null);
+  const connectPanelRef = useRef<HTMLElement | null>(null);
+  const connectApiKeyInputRef = useRef<HTMLInputElement | null>(null);
+  const connectPanelFlashTimerRef = useRef<number | null>(null);
   const [totpCopyFlash, setTotpCopyFlash] = useState(false);
   const totpCopyFlashTimerRef = useRef<number | null>(null);
   useEffect(() => {
     return () => {
       if (totpCopyFlashTimerRef.current != null) window.clearTimeout(totpCopyFlashTimerRef.current);
+      if (connectPanelFlashTimerRef.current != null) window.clearTimeout(connectPanelFlashTimerRef.current);
     };
   }, []);
+  useEffect(() => {
+    if (!exchangeForm) return;
+    setConnectPanelFlash(true);
+    if (connectPanelFlashTimerRef.current != null) window.clearTimeout(connectPanelFlashTimerRef.current);
+    connectPanelFlashTimerRef.current = window.setTimeout(() => {
+      setConnectPanelFlash(false);
+      connectPanelFlashTimerRef.current = null;
+    }, 1600);
+    window.requestAnimationFrame(() => {
+      connectPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      window.setTimeout(() => connectApiKeyInputRef.current?.focus(), 120);
+    });
+  }, [exchangeForm]);
   const [totpSetup, setTotpSetup] = useState<{
     factorId: string;
     challengeId: string | null;
@@ -62,7 +81,14 @@ export default function ProfileScreen() {
   const { items: integrations, loading: integrationsLoading, error: integrationsError, refresh: refreshIntegrations, connect, disconnect } = useExchangeIntegrations();
   const { items: snapshots, closedTrades, loading: snapshotLoading, error: snapshotError, refresh: refreshSnapshots } =
     useAccountSnapshot({ pollMs: 12_000 });
-  const { signals, connection: signalConnection } = useSignalEngine();
+  const {
+    signals,
+    connection: signalConnection,
+    proIntelligenceMode,
+    setProIntelligenceMode,
+    advancedLayout,
+    setAdvancedLayout,
+  } = useSignalEngine();
   const { statusMap } = useBotStatuses();
 
   const displayName = user
@@ -332,7 +358,15 @@ export default function ProfileScreen() {
   }
 
   return (
-    <div className="space-y-3.5 pb-6 pt-4">
+    <div
+      className="space-y-3.5 pb-6 pt-4"
+      onClickCapture={(event) => {
+        const target = event.target as HTMLElement | null;
+        const btn = target?.closest('button');
+        if (!btn || btn.hasAttribute('disabled')) return;
+        playUiTapSound();
+      }}
+    >
       <div className="px-1">
         <h2 className="text-lg font-semibold tracking-tight text-white">Account</h2>
         {returnTo ? (
@@ -560,10 +594,19 @@ export default function ProfileScreen() {
       </section>
 
       {exchangeForm ? (
-        <section className="rounded-2xl border border-cyan-400/25 bg-cyan-500/[0.06] p-3.5">
+        <section
+          ref={connectPanelRef}
+          className={`rounded-2xl border bg-cyan-500/[0.06] p-3.5 transition-all ${
+            connectPanelFlash
+              ? 'border-cyan-300/65 ring-2 ring-cyan-300/35 shadow-[0_0_0_2px_rgba(34,211,238,0.2),0_0_32px_-14px_rgba(34,211,238,0.8)]'
+              : 'border-cyan-400/25'
+          }`}
+        >
           <p className="text-sm font-semibold text-cyan-100">Connect {exchangeForm.exchange.toUpperCase()}</p>
+          <p className="mt-1 text-[11px] text-cyan-100/85">Connection panel opened below. Paste keys to continue.</p>
           <div className="mt-2 space-y-2">
             <input
+              ref={connectApiKeyInputRef}
               value={exchangeForm.apiKey}
               onChange={(e) => setExchangeForm({ ...exchangeForm, apiKey: e.target.value })}
               placeholder="API key"
@@ -668,6 +711,51 @@ export default function ProfileScreen() {
           })}
         </div>
         <p className={`mt-2 text-xs ${riskColor}`}>Risk profile: {riskMode}</p>
+      </section>
+
+      <section className="rounded-2xl border border-white/[0.06] bg-sigflo-surface sigflo-panel-texture p-3.5">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-sigflo-muted">Intelligence Mode</p>
+        <div className="mt-2 space-y-2">
+          <ToggleRow
+            label="Pro Intelligence Mode"
+            subtext="Unlock replay internals, regime pressure, attribution analytics, and advanced diagnostics."
+            value={proIntelligenceMode}
+            onChange={setProIntelligenceMode}
+          />
+          {proIntelligenceMode ? (
+            <div className="rounded-lg border border-cyan-400/20 bg-cyan-500/[0.07] p-2.5">
+              <p className="text-[11px] font-semibold text-cyan-100">Advanced layout density</p>
+              <div className="mt-2 grid grid-cols-2 gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setAdvancedLayout('compact')}
+                  className={`rounded-lg border px-2 py-1.5 text-[11px] font-semibold transition ${
+                    advancedLayout === 'compact'
+                      ? 'border-cyan-300/35 bg-cyan-500/15 text-cyan-100'
+                      : 'border-white/[0.1] bg-white/[0.04] text-sigflo-muted hover:text-sigflo-text'
+                  }`}
+                >
+                  Compact
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAdvancedLayout('expanded')}
+                  className={`rounded-lg border px-2 py-1.5 text-[11px] font-semibold transition ${
+                    advancedLayout === 'expanded'
+                      ? 'border-cyan-300/35 bg-cyan-500/15 text-cyan-100'
+                      : 'border-white/[0.1] bg-white/[0.04] text-sigflo-muted hover:text-sigflo-text'
+                  }`}
+                >
+                  Expanded
+                </button>
+              </div>
+            </div>
+          ) : (
+            <p className="text-[11px] text-sigflo-muted">
+              Default mode keeps the trading experience calm and focused. Pro tools stay available when you turn this on.
+            </p>
+          )}
+        </div>
       </section>
 
       <section className="rounded-2xl border border-white/[0.06] bg-sigflo-surface sigflo-panel-texture p-3.5">

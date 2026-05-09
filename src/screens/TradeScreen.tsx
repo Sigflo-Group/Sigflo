@@ -18,6 +18,8 @@ import {
 } from '@/components/trade/TradeActionBar';
 import { StatusChip } from '@/components/trade/StatusChip';
 import { ScannerInsightCard } from '@/components/trade/ScannerInsightCard';
+import { EarlyRegimeWarningPanel } from '@/components/analytics/EarlyRegimeWarningPanel';
+import { WhyThisTradePanel } from '@/components/trade/WhyThisTradePanel';
 import { EntryPlanCard } from '@/components/trade/EntryPlanCard';
 import { ExecutionLockCard } from '@/components/trade/ExecutionLockCard';
 import { PaperTradePreview } from '@/components/trade/PaperTradePreview';
@@ -98,6 +100,7 @@ import {
 import { setupScoreBandShort } from '@/lib/setupScore';
 import { buildClosedPositionSummary, type ClosedPositionSummary } from '@/lib/closedPositionSummary';
 import { buildGroundedMarketContext } from '@/lib/buildGroundedMarketContext';
+import { buildWhyThisTradeModel } from '@/lib/whyThisTrade';
 import { BYBIT_ASSET_TRANSFER_HREF } from '@/lib/exchangeTransferUrls';
 import {
   buildTradeViewModelFromSignal,
@@ -134,6 +137,7 @@ import {
   sigfloActivePositionFromExchange,
   simulatedFromSigfloActive,
 } from '@/services/positions';
+import { DEMO_POSITIONS_CHANGED_EVENT } from '@/services/positions/demoPositionRepository';
 import { DailyRiskGuardBanner } from '@/components/risk/DailyRiskGuardBanner';
 import { useDailyRiskGuard } from '@/services/risk/dailyRiskGuard';
 import { activePositionCountForRisk, countExchangeOpenLegs, useRiskSettings } from '@/services/risk/riskSettings';
@@ -438,10 +442,13 @@ export function TradeScreen() {
   const [manageTpSlDirty, setManageTpSlDirty] = useState(false);
   const [manageOrderDraftDirty, setManageOrderDraftDirty] = useState(false);
   const [closeAllModalOpen, setCloseAllModalOpen] = useState(false);
+  const [closeAllDemoModalOpen, setCloseAllDemoModalOpen] = useState(false);
+  const [demoPositionsRevision, setDemoPositionsRevision] = useState(0);
   const [closedPositionSummary, setClosedPositionSummary] = useState<ClosedPositionSummary | null>(null);
   const [guidedExecutionOpen, setGuidedExecutionOpen] = useState(false);
   const [guidedExecutionSide, setGuidedExecutionSide] = useState<TradeSide>('long');
   const [tick, setTick] = useState(0);
+  const tradeScrollRef = useRef<HTMLDivElement>(null);
   const appliedPortfolioDefaults = useRef<string | null>(null);
   /** One-time seed for amount from balance cap (avoid default $1200 → 100% on small UTA). */
   const amountFromCapSeededRef = useRef(false);
@@ -451,6 +458,7 @@ export function TradeScreen() {
   }, []);
 
   const pairFromQuery = params.get('pair');
+  const reviewTopFromQuery = params.get('reviewTop') === '1';
   const ticketIntent = params.get('ticketIntent');
   const modeRaw = params.get('mode');
   const manageCtx = useMemo(() => parseManageTradeContext(params), [params]);
@@ -584,7 +592,7 @@ export function TradeScreen() {
     if (!isManageMode) setManageChartMaximized(false);
   }, [isManageMode]);
 
-  const { signals: liveSignals, liveTickersBySymbol } = useSignalEngine();
+  const { signals: liveSignals, liveTickersBySymbol, regimePredictorBySymbol, proIntelligenceMode } = useSignalEngine();
 
   const selectedSignal = useMemo(() => {
     const fromQuery = buildSignalContextFromQuery(params, signalId);
@@ -729,7 +737,33 @@ export function TradeScreen() {
     );
   }, [liveSignals]);
 
-  const live = useLiveTradeMarket(liveSymbol, chartInterval);
+  const live = useLiveTradeMarket(liveSymbol, chartInterval, {
+    uiThrottleMs: isManageMode ? 16 : undefined,
+    immediateUiOnTick: isManageMode,
+  });
+  const [manageFastMark, setManageFastMark] = useState<number | undefined>(undefined);
+
+  useEffect(() => {
+    if (!isManageMode) {
+      setManageFastMark(undefined);
+      return;
+    }
+    const push = () => {
+      const snap = live.tickSnapshotRef.current;
+      const next =
+        snap?.markPrice != null && Number.isFinite(snap.markPrice) && snap.markPrice > 0
+          ? snap.markPrice
+          : snap?.lastPrice != null && Number.isFinite(snap.lastPrice) && snap.lastPrice > 0
+            ? snap.lastPrice
+            : live.lastPrice;
+      if (typeof next === 'number' && Number.isFinite(next) && next > 0) {
+        setManageFastMark((prev) => (prev !== next ? next : prev));
+      }
+    };
+    push();
+    const id = window.setInterval(push, 25);
+    return () => window.clearInterval(id);
+  }, [isManageMode, live.tickSnapshotRef, live.lastPrice]);
   const { items: accountSnapshots, refresh: refreshAccountSnapshots } = useAccountSnapshot({ pollMs: 12_000 });
 
   const liveMarketTickerItems = useMemo(
@@ -766,9 +800,9 @@ export function TradeScreen() {
   const tradeBalanceHelper = useMemo(() => {
     if (!tradeBalance) return undefined;
     if (market === 'futures') {
-      return 'Bybit UTA metrics above sync from your account. With perps + Bybit connected, Long/Short and Close send real orders; read-only API keys cannot trade.';
+      return 'Balances above update from your connected Bybit account. In Futures mode, Long/Short and Close place live orders.';
     }
-    return 'Bybit UTA metrics sync from your account. With spot + Bybit connected, Buy/Sell and Close send real spot orders; read-only API keys cannot trade.';
+    return 'Balances above update from your connected Bybit account. In Spot mode, Buy/Sell and Close place live orders.';
   }, [tradeBalance, market]);
 
   /**
@@ -907,6 +941,10 @@ export function TradeScreen() {
   ]);
 
   const tradePairFavoriteBase = useMemo(() => normalizeTradePairBase(mergedModel.pair), [mergedModel.pair]);
+  const regimeWarningModel = useMemo(
+    () => regimePredictorBySymbol[pairBaseToLinearSymbol(mergedModel.pair)] ?? null,
+    [regimePredictorBySymbol, mergedModel.pair],
+  );
   const isPairInWatchlist = useMemo(
     () => isTradePairFavorite(tradePairFavoriteBase),
     [tradePairFavoriteBase, tradeFavRevision],
@@ -1092,7 +1130,7 @@ export function TradeScreen() {
     return next;
   }, [mergedModel, stopParsed, targetParsed, tradeBalance, linkedUtaRawMaxUsd]);
 
-  const markForManage = live.lastPrice ?? manageCtx?.markPrice ?? mergedModel.lastPrice;
+  const markForManage = manageFastMark ?? live.lastPrice ?? manageCtx?.markPrice ?? mergedModel.lastPrice;
 
   const insightTicker = useMemo((): SymbolTicker | undefined => {
     if (live.lastPrice == null || live.high24h == null || live.low24h == null) return undefined;
@@ -1196,7 +1234,7 @@ export function TradeScreen() {
     if (market !== 'futures') return null;
     if (primaryOpenPosition != null) return null;
     return getPositionRepository().getActivePositionByPair(pairBaseToLinearSymbol(mergedModel.pair));
-  }, [isManageMode, market, mergedModel.pair, primaryOpenPosition]);
+  }, [demoPositionsRevision, isManageMode, market, mergedModel.pair, primaryOpenPosition]);
 
   const primaryChartOpenPosition = useMemo((): SimulatedActivePosition | null => {
     if (primaryOpenPosition != null) return primaryOpenPosition;
@@ -1508,6 +1546,23 @@ export function TradeScreen() {
   const liveUnrealized = hasActiveTradePosition
     ? { pnlUsd: throttledOpenPnl.pnlUsd, movePct: throttledOpenPnl.movePct }
     : liveUnrealizedPre;
+
+  /**
+   * Match Portfolio behavior first: when an exchange leg is open, prefer the snapshot `unrealizedPnl`
+   * (same field Portfolio renders) for display-facing PnL labels. Keep live throttled path as fallback.
+   */
+  const portfolioAlignedLiveUnrealized = useMemo(() => {
+    if (!hasActiveTradePosition) return liveUnrealized;
+    const snapshotPnl = exchangePositionForSymbol?.unrealizedPnl;
+    if (!(snapshotPnl != null && Number.isFinite(snapshotPnl))) return liveUnrealized;
+    const notional = primaryChartOpenPosition?.positionNotionalUsd ?? 0;
+    const movePct =
+      Number.isFinite(notional) && Math.abs(notional) > 1e-9 ? (snapshotPnl / notional) * 100 : liveUnrealized.movePct;
+    return {
+      pnlUsd: snapshotPnl,
+      movePct,
+    };
+  }, [exchangePositionForSymbol?.unrealizedPnl, hasActiveTradePosition, liveUnrealized, primaryChartOpenPosition?.positionNotionalUsd]);
 
   const adjustRiskSnapshot = useMemo((): AdjustRiskPositionSnapshot | null => {
     if (!chartModelForPlot) return null;
@@ -1871,6 +1926,17 @@ export function TradeScreen() {
     ],
   );
 
+  const whyThisTradeModel = useMemo(
+    () =>
+      buildWhyThisTradeModel(selectedSignal, {
+        stopPrice:
+          typeof modelForMetrics.stop === 'number' && Number.isFinite(modelForMetrics.stop) && modelForMetrics.stop > 0
+            ? modelForMetrics.stop
+            : null,
+      }),
+    [modelForMetrics.stop, selectedSignal],
+  );
+
   const exitAutomationScopeKey = useMemo(() => {
     if (isManageMode && manageCtx) {
       return `pos:${manageCtx.pair}:${manageCtx.entryPrice}:${manageCtx.side}`;
@@ -2209,8 +2275,8 @@ export function TradeScreen() {
       const st = exitFlow.effective.state;
       badge = st === 'trim' ? 'TRIM' : st === 'exit' ? 'EXIT' : setupBadge;
     }
-    const pnlOk = hasActiveTradePosition && Number.isFinite(liveUnrealized.pnlUsd);
-    const pnl = pnlOk ? liveUnrealized.pnlUsd : 0;
+    const pnlOk = hasActiveTradePosition && Number.isFinite(portfolioAlignedLiveUnrealized.pnlUsd);
+    const pnl = pnlOk ? portfolioAlignedLiveUnrealized.pnlUsd : 0;
     const secondaryLine = pnlOk
       ? `uPnL ${pnl >= 0 ? '+' : '−'}$${formatQuoteNumber(Math.abs(pnl))}`
       : undefined;
@@ -2232,7 +2298,7 @@ export function TradeScreen() {
   }, [
     exitFlow,
     hasActiveTradePosition,
-    liveUnrealized.pnlUsd,
+    portfolioAlignedLiveUnrealized.pnlUsd,
     selectedSignal,
     tradeDockStats.rewardPercent,
     tradeDockStats.riskPercent,
@@ -3259,12 +3325,24 @@ export function TradeScreen() {
 
   const onExitAutomationSuggestPartialTp = useCallback(() => {
     setManagePartialFraction(0.25);
-    setManagePartialSheetOpen(true);
+    if (!isManageMode) {
+      openManagePositionView();
+      window.setTimeout(() => setManagePartialSheetOpen(true), 0);
+    } else {
+      setManagePartialSheetOpen(true);
+    }
+    flashTradeToast('Partial take-profit suggestion prepared (25%). Review and confirm in the sheet.');
+    emitGlobalAnnouncement({
+      id: `partial-tp-suggestion-${Date.now()}`,
+      kind: 'ai_action',
+      title: 'Partial Take-Profit Suggestion',
+      subtitle: 'Prepared 25% trim. Confirm in the sheet to submit live.',
+    });
     exitAuto.pushActivity({
       kind: 'exit_state',
       message: 'Suggested partial take-profit ready (25%) — confirm in the sheet to submit.',
     });
-  }, [exitAuto]);
+  }, [exitAuto, flashTradeToast, isManageMode, openManagePositionView]);
 
   const onExitAutomationDisable = useCallback(() => {
     exitAuto.setMode('manual');
@@ -3295,6 +3373,24 @@ export function TradeScreen() {
         : 'Connect Bybit in Account to manage positions.',
     );
   }, [bybitSnap, exchangePositionForSymbol, exchangeSpotFreeBaseQty, flashTradeToast, market, orderSymbol, submitExchangeClose]);
+
+  const onCloseAllDemoPositionsConfirm = useCallback(() => {
+    const repo = getPositionRepository();
+    const closed = typeof repo.closeAllPositions === 'function' ? repo.closeAllPositions() : 0;
+    if (closed > 0) {
+      flashTradeToast(`Closed ${closed} demo position${closed === 1 ? '' : 's'}.`);
+      return;
+    }
+    flashTradeToast('No active demo positions to close.');
+  }, [flashTradeToast]);
+
+  const onRequestActiveCloseAllModal = useCallback(() => {
+    if (hasActiveTradePosition && !isExchangeBackedOpenLeg) {
+      setCloseAllDemoModalOpen(true);
+      return;
+    }
+    setCloseAllModalOpen(true);
+  }, [hasActiveTradePosition, isExchangeBackedOpenLeg]);
 
   /** Exit AI Auto: submit reduce-only / spot sells when guidance crosses trim/exit (Protect Profit etc.), not log-only. */
   useEffect(() => {
@@ -3449,9 +3545,14 @@ export function TradeScreen() {
         tone,
       } as const;
     }
-    if (!isManageMode && hasActiveTradePosition && Number.isFinite(liveUnrealized.pnlUsd) && Number.isFinite(liveUnrealized.movePct)) {
-      const pnl = liveUnrealized.pnlUsd;
-      const pct = liveUnrealized.movePct;
+    if (
+      !isManageMode &&
+      hasActiveTradePosition &&
+      Number.isFinite(portfolioAlignedLiveUnrealized.pnlUsd) &&
+      Number.isFinite(portfolioAlignedLiveUnrealized.movePct)
+    ) {
+      const pnl = portfolioAlignedLiveUnrealized.pnlUsd;
+      const pct = portfolioAlignedLiveUnrealized.movePct;
       const sign = pnl >= 0 ? '+' : '−';
       const tone = pnl > 0 ? 'positive' : pnl < 0 ? 'negative' : 'neutral';
       return {
@@ -3464,8 +3565,8 @@ export function TradeScreen() {
     hasActiveTradePosition,
     hasManageOpenExposure,
     isManageMode,
-    liveUnrealized.movePct,
-    liveUnrealized.pnlUsd,
+    portfolioAlignedLiveUnrealized.movePct,
+    portfolioAlignedLiveUnrealized.pnlUsd,
     managePnlDisplay,
   ]);
 
@@ -3558,6 +3659,12 @@ export function TradeScreen() {
   }, [isManageMode]);
 
   useEffect(() => {
+    const onDemoPositionsChanged = () => setDemoPositionsRevision((v) => v + 1);
+    window.addEventListener(DEMO_POSITIONS_CHANGED_EVENT, onDemoPositionsChanged);
+    return () => window.removeEventListener(DEMO_POSITIONS_CHANGED_EVENT, onDemoPositionsChanged);
+  }, []);
+
+  useEffect(() => {
     if (!tradePairMenuOpen && !tradeHeaderMoreOpen) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
@@ -3580,7 +3687,13 @@ export function TradeScreen() {
     };
   }, [tradePairMenuOpen, tradeHeaderMoreOpen]);
 
-  const tradeScrollRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!reviewTopFromQuery) return;
+    window.requestAnimationFrame(() => {
+      tradeScrollRef.current?.scrollTo({ top: 0, behavior: 'auto' });
+    });
+  }, [location.key, reviewTopFromQuery]);
+
   const paperPreviewRef = useRef<HTMLDivElement>(null);
   const scrollToPaperPreviewSection = useCallback(() => {
     window.requestAnimationFrame(() => {
@@ -3630,6 +3743,20 @@ export function TradeScreen() {
           onConfirm={() => {
             setCloseAllModalOpen(false);
             onActiveCloseAllConfirm();
+          }}
+        />
+      ) : null}
+      {!isManageMode ? (
+        <CloseAllPositionsModal
+          open={closeAllDemoModalOpen}
+          exchangeExecution={false}
+          title="Close all demo positions?"
+          confirmLabel="Close demo positions"
+          bodyText="This will close every active demo/paper position tracked by Sigflo on this device. No live exchange orders will be submitted."
+          onCancel={() => setCloseAllDemoModalOpen(false)}
+          onConfirm={() => {
+            setCloseAllDemoModalOpen(false);
+            onCloseAllDemoPositionsConfirm();
           }}
         />
       ) : null}
@@ -4080,7 +4207,7 @@ export function TradeScreen() {
                       ? mergedModel.lastPrice
                       : exchangePositionForSymbol?.entryPrice ?? exchangeSpotPanelModel?.entryPrice ?? 0
                 }
-                onRequestCloseAllModal={() => setCloseAllModalOpen(true)}
+                onRequestCloseAllModal={onRequestActiveCloseAllModal}
                 onOpenManagePosition={
                   market === 'futures' && exchangePositionForSymbol ? openManagePositionView : undefined
                 }
@@ -4152,6 +4279,7 @@ export function TradeScreen() {
                     />
                   </div>
                 ) : null}
+                {proIntelligenceMode ? <EarlyRegimeWarningPanel model={regimeWarningModel} /> : null}
                 <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3 backdrop-blur-sm">
                   <h2 className="text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-500">Market context</h2>
                   <p className="mt-1 text-[11px] leading-snug text-zinc-500">Spot / Perps / Paper</p>
@@ -4329,6 +4457,7 @@ export function TradeScreen() {
                 )}
               </div>
             ) : null}
+            {!isManageMode && !isBotsReviewCockpit && proIntelligenceMode ? <EarlyRegimeWarningPanel model={regimeWarningModel} /> : null}
             {!isManageMode && !isBotsReviewCockpit ? (
               <ScannerInsightCard
                 signal={selectedSignal}
@@ -4340,11 +4469,14 @@ export function TradeScreen() {
               />
             ) : null}
             {!isManageMode && !isBotsReviewCockpit ? (
+              <WhyThisTradePanel model={whyThisTradeModel} />
+            ) : null}
+            {!isManageMode && !isBotsReviewCockpit ? (
               <TradeChartScenarioStrip
                 mode="trade"
                 side={primaryChartOpenPosition?.side ?? side}
-                estimatedPnlUsd={liveUnrealized.pnlUsd}
-                estimatedPnlPct={liveUnrealized.movePct}
+                estimatedPnlUsd={portfolioAlignedLiveUnrealized.pnlUsd}
+                estimatedPnlPct={portfolioAlignedLiveUnrealized.movePct}
                 targetProfitUsd={metrics.targetProfitUsd}
                 stopLossUsd={metrics.stopLossUsd}
                 riskReward={mergedModel.riskReward}
@@ -4991,7 +5123,7 @@ function buildSignalContextFromQuery(params: URLSearchParams, signalId: string):
   if (!Number.isFinite(structure) || !Number.isFinite(volume) || !Number.isFinite(risk) || !pair) return null;
   const tagsRaw = params.get('tags') ?? '';
   const tags = tagsRaw.split(',').map((t) => t.trim()).filter((t): t is SignalSetupTag => t === 'Breakout' || t === 'Pullback' || t === 'Overextended');
-  const setupScoreLabel = (params.get('setupScoreLabel') ?? 'Developing') as SetupScoreLabel;
+  const setupScoreLabel = (params.get('setupScoreLabel') ?? 'Developing setup') as SetupScoreLabel;
   const riskTag = (params.get('riskTag') ?? 'Medium Risk') as SignalRiskTag;
   const sideParam = (params.get('side') ?? 'long') as 'long' | 'short';
   const entryQ = Number(params.get('entry'));

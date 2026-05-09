@@ -20,10 +20,11 @@ function inPositionFeedbackLine(executionQuality: ExecutionQuality | null): stri
 }
 
 function setupTone(score: number): string {
-  if (score >= 80) return 'Strong';
-  if (score >= 65) return 'Developing';
-  if (score >= 50) return 'Mixed';
-  return 'Weak';
+  if (score >= 85) return 'High Conviction';
+  if (score >= 75) return 'Strong';
+  if (score >= 60) return 'Moderate';
+  if (score >= 45) return 'Developing';
+  return 'No Trade';
 }
 
 function trendCue(signal: CryptoSignal): string {
@@ -74,12 +75,13 @@ function actionFor(
   if (hasOpenPosition) return inPositionFeedbackLine(executionQuality);
   const highSetupRisk = signal.riskTag === 'High Risk';
   const weakTiming = tradeScore < 45;
-  if (highSetupRisk && weakTiming) return 'High setup risk and weak readiness — reduce size';
-  if (highSetupRisk) return 'High setup risk — reduce size';
-  if (weakTiming) return 'Readiness is soft — wait for trigger or reduce size';
+  if (highSetupRisk && weakTiming) return 'Unclear conditions with elevated risk — stay neutral and wait.';
+  if (highSetupRisk) return 'Elevated setup risk — keep exposure conservative.';
+  if (weakTiming) return 'Mixed signals — wait for confirmation before acting.';
   if (status === 'overextended') return 'Avoid chasing';
-  if (status === 'developing') return 'Wait for confirmation';
-  if (status === 'triggered' && tradeScore >= 65) return 'Entry active';
+  if (status === 'developing') return 'Developing setup — watchlist conditions.';
+  if (status === 'triggered' && tradeScore >= 75) return 'Strong setup — execution active.';
+  if (status === 'triggered' && tradeScore >= 60) return 'Moderate setup — actionable with discipline.';
   if (signal.setupType === 'breakout') {
     return signal.side === 'long' ? 'Confirmation above level needed' : 'Confirmation below level needed';
   }

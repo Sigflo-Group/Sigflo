@@ -365,6 +365,7 @@ export default function BotsScreen() {
     if (opportunity.invalidation) q.set('invalidation', opportunity.invalidation);
     if (opportunity.targets?.length) q.set('targets', opportunity.targets.join('|'));
     if (opportunity.timeframeAlignment?.length) q.set('timeframeAlignment', opportunity.timeframeAlignment.join('|'));
+    q.set('reviewTop', '1');
     navigate(`/trade?${q.toString()}`);
   };
 

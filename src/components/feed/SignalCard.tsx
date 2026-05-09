@@ -12,13 +12,16 @@ import {
   uiSignalStateLabel,
 } from '@/lib/signalState';
 import { TriggeredFireMark } from '@/components/ui/TriggeredFireMark';
+import { useSignalEngine } from '@/hooks/useSignalEngine';
 import type { CryptoSignal } from '@/types/signal';
 import type { Candle } from '@/types/market';
 
 function confidenceLabel(score: number): string {
-  if (score >= 70) return 'Strong';
-  if (score >= 55) return 'Medium';
-  return 'Weak';
+  if (score >= 85) return 'High Conviction';
+  if (score >= 75) return 'Strong';
+  if (score >= 60) return 'Moderate';
+  if (score >= 45) return 'Developing';
+  return 'No Trade';
 }
 
 function riskShort(tag: string): string {
@@ -85,6 +88,7 @@ export function SignalCard({
   intervalLabel?: string;
 }) {
   const navigate = useNavigate();
+  const { registerSignalFollowed } = useSignalEngine();
   const [tick, setTick] = useState(0);
   useEffect(() => {
     const id = window.setInterval(() => setTick((v) => v + 1), 1000);
@@ -139,6 +143,7 @@ export function SignalCard({
         : 'text-sigflo-muted';
 
   const openTrade = () => {
+    registerSignalFollowed(signal);
     navigate(`/trade?${buildTradeQueryString(signal, { marketStatus: deriveMarketStatus(signal) })}`);
   };
 
@@ -225,7 +230,10 @@ export function SignalCard({
           </span>
           <div className="flex items-center gap-4 text-right">
             <span className="text-sigflo-muted">
-              Confidence: <span className="font-semibold text-sigflo-accent">{confidenceLabel(signal.setupScore)}</span>
+              Confidence:{' '}
+              <span className="font-semibold text-sigflo-accent">
+                {signal.setupScore}% ({confidenceLabel(signal.setupScore)})
+              </span>
             </span>
             <span className="text-sigflo-muted">
               Risk: <span className={`font-semibold ${riskColor}`}>{riskShort(signal.riskTag)}</span>
@@ -234,12 +242,12 @@ export function SignalCard({
         </div>
 
         {/* CTA */}
-        <button
-          type="button"
-          className="mt-4 w-full rounded-xl border border-sigflo-accent/22 bg-[#0f1c18] py-2.5 text-sm font-bold text-sigflo-accent transition hover:border-sigflo-accent/35 hover:bg-[#132a22]"
+        <div
+          className="mt-4 w-full rounded-xl border border-sigflo-accent/22 bg-[#0f1c18] py-2.5 text-center text-sm font-bold text-sigflo-accent transition hover:border-sigflo-accent/35 hover:bg-[#132a22]"
+          aria-hidden
         >
           Open Signal
-        </button>
+        </div>
       </div>
     </article>
   );

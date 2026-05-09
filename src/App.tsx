@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactElement } from 'react';
 import { Navigate, Outlet, Route, Routes, useLocation } from 'react-router-dom';
 import { AppShell } from '@/components/layout/AppShell';
 import { BetaAccessGate } from '@/components/layout/BetaAccessGate';
@@ -27,6 +27,9 @@ import MarketsScreen from '@/screens/MarketsScreen';
 import OnboardingTradingStyleScreen from '@/screens/OnboardingTradingStyleScreen';
 import OnboardingConnect from '@/screens/Onboarding/OnboardingConnect';
 import PortfolioScreen from '@/screens/PortfolioScreen';
+import PerformanceDashboardScreen from '@/screens/PerformanceDashboardScreen';
+import StrategyAttributionScreen from '@/screens/StrategyAttributionScreen';
+import TradeReplayScreen from '@/screens/TradeReplayScreen';
 import PrivacyPolicyScreen from '@/screens/PrivacyPolicyScreen';
 import ProfileScreen from '@/screens/ProfileScreen';
 import { ScannerLabScreen } from '@/screens/ScannerLabScreen';
@@ -34,6 +37,7 @@ import { TradeScreen } from '@/screens/TradeScreen';
 import { SignalEngineProviderShell } from '@/components/layout/SignalEngineProviderShell';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import { StepUpProtectedRoute } from '@/components/auth/StepUpProtectedRoute';
+import { useSignalEngine } from '@/hooks/useSignalEngine';
 import StepUpVerificationScreen from '@/screens/StepUpVerificationScreen';
 
 function ProtectedLayout() {
@@ -61,6 +65,12 @@ function OnboardingGate() {
     return <Navigate to={getFeedRoute()} replace />;
   }
   return <Outlet />;
+}
+
+function ProIntelligenceRoute({ children }: { children: ReactElement }) {
+  const { proIntelligenceMode } = useSignalEngine();
+  if (!proIntelligenceMode) return <Navigate to="/performance" replace />;
+  return children;
 }
 
 function isAuthCallbackPath(pathname: string): boolean {
@@ -144,6 +154,27 @@ export default function App() {
                     <Route path="/bots/:botId/settings" element={<BotSettingsScreen />} />
                     <Route path="/bots/:botId" element={<BotDetailScreen />} />
                     <Route path="/portfolio" element={<ProtectedRoute><PortfolioScreen /></ProtectedRoute>} />
+                    <Route path="/performance" element={<ProtectedRoute><PerformanceDashboardScreen /></ProtectedRoute>} />
+                    <Route
+                      path="/analytics/strategy-attribution"
+                      element={
+                        <ProtectedRoute>
+                          <ProIntelligenceRoute>
+                            <StrategyAttributionScreen />
+                          </ProIntelligenceRoute>
+                        </ProtectedRoute>
+                      }
+                    />
+                    <Route
+                      path="/replay"
+                      element={
+                        <ProtectedRoute>
+                          <ProIntelligenceRoute>
+                            <TradeReplayScreen />
+                          </ProIntelligenceRoute>
+                        </ProtectedRoute>
+                      }
+                    />
                     <Route path="/profile" element={<ProtectedRoute><ProfileScreen /></ProtectedRoute>} />
                     <Route path="/settings/profile" element={<ProtectedRoute><ProfileScreen /></ProtectedRoute>} />
                     <Route path="/settings/exchange" element={<StepUpProtectedRoute><ProfileScreen /></StepUpProtectedRoute>} />

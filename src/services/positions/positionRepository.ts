@@ -14,4 +14,7 @@ export type PositionRepository = {
   getActivePositionByPair(pair: string): SigfloActivePosition | null;
   /** All rows the repository currently considers open (demo: mock list; future: synced open legs). */
   listActivePositions(): readonly SigfloActivePosition[];
+  /** Optional mutable operations (supported by demo repository). */
+  closePositionByPair?: (pair: string) => boolean;
+  closeAllPositions?: () => number;
 };

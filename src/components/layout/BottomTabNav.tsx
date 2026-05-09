@@ -4,6 +4,7 @@ import { getFeedRoute } from '@/config/appRoutes';
 const staticTabs = [
   { to: '/markets', label: 'Markets', icon: MarketsIcon },
   { to: '/bots', label: 'Bots', icon: BotsIcon },
+  { to: '/performance', label: 'Stats', icon: StatsIcon },
   { to: '/portfolio', label: 'Portfolio', icon: PortfolioIcon },
   { to: '/profile', label: 'Account', icon: ProfileIcon },
 ] as const;
@@ -91,6 +92,15 @@ function ProfileIcon({ active }: { active: boolean }) {
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" className={active ? 'text-sigflo-accent' : 'currentColor'}>
       <circle cx="12" cy="9" r="3.5" stroke="currentColor" strokeWidth={active ? 2 : 1.8} />
       <path d="M6 19c1.2-3 3.8-4.5 6-4.5s4.8 1.5 6 4.5" stroke="currentColor" strokeWidth={active ? 2 : 1.8} strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function StatsIcon({ active }: { active: boolean }) {
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" className={active ? 'text-sigflo-accent' : 'currentColor'}>
+      <path d="M5 18V10M12 18V6M19 18v-4" stroke="currentColor" strokeWidth={active ? 2 : 1.8} strokeLinecap="round" />
+      <path d="M4 18h16" stroke="currentColor" strokeWidth={active ? 2 : 1.8} strokeLinecap="round" />
     </svg>
   );
 }

@@ -759,7 +759,7 @@ export default function BotFocusScreen() {
       return;
     }
     if (focusSignal) {
-      navigate(`/trade?${buildTradeQueryString(focusSignal, { marketStatus })}`);
+      navigate(`/trade?${buildTradeQueryString(focusSignal, { marketStatus })}&reviewTop=1`);
     }
   }, [
     accountSnapshots,
@@ -1204,7 +1204,7 @@ export default function BotFocusScreen() {
 
   return (
     <motion.div
-      layout={fullChartMode}
+      layout={false}
       className={
         fullChartMode
           ? 'sigflo-bot-focus-root fixed inset-0 z-[95] flex h-[100dvh] max-h-[100dvh] flex-col overflow-hidden bg-landing-bg text-landing-text motion-reduce:transition-none'
@@ -1234,10 +1234,14 @@ export default function BotFocusScreen() {
             onBack={() => setFullChartMode(false)}
             pairLabel={chartModel.pair}
             onOpenTradeWorkspace={() => {
-              if (focusSignal) navigate(`/trade?${buildTradeQueryString(focusSignal, { marketStatus })}`);
+              if (focusSignal) navigate(`/trade?${buildTradeQueryString(focusSignal, { marketStatus })}&reviewTop=1`);
             }}
           />
-          <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto overflow-x-hidden overscroll-y-contain px-1 pb-[calc(env(safe-area-inset-bottom,0px)+0.75rem)] [-webkit-overflow-scrolling:touch] touch-pan-y">
+          {/*
+            Chart must NOT sit inside overflow-y-auto — mobile scroll parents steal touch drags from Lightweight Charts.
+            Scroll only the tools + insights stack below the plot.
+          */}
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden px-1 pb-[calc(env(safe-area-inset-bottom,0px)+0.75rem)]">
             <div className="pointer-events-none shrink-0 px-2 pt-1 text-center">
               <p className="text-[10px] font-medium tracking-tight text-landing-muted/80">
                 {bot.detail.setupStateLabel}
@@ -1248,7 +1252,7 @@ export default function BotFocusScreen() {
               <motion.div
                 layout={false}
                 ref={chartSlotRef}
-                className={`relative min-h-0 w-full min-w-0 overflow-hidden motion-reduce:transition-none ${
+                className={`relative min-h-0 w-full min-w-0 overflow-hidden overscroll-none motion-reduce:transition-none ${
                   BOT_FOCUS_FULL_CHART_PLOT_FLEX_FILL ? 'flex min-h-0 flex-1 flex-col' : ''
                 }`}
                 style={{
@@ -1261,46 +1265,47 @@ export default function BotFocusScreen() {
                 {biasOverlay}
               </motion.div>
             </div>
-            <BotFocusChartToolsDock
-              chartInterval={chartInterval}
-              onIntervalChange={onIntervalChange}
-              options={FOCUS_INTERVAL_OPTIONS}
-              onFocusSetup={() =>
-                requestChartSetupFocus({ pairFilter: chartModelForPlot.pair, botName: bot.name })
-              }
-            />
-            {execLive && chartModelForPlot && focusSignal ? (
-              <div className="shrink-0 border-t border-landing-border/40 bg-landing-bg/90 px-2 py-2">
-                <ExitAiCoPilotBlock
-                  model={botExitAiModel}
-                  exitMode={exitAuto.mode}
-                  onExitModeChange={exitAuto.setMode}
-                  onCloseNow={navigateToTradeForExit}
-                  compact
-                />
-              </div>
-            ) : null}
-            <BotFocusInsightDrawer
-              open={insightDrawerOpen}
-              onToggle={() => setInsightDrawerOpen((v) => !v)}
-              bot={bot}
-              hasActiveSetup={hasDisplayableSetup}
-              rrDisplay={Number.isFinite(rrDisplay) ? rrDisplay : chartModel.riskReward}
-              toggleClassName="pr-[4.75rem] sm:pr-[5.25rem]"
-              intentDisplay={liveSetupCopy?.intentLine}
-              commentaryDisplay={liveSetupCopy?.commentaryShort}
-              structureNote={liveSetupCopy?.structureFootnote}
-            />
+            <div className="max-h-[min(52dvh,480px)] min-h-0 shrink-0 overflow-y-auto overflow-x-hidden overscroll-y-contain [-webkit-overflow-scrolling:touch] border-t border-landing-border/35">
+              <BotFocusChartToolsDock
+                chartInterval={chartInterval}
+                onIntervalChange={onIntervalChange}
+                options={FOCUS_INTERVAL_OPTIONS}
+                onFocusSetup={() =>
+                  requestChartSetupFocus({ pairFilter: chartModelForPlot.pair, botName: bot.name })
+                }
+              />
+              {execLive && chartModelForPlot && focusSignal ? (
+                <div className="shrink-0 border-t border-landing-border/40 bg-landing-bg/90 px-2 py-2">
+                  <ExitAiCoPilotBlock
+                    model={botExitAiModel}
+                    exitMode={exitAuto.mode}
+                    onExitModeChange={exitAuto.setMode}
+                    onCloseNow={navigateToTradeForExit}
+                    compact
+                  />
+                </div>
+              ) : null}
+              <BotFocusInsightDrawer
+                open={insightDrawerOpen}
+                onToggle={() => setInsightDrawerOpen((v) => !v)}
+                bot={bot}
+                hasActiveSetup={hasDisplayableSetup}
+                rrDisplay={Number.isFinite(rrDisplay) ? rrDisplay : chartModel.riskReward}
+                toggleClassName="pr-[4.75rem] sm:pr-[5.25rem]"
+                intentDisplay={liveSetupCopy?.intentLine}
+                commentaryDisplay={liveSetupCopy?.commentaryShort}
+                structureNote={liveSetupCopy?.structureFootnote}
+              />
+            </div>
           </div>
         </>
       ) : (
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto overflow-x-hidden overscroll-y-contain [-webkit-overflow-scrolling:touch] touch-pan-y">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
           {/*
-            Sticky only the compact chrome — not the chart. A tall sticky block + chart touch handling
-            made the cockpit feel non-scrollable on many phones.
+            Chart stays outside overflow-y-auto so pan/zoom reaches Lightweight Charts on touch devices.
           */}
           <div
-            className={`sticky top-0 z-20 -mx-0 border-b border-landing-border/60 bg-landing-bg/95 backdrop-blur-xl ${stickyTone}`}
+            className={`sticky top-0 z-20 shrink-0 -mx-0 border-b border-landing-border/60 bg-landing-bg/95 backdrop-blur-xl ${stickyTone}`}
           >
             <BotFocusHeader
               bot={bot}
@@ -1319,7 +1324,7 @@ export default function BotFocusScreen() {
             </div>
           </div>
           {pairPicker}
-          <div className="relative w-full shrink-0">
+          <div className="relative w-full shrink-0 overflow-hidden overscroll-none">
             <motion.div
               layout={false}
               ref={chartSlotRef}
@@ -1330,6 +1335,7 @@ export default function BotFocusScreen() {
               {biasOverlay}
             </motion.div>
           </div>
+          <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain [-webkit-overflow-scrolling:touch]">
           <div className="space-y-4 px-4 pb-[calc(12.5rem+env(safe-area-inset-bottom))] pt-4 md:pb-[calc(13rem+env(safe-area-inset-bottom))]">
         <section className="rounded-2xl border border-landing-border bg-landing-surface landing-panel-texture p-4 shadow-landing-card">
           <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-landing-muted">Intent</p>
@@ -1505,6 +1511,7 @@ export default function BotFocusScreen() {
           ) : null}
         </section>
           </div>
+          </div>
         </div>
       )}
 
@@ -1643,7 +1650,7 @@ export default function BotFocusScreen() {
         onExecute={executeTradeFromFocus}
         onViewPosition={() => {
           if (focusSignal) {
-            navigate(`/trade?${buildTradeQueryString(focusSignal, { marketStatus })}`);
+            navigate(`/trade?${buildTradeQueryString(focusSignal, { marketStatus })}&reviewTop=1`);
           }
         }}
         tabBarInsetPx={fullChartMode ? 16 : 74}

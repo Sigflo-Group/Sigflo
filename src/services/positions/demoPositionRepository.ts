@@ -22,6 +22,25 @@ export class DemoPositionRepository implements PositionRepository {
   addPosition(position: SigfloActivePosition): void {
     const key = normalizePositionPairKey(position.pair);
     this.byKey.set(key, position);
+    this.emitChanged();
+  }
+
+  closePositionByPair(pair: string): boolean {
+    const key = normalizePositionPairKey(pair);
+    const removed = this.byKey.delete(key);
+    if (removed) this.emitChanged();
+    return removed;
+  }
+
+  closeAllPositions(): number {
+    const count = this.byKey.size;
+    if (count === 0) return 0;
+    this.byKey.clear();
+    this.emitChanged();
+    return count;
+  }
+
+  private emitChanged(): void {
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent(DEMO_POSITIONS_CHANGED_EVENT));
     }

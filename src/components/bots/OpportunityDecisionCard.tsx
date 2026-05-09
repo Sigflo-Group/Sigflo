@@ -88,11 +88,16 @@ function stateClass(state: OpportunityDecisionCardProps['state']): string {
   return 'border-white/12 bg-white/[0.03] text-zinc-400';
 }
 
-function confidence(score: number): { label: 'Weak' | 'Moderate' | 'Strong'; pct: number } {
+function confidence(score: number): {
+  label: 'No Trade' | 'Developing' | 'Moderate' | 'Strong' | 'High Conviction';
+  pct: number;
+} {
   const pct = Math.max(0, Math.min(100, score));
+  if (pct >= 85) return { label: 'High Conviction', pct };
   if (pct >= 75) return { label: 'Strong', pct };
   if (pct >= 60) return { label: 'Moderate', pct };
-  return { label: 'Weak', pct };
+  if (pct >= 45) return { label: 'Developing', pct };
+  return { label: 'No Trade', pct };
 }
 
 function fmt(n: number): string {

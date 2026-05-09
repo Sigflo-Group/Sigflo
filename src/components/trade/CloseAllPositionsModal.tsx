@@ -6,6 +6,9 @@ export type CloseAllPositionsModalProps = {
   onConfirm: () => void;
   /** When true, Long/Short / Close use the Bybit API via Sigflo. */
   exchangeExecution?: boolean;
+  title?: string;
+  confirmLabel?: string;
+  bodyText?: string;
 };
 
 export function CloseAllPositionsModal({
@@ -13,6 +16,9 @@ export function CloseAllPositionsModal({
   onCancel,
   onConfirm,
   exchangeExecution = true,
+  title = 'Close all positions?',
+  confirmLabel = 'Close all',
+  bodyText,
 }: CloseAllPositionsModalProps) {
   return (
     <>
@@ -43,10 +49,12 @@ export function CloseAllPositionsModal({
             exit={{ opacity: 0, scale: 0.96, y: 6 }}
           >
             <h2 id="close-all-title" className="text-base font-bold text-rose-100">
-              Close all positions?
+              {title}
             </h2>
             <p className="mt-2 text-[13px] leading-relaxed text-sigflo-muted">
-              {exchangeExecution ? (
+              {bodyText ? (
+                bodyText
+              ) : exchangeExecution ? (
                 <>
                   Close all sends <span className="font-semibold text-sigflo-text/90">real orders on Bybit</span> for the
                   positions shown (reduce-only market exits on perps; market sells on spot) using your linked API keys.
@@ -72,7 +80,7 @@ export function CloseAllPositionsModal({
                 onClick={onConfirm}
                 className="min-h-[44px] flex-1 rounded-xl bg-gradient-to-b from-rose-600 to-rose-700 py-2.5 text-sm font-bold text-white shadow-[0_0_18px_-6px_rgba(248,113,113,0.55)] transition hover:brightness-110"
               >
-                Close all
+                {confirmLabel}
               </button>
             </div>
           </motion.div>

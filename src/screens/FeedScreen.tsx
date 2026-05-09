@@ -13,12 +13,13 @@ import {
   symbolToPair,
   TRACKED_SYMBOLS,
 } from '@/lib/marketScannerRows';
+import { STRATEGY_PERSONALITY_PROFILES, type StrategyPersonalityMode } from '@/lib/strategyPersonality';
 
 type FeedFilter = 'all' | 'strong' | 'actionable' | 'risky';
 
 const filterChips: { id: FeedFilter; label: string }[] = [
   { id: 'all', label: 'All' },
-  { id: 'strong', label: 'Strong+' },
+  { id: 'strong', label: 'Strong 75+' },
   { id: 'actionable', label: 'Actionable' },
   { id: 'risky', label: 'Risky' },
 ];
@@ -32,7 +33,15 @@ export function FeedScreen() {
       : 'all';
   const [filter, setFilter] = useState<FeedFilter>(initialFilter);
   const [newsScanOpen, setNewsScanOpen] = useState(false);
-  const { signals: liveSignals, loading, mode, connection } = useSignalEngine();
+  const {
+    signals: liveSignals,
+    loading,
+    mode,
+    connection,
+    strategyPersonalityMode,
+    setStrategyPersonalityMode,
+    userAdaptation,
+  } = useSignalEngine();
 
   /** Tracked watchlist pairs with no engine emission yet — same shells as Markets “Tracked”. */
   const feedSignalsBase = useMemo(() => {
@@ -51,7 +60,7 @@ export function FeedScreen() {
   }, [searchParams]);
 
   const signals = useMemo(() => {
-    if (filter === 'strong') return feedSignalsBase.filter((s) => s.setupScore >= 70);
+    if (filter === 'strong') return feedSignalsBase.filter((s) => s.setupScore >= 75);
     if (filter === 'actionable') return feedSignalsBase.filter(isFeedActionableOpportunity);
     if (filter === 'risky') {
       return feedSignalsBase.filter((s) => s.riskTag === 'High Risk' || deriveMarketStatus(s) === 'overextended');
@@ -134,15 +143,39 @@ export function FeedScreen() {
         </button>
 
         {/* Filter chips */}
-        <div className="flex gap-2" role="tablist" aria-label="Filter signals">
+        <div className="space-y-2">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-sigflo-muted">Strategy personality</p>
+          <div className="flex flex-wrap gap-2">
+            {(Object.keys(STRATEGY_PERSONALITY_PROFILES) as StrategyPersonalityMode[]).map((m) => {
+              const active = strategyPersonalityMode === m;
+              return (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => setStrategyPersonalityMode(m)}
+                  className={`rounded-full border px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] transition ${
+                    active
+                      ? 'border-sigflo-accent/45 bg-sigflo-accentDim text-sigflo-accent'
+                      : 'border-white/[0.08] bg-sigflo-elevated text-sigflo-muted hover:text-sigflo-text'
+                  }`}
+                >
+                  {STRATEGY_PERSONALITY_PROFILES[m].label}
+                </button>
+              );
+            })}
+          </div>
+          <p className="text-[10px] text-sigflo-muted">
+            User adaptation: {userAdaptation.preferences.preferredTradeType} setups · {userAdaptation.preferences.preferredSignalFrequency} frequency · {userAdaptation.preferences.preferredRiskLevel} risk preference
+          </p>
+        </div>
+
+        <div className="flex gap-2" aria-label="Filter signals">
           {filterChips.map((chip) => {
             const active = filter === chip.id;
             return (
               <button
                 key={chip.id}
                 type="button"
-                role="tab"
-                aria-selected={active}
                 onClick={() => setFilter(chip.id)}
                 className={`rounded-full px-4 py-1.5 text-xs font-semibold transition ${
                   active
@@ -157,7 +190,7 @@ export function FeedScreen() {
         </div>
 
         {/* Signal cards */}
-        <div className="space-y-4">
+        <div className="space-y-5 sm:space-y-5">
           {!loading && signals.length === 0 ? (
             <p className="rounded-xl border border-white/[0.06] bg-sigflo-elevated px-3 py-4 text-center text-[13px] text-sigflo-muted">
               No live setups yet — the scanner is running; stronger structure will appear as the market produces it.

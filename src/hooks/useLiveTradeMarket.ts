@@ -46,6 +46,13 @@ export type LiveTradeMarketResult = LiveTradeState & {
   tickSnapshotRef: MutableRefObject<LiveTradeTickSnapshot | null>;
 };
 
+type LiveTradeMarketOptions = {
+  /** Optional quote UI throttle override for high-responsiveness views (e.g. manage-mode PnL). */
+  uiThrottleMs?: number;
+  /** When true, quote UI fields are pushed immediately on incoming ticks/public trades. */
+  immediateUiOnTick?: boolean;
+};
+
 function upsertCandle(store: Candle[], next: Candle): Candle[] {
   const out = [...store];
   const last = out.at(-1);
@@ -80,7 +87,11 @@ function toTradeCandles(candles: Candle[]): TradeChartCandle[] {
   }));
 }
 
-export function useLiveTradeMarket(symbol: string, interval: TradeChartInterval): LiveTradeMarketResult {
+export function useLiveTradeMarket(
+  symbol: string,
+  interval: TradeChartInterval,
+  options?: LiveTradeMarketOptions,
+): LiveTradeMarketResult {
   const [state, setState] = useState<LiveTradeState>({
     loadingInterval: true,
     mode: 'OFFLINE',
@@ -124,7 +135,8 @@ export function useLiveTradeMarket(symbol: string, interval: TradeChartInterval)
       if (!snap) return;
 
       const now = performance.now();
-      const uiDue = pendingUiRef.current && now - lastUiPush >= LIVE_MARKET_UI_THROTTLE_MS;
+      const uiThrottleMs = Math.max(16, options?.uiThrottleMs ?? LIVE_MARKET_UI_THROTTLE_MS);
+      const uiDue = pendingUiRef.current && now - lastUiPush >= uiThrottleMs;
       const chartImmediate = chartImmediateRef.current;
       chartImmediateRef.current = false;
       const chartDue =
@@ -178,7 +190,7 @@ export function useLiveTradeMarket(symbol: string, interval: TradeChartInterval)
       stopped = true;
       window.cancelAnimationFrame(raf);
     };
-  }, [symbol, interval]);
+  }, [symbol, interval, options?.uiThrottleMs]);
 
   useEffect(() => {
     let cancelled = false;
@@ -356,6 +368,22 @@ export function useLiveTradeMarket(symbol: string, interval: TradeChartInterval)
         applyTickerToCandles(price);
         pendingUiRef.current = true;
         pendingChartRef.current = true;
+        if (options?.immediateUiOnTick) {
+          setState((prev) => ({
+            ...prev,
+            dataSymbol: symbol,
+            lastPrice: snap.lastPrice,
+            ...(snap.markPrice != null ? { markPrice: snap.markPrice } : {}),
+            ...(snap.indexPrice != null ? { indexPrice: snap.indexPrice } : {}),
+            change24hPct: snap.change24hPct,
+            high24h: snap.high24h,
+            low24h: snap.low24h,
+            volume24h: snap.volume24h,
+            lastUpdateTs: snap.lastUpdateTs,
+            mode: readyRef.current ? 'WS' : prev.mode,
+          }));
+          pendingUiRef.current = false;
+        }
       },
       onPublicTrade: (tr) => {
         if (tr.symbol !== symbol) return;
@@ -371,6 +399,25 @@ export function useLiveTradeMarket(symbol: string, interval: TradeChartInterval)
         applyTickerToCandles(price);
         pendingUiRef.current = true;
         pendingChartRef.current = true;
+        if (options?.immediateUiOnTick) {
+          const snap = tickSnapshotRef.current;
+          if (snap) {
+            setState((prev) => ({
+              ...prev,
+              dataSymbol: symbol,
+              lastPrice: snap.lastPrice,
+              ...(snap.markPrice != null ? { markPrice: snap.markPrice } : {}),
+              ...(snap.indexPrice != null ? { indexPrice: snap.indexPrice } : {}),
+              change24hPct: snap.change24hPct,
+              high24h: snap.high24h,
+              low24h: snap.low24h,
+              volume24h: snap.volume24h,
+              lastUpdateTs: snap.lastUpdateTs,
+              mode: readyRef.current ? 'WS' : prev.mode,
+            }));
+            pendingUiRef.current = false;
+          }
+        }
       },
       onKline: (k) => {
         if (k.symbol !== symbol) return;
@@ -411,7 +458,7 @@ export function useLiveTradeMarket(symbol: string, interval: TradeChartInterval)
       cancelled = true;
       ws.disconnect();
     };
-  }, [symbol, interval]);
+  }, [symbol, interval, options?.immediateUiOnTick]);
 
   useEffect(() => {
     const active = candlesRef.current[interval];

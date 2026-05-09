@@ -14,11 +14,11 @@ export function calculateSetupScore(b: SetupScoreBreakdown): number {
 }
 
 export function getSetupScoreLabel(score: number): SetupScoreLabel {
-  if (score >= 85) return 'Elite setup';
-  if (score >= 70) return 'Strong setup';
-  if (score >= 55) return 'Developing';
-  if (score >= 40) return 'Low quality';
-  return 'Avoid';
+  if (score >= 85) return 'High conviction';
+  if (score >= 75) return 'Strong setup';
+  if (score >= 60) return 'Moderate setup';
+  if (score >= 45) return 'Developing setup';
+  return 'No trade';
 }
 
 /** UI caption: structural state (overextended) overrides the numeric score band label. */

@@ -1955,7 +1955,7 @@ export function PriceChartCard({
           */}
           <div
             ref={bindChartPlotEl}
-            className={`absolute inset-x-0 bottom-0 z-[1] bg-[#0c0c0f] ${headerDockedInPlotPanel ? 'top-0' : 'top-px'}`}
+            className={`touch-none absolute inset-x-0 bottom-0 z-[1] bg-[#0c0c0f] ${headerDockedInPlotPanel ? 'top-0' : 'top-px'}`}
           />
           {usePremiumTradeZones ? (
             <div

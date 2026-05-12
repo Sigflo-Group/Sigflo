@@ -90,9 +90,9 @@ export type SignalEngineState = {
   setAdvancedPanelExpanded: (panelId: string, expanded: boolean) => void;
 };
 
-const COOLDOWN_MS = 45 * 60 * 1000;
-const SCORE_IMPROVE_BYPASS = 8;
-const ATR_MOVE_BYPASS = 0.8;
+const COOLDOWN_MS = 20 * 60 * 1000;
+const SCORE_IMPROVE_BYPASS = 6;
+const ATR_MOVE_BYPASS = 0.6;
 const MARKET_MEMORY_STORE_KEY = '__SIGFLO_MARKET_MEMORY_V1__';
 const SIGNAL_LIFECYCLE_STORE_KEY = '__SIGFLO_SIGNAL_LIFECYCLE_V1__';
 const USER_ADAPTATION_STORE_KEY = '__SIGFLO_USER_ADAPTATION_V1__';

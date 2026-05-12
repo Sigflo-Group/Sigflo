@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { connectExchange, disconnectExchange, listIntegrations } from '@/services/api/integrationClient';
 import type { ExchangeId, IntegrationStatus } from '@/types/integrations';
 
@@ -6,16 +6,29 @@ export function useExchangeIntegrations() {
   const [items, setItems] = useState<IntegrationStatus[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   const refresh = useCallback(async () => {
+    if (!mountedRef.current) return;
     setLoading(true);
     setError(null);
     try {
-      setItems(await listIntegrations());
+      const nextItems = await listIntegrations();
+      if (!mountedRef.current) return;
+      setItems(nextItems);
     } catch (e) {
+      if (!mountedRef.current) return;
       setError(e instanceof Error ? e.message : 'Failed to load integrations.');
     } finally {
-      setLoading(false);
+      if (mountedRef.current) {
+        setLoading(false);
+      }
     }
   }, []);
 

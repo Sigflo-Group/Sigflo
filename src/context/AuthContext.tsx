@@ -34,20 +34,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setLoading(false);
       return;
     }
+    let mounted = true;
     void supabase.auth.getSession()
       .then(({ data: { session: next } }) => {
+        if (!mounted) return;
         setSession(next);
         setLoading(false);
       })
       .catch(() => {
+        if (!mounted) return;
         setLoading(false);
       });
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, next) => {
+      if (!mounted) return;
       setSession(next);
     });
-    return () => subscription.unsubscribe();
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
   }, []);
 
   const value = useMemo<AuthContextValue>(

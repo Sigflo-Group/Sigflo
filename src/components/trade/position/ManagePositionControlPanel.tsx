@@ -251,17 +251,17 @@ export function ManagePositionControlPanel({
             type="button"
             disabled={actionsDisabled}
             onClick={onAdjustRisk}
-            className="mb-2 w-full rounded-xl border border-landing-accent/35 bg-landing-accent-dim/40 py-2.5 text-[11px] font-bold text-landing-accent-hi transition hover:border-landing-accent/50 active:scale-[0.99] disabled:opacity-45"
+            className="mb-2 min-h-[44px] w-full rounded-xl border border-landing-accent/35 bg-landing-accent-dim/40 px-3 py-3 text-sm font-bold leading-tight text-landing-accent-hi transition hover:border-landing-accent/50 active:scale-[0.99] disabled:opacity-45 sm:min-h-[40px] sm:py-2.5 sm:text-[11px]"
           >
             Adjust risk
           </button>
         ) : null}
-        <div className="grid grid-cols-2 gap-2">
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
           <button
             type="button"
             disabled={actionsDisabled}
             onClick={onCloseFull}
-            className="rounded-xl border border-rose-400/35 bg-rose-500/15 py-2.5 text-[11px] font-bold text-rose-100 transition hover:border-rose-300/65 hover:bg-rose-500/28 hover:text-rose-50 active:scale-[0.99] disabled:opacity-45"
+            className="min-h-[44px] rounded-xl border border-rose-400/35 bg-rose-500/15 px-3 py-3 text-sm font-bold leading-tight text-rose-100 transition hover:border-rose-300/65 hover:bg-rose-500/28 hover:text-rose-50 active:scale-[0.99] disabled:opacity-45 sm:min-h-[40px] sm:py-2.5 sm:text-[11px]"
           >
             Close position
           </button>
@@ -269,7 +269,7 @@ export function ManagePositionControlPanel({
             type="button"
             disabled={actionsDisabled}
             onClick={onPartialOpen}
-            className="rounded-xl border border-white/[0.1] bg-landing-surface landing-panel-texture py-2.5 text-[11px] font-bold text-landing-text transition hover:border-landing-accent/30 active:scale-[0.99] disabled:opacity-45"
+            className="min-h-[44px] rounded-xl border border-white/[0.1] bg-landing-surface landing-panel-texture px-3 py-3 text-sm font-bold leading-tight text-landing-text transition hover:border-landing-accent/30 active:scale-[0.99] disabled:opacity-45 sm:min-h-[40px] sm:py-2.5 sm:text-[11px]"
           >
             Partial close
           </button>
@@ -277,7 +277,7 @@ export function ManagePositionControlPanel({
             type="button"
             disabled={actionsDisabled || !canMoveStops || !isFutures}
             onClick={onMoveStopBreakeven}
-            className="rounded-xl border border-white/[0.1] bg-landing-surface landing-panel-texture py-2.5 text-[11px] font-bold text-landing-text transition hover:border-landing-accent/30 active:scale-[0.99] disabled:opacity-45"
+            className="min-h-[44px] rounded-xl border border-white/[0.1] bg-landing-surface landing-panel-texture px-3 py-3 text-sm font-bold leading-tight text-landing-text transition hover:border-landing-accent/30 active:scale-[0.99] disabled:opacity-45 sm:min-h-[40px] sm:py-2.5 sm:text-[11px]"
           >
             Stop → breakeven
           </button>
@@ -285,7 +285,7 @@ export function ManagePositionControlPanel({
             type="button"
             disabled={actionsDisabled || !canMoveStops || !isFutures}
             onClick={onTightenStop}
-            className="rounded-xl border border-white/[0.1] bg-landing-surface landing-panel-texture py-2.5 text-[11px] font-bold text-landing-text transition hover:border-landing-accent/30 active:scale-[0.99] disabled:opacity-45"
+            className="min-h-[44px] rounded-xl border border-white/[0.1] bg-landing-surface landing-panel-texture px-3 py-3 text-sm font-bold leading-tight text-landing-text transition hover:border-landing-accent/30 active:scale-[0.99] disabled:opacity-45 sm:min-h-[40px] sm:py-2.5 sm:text-[11px]"
           >
             Tighten stop
           </button>
@@ -294,7 +294,7 @@ export function ManagePositionControlPanel({
               type="button"
               disabled={actionsDisabled || !isFutures}
               onClick={onReversePosition}
-              className="col-span-2 rounded-xl border border-amber-300/35 bg-amber-500/12 py-2.5 text-[11px] font-bold text-amber-100 transition hover:border-amber-200/65 hover:bg-amber-500/24 hover:text-amber-50 active:scale-[0.99] disabled:opacity-45"
+              className="min-h-[44px] rounded-xl border border-amber-300/35 bg-amber-500/12 px-3 py-3 text-sm font-bold leading-tight text-amber-100 transition hover:border-amber-200/65 hover:bg-amber-500/24 hover:text-amber-50 active:scale-[0.99] disabled:opacity-45 sm:col-span-2 sm:min-h-[40px] sm:py-2.5 sm:text-[11px]"
             >
               Reverse position
             </button>
@@ -304,7 +304,7 @@ export function ManagePositionControlPanel({
           type="button"
           disabled={actionsDisabled}
           onClick={onAddToPosition}
-          className="mt-2 w-full rounded-xl bg-landing-accent py-3 text-sm font-bold text-landing-bg shadow-landing-glow-sm transition hover:brightness-110 active:scale-[0.99] disabled:opacity-45"
+          className="mt-2 min-h-[46px] w-full rounded-xl bg-landing-accent px-3 py-3.5 text-[15px] font-bold leading-tight text-landing-bg shadow-landing-glow-sm transition hover:brightness-110 active:scale-[0.99] disabled:opacity-45 sm:min-h-[42px] sm:py-3 sm:text-sm"
         >
           Add to position
         </button>
@@ -325,7 +325,7 @@ export function ManagePositionControlPanel({
             type="button"
             disabled={actionsDisabled}
             onClick={() => onExitModeChange('manual')}
-            className={`flex-1 rounded-lg py-2 text-[11px] font-bold transition ${
+            className={`flex-1 rounded-lg py-2.5 text-xs font-bold transition sm:py-2 sm:text-[11px] ${
               staticActive ? 'bg-landing-accent-dim text-landing-accent-hi' : 'text-landing-muted'
             }`}
           >
@@ -335,7 +335,7 @@ export function ManagePositionControlPanel({
             type="button"
             disabled={actionsDisabled}
             onClick={() => onExitModeChange('assisted')}
-            className={`flex-1 rounded-lg py-2 text-[11px] font-bold transition ${
+            className={`flex-1 rounded-lg py-2.5 text-xs font-bold transition sm:py-2 sm:text-[11px] ${
               aiActive ? 'bg-landing-accent-dim text-landing-accent-hi' : 'text-landing-muted'
             }`}
           >
@@ -352,7 +352,7 @@ export function ManagePositionControlPanel({
             type="button"
             disabled={actionsDisabled}
             onClick={onViewSetupOnChart}
-            className="mt-2 w-full rounded-lg border border-cyan-400/25 bg-cyan-500/[0.08] py-2 text-[10px] font-bold uppercase tracking-[0.1em] text-cyan-100/95 transition hover:border-cyan-400/40 hover:bg-cyan-500/14 active:scale-[0.99] disabled:opacity-45"
+            className="mt-2 min-h-[40px] w-full rounded-lg border border-cyan-400/25 bg-cyan-500/[0.08] px-3 py-2.5 text-[11px] font-bold uppercase tracking-[0.1em] leading-tight text-cyan-100/95 transition hover:border-cyan-400/40 hover:bg-cyan-500/14 active:scale-[0.99] disabled:opacity-45 sm:min-h-[36px] sm:py-2 sm:text-[10px]"
           >
             View on chart
           </button>

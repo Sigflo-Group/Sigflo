@@ -136,9 +136,9 @@ export function ChartDockCloseRow({
   onCloseAll: () => void;
 }) {
   const closePrimaryBtnClass =
-    'flex min-h-[34px] min-w-0 items-center justify-center rounded-lg bg-gradient-to-b from-rose-500/95 to-rose-600/95 px-1 text-center text-[9px] font-bold leading-tight text-white shadow-[0_0_14px_-6px_rgba(248,113,113,0.45)] ring-1 ring-rose-300/20 transition hover:from-rose-400/95 hover:to-rose-500/95 hover:ring-rose-200/45 hover:shadow-[0_0_20px_-6px_rgba(248,113,113,0.62)] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-45 sm:min-h-[36px] sm:px-1.5 sm:text-[10px]';
+    'flex min-h-[42px] min-w-0 items-center justify-center rounded-lg bg-gradient-to-b from-rose-500/95 to-rose-600/95 px-2 py-1 text-center text-[11px] font-bold leading-tight text-white shadow-[0_0_14px_-6px_rgba(248,113,113,0.45)] ring-1 ring-rose-300/20 transition hover:from-rose-400/95 hover:to-rose-500/95 hover:ring-rose-200/45 hover:shadow-[0_0_20px_-6px_rgba(248,113,113,0.62)] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-45 sm:min-h-[38px] sm:px-1.5 sm:text-[10px]';
   const closeAllBtnClass =
-    'flex min-h-[34px] min-w-0 items-center justify-center rounded-lg border border-rose-500/40 bg-rose-950/40 px-1 text-[8px] font-bold uppercase tracking-wide text-rose-100/90 transition hover:bg-rose-950/55 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-45 sm:min-h-[36px] sm:text-[10px]';
+    'flex min-h-[42px] min-w-0 items-center justify-center rounded-lg border border-rose-500/40 bg-rose-950/40 px-2 py-1 text-center text-[10px] font-bold uppercase tracking-wide leading-tight text-rose-100/90 transition hover:bg-rose-950/55 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-45 sm:min-h-[38px] sm:text-[10px]';
 
   return (
     <div className="grid w-full min-w-0 grid-cols-2 gap-1" role="group" aria-label="Close position actions">

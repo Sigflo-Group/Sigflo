@@ -154,7 +154,10 @@ function SlideToExecute({
   };
 
   return (
-    <div className="relative h-[48px] touch-none overflow-hidden rounded-2xl border border-landing-accent/25 bg-black/40 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
+    <div
+      ref={trackRef}
+      className="relative h-[48px] touch-none overflow-hidden rounded-2xl border border-landing-accent/25 bg-black/40 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]"
+    >
       <div
         className="absolute inset-y-0 left-0 bg-gradient-to-r from-landing-accent/30 to-landing-accent/10 transition-[width] duration-75 ease-out"
         style={{ width: `${fillProgress * 100}%` }}

@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   DEFAULT_AUTOMATION_SAFEGUARDS,
   appendActivityEntry,
+  isActionableExitAiPopupActivity,
   parseActivityLogJson,
 } from '@/lib/aiExitAutomation';
 import { emitGlobalAnnouncement } from '@/lib/globalAnnouncements';
@@ -26,6 +27,7 @@ const EXIT_AI_POPUP_KINDS: ReadonlySet<ExitAutomationActivityKind> = new Set([
   'safeguard',
   'assisted_ready',
 ]);
+const EXIT_AI_POPUP_COOLDOWN_MS = 20_000;
 
 function loadMode(): ExitAiMode {
   const v = window.localStorage.getItem(LS_MODE);
@@ -83,6 +85,7 @@ export function useExitAutomation(scopeKey: string) {
   const [customStrategyThresholds, setCustomStrategyThresholds] =
     useState<ExitStrategyThresholds>(loadCustomStrategyThresholds);
   const [activity, setActivity] = useState<ExitAutomationActivityEntry[]>([]);
+  const popupLastEmittedAtRef = useRef<Partial<Record<ExitAutomationActivityKind, number>>>({});
 
   useEffect(() => {
     setActivity(parseActivityLogJson(window.localStorage.getItem(activityStorageKey(scopeKey))));
@@ -122,7 +125,11 @@ export function useExitAutomation(scopeKey: string) {
         const next = appendActivityEntry(prev, entry);
         persistActivity(next);
         const added = next[next.length - 1];
-        if (added && EXIT_AI_POPUP_KINDS.has(added.kind)) {
+        if (added && EXIT_AI_POPUP_KINDS.has(added.kind) && isActionableExitAiPopupActivity(added)) {
+          const now = Date.now();
+          const last = popupLastEmittedAtRef.current[added.kind] ?? 0;
+          if (now - last < EXIT_AI_POPUP_COOLDOWN_MS) return next;
+          popupLastEmittedAtRef.current[added.kind] = now;
           queueMicrotask(() => {
             emitGlobalAnnouncement({
               id: added.id,

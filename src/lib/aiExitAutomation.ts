@@ -160,3 +160,23 @@ export function appendActivityEntry(
   };
   return [...prev, next].slice(-80);
 }
+
+/**
+ * Keep blocking Exit AI announcements for informational/non-actionable activity lines.
+ * This is shared by in-hook popups and the global decision bridge to avoid drift.
+ */
+export function isActionableExitAiPopupActivity(entry: Pick<ExitAutomationActivityEntry, 'kind' | 'message'>): boolean {
+  const msg = entry.message.toLowerCase();
+  if (
+    msg.includes('no exchange position') ||
+    msg.includes('connect bybit') ||
+    msg.includes('no live position') ||
+    msg.includes('no position on this pair')
+  ) {
+    return false;
+  }
+  if (entry.kind === 'assisted_ready') {
+    if (!(msg.includes('submitting') || msg.includes('confirm') || msg.includes('prepared'))) return false;
+  }
+  return true;
+}

@@ -2830,6 +2830,8 @@ export function TradeScreen() {
         setOrderPending('open');
         try {
           let linearReverseAwaitPostSyncClear = false;
+          let openedNewFuturesEntry: { side: 'Buy' | 'Sell'; qty: string; positionIdx: number } | null = null;
+          const userRequestedStopLoss = Number.isFinite(stopParsed) && stopParsed > 0;
           const orderNotionalUsd = applyOpenOrderNotionalBuffer(metrics.positionSizeUsd, {
             minNotionalUsd: minOrderUsd,
           });
@@ -2917,6 +2919,13 @@ export function TradeScreen() {
                 targetParsed,
                 stopParsed,
               );
+              if (userRequestedStopLoss && skippedStop) {
+                flashTradeToast(
+                  'Stop-loss is required for this entry and must be on the correct side of entry. Order was not sent.',
+                  7000,
+                );
+                return false;
+              }
               if (skippedTarget || skippedStop) {
                 flashTradeToast(
                   'Target/stop must be on the correct side of entry for exchange TP/SL — invalid level(s) were not sent.',
@@ -2932,6 +2941,11 @@ export function TradeScreen() {
                       slTriggerBy: futuresTpSlTriggerBy,
                     }
                   : {};
+              openedNewFuturesEntry = {
+                side: sideBybit,
+                qty: qtyStr,
+                positionIdx: 0,
+              };
               await postBybitLinearOrder({
                 symbol: orderSymbol,
                 side: sideBybit,
@@ -2952,31 +2966,80 @@ export function TradeScreen() {
             (Number.isFinite(targetParsed) && targetParsed > 0) ||
             (Number.isFinite(stopParsed) && stopParsed > 0);
           if (market === 'futures' && !isManageMode && hasUserTpSl) {
-              const pos = findBybitLinearOpenLeg(snapshotsAfter, orderSymbol, nextSide);
-              if (pos && Number.isFinite(pos.entryPrice) && pos.entryPrice > 0) {
-                const synced = linearTpSlStringsForOpen(nextSide, pos.entryPrice, targetParsed, stopParsed);
-                if (synced.skippedTarget || synced.skippedStop) {
-                  flashTradeToast(
-                    'TP/SL vs average fill: a level is on the wrong side — adjust in the form and use Apply TP/SL on manage if needed.',
-                    7000,
-                  );
-                }
-                if (synced.tpSl.takeProfit || synced.tpSl.stopLoss) {
-                  try {
-                    await postBybitLinearTradingStop({
-                      symbol: orderSymbol,
-                      positionIdx: pos.positionIdx ?? 0,
-                      takeProfit: synced.tpSl.takeProfit ?? '0',
-                      stopLoss: synced.tpSl.stopLoss ?? '0',
-                      tpTriggerBy: futuresTpSlTriggerBy,
-                      slTriggerBy: futuresTpSlTriggerBy,
-                    });
-                  } catch (e) {
-                    flashTradeToast(formatBybitTradeErrorMessage(e, 'TP/SL sync after fill failed'), 5200);
-                  }
-                  await refreshAccountSnapshots({ silent: true });
-                }
+            const rollbackUnprotectedEntry = async (reason: string, details?: string) => {
+              if (!openedNewFuturesEntry) {
+                flashTradeToast(reason, 7600);
+                return;
               }
+              const closeSide = openedNewFuturesEntry.side === 'Buy' ? 'Sell' : 'Buy';
+              try {
+                await postBybitLinearOrder({
+                  symbol: orderSymbol,
+                  side: closeSide,
+                  qty: openedNewFuturesEntry.qty,
+                  orderType: 'Market',
+                  reduceOnly: true,
+                  positionIdx: openedNewFuturesEntry.positionIdx,
+                });
+                await refreshAccountSnapshots({ silent: true });
+                flashTradeToast(details ? `${reason} ${details}` : reason, 7600);
+              } catch (closeErr) {
+                flashTradeToast(
+                  formatBybitTradeErrorMessage(closeErr, `${reason} Auto-close also failed — close manually now.`),
+                  9000,
+                );
+              }
+            };
+
+            const pos = findBybitLinearOpenLeg(snapshotsAfter, orderSymbol, nextSide);
+            if (!pos || !Number.isFinite(pos.entryPrice) || pos.entryPrice <= 0) {
+              if (userRequestedStopLoss) {
+                await rollbackUnprotectedEntry(
+                  'Stop-loss could not be verified on the new position. Entry was auto-closed.',
+                  'Retry once account sync is stable.',
+                );
+                return false;
+              }
+            } else {
+              const synced = linearTpSlStringsForOpen(nextSide, pos.entryPrice, targetParsed, stopParsed);
+              if (synced.skippedTarget || synced.skippedStop) {
+                flashTradeToast(
+                  'TP/SL vs average fill: a level is on the wrong side — adjust in the form and use Apply TP/SL on manage if needed.',
+                  7000,
+                );
+              }
+              if (userRequestedStopLoss && (synced.skippedStop || !synced.tpSl.stopLoss)) {
+                await rollbackUnprotectedEntry(
+                  'Stop-loss could not be applied against the average fill price. Entry was auto-closed.',
+                );
+                return false;
+              }
+              if (synced.tpSl.takeProfit || synced.tpSl.stopLoss) {
+                try {
+                  await postBybitLinearTradingStop({
+                    symbol: orderSymbol,
+                    positionIdx: pos.positionIdx ?? 0,
+                    takeProfit: synced.tpSl.takeProfit ?? '0',
+                    stopLoss: synced.tpSl.stopLoss ?? '0',
+                    tpTriggerBy: futuresTpSlTriggerBy,
+                    slTriggerBy: futuresTpSlTriggerBy,
+                  });
+                } catch (e) {
+                  if (userRequestedStopLoss) {
+                    await rollbackUnprotectedEntry(
+                      'Stop-loss placement failed on the exchange. Entry was auto-closed.',
+                      `Exchange error: ${e instanceof Error ? e.message : String(e)}`,
+                    );
+                    return false;
+                  }
+                  flashTradeToast(formatBybitTradeErrorMessage(e, 'TP/SL sync after fill failed'), 5200);
+                }
+                await refreshAccountSnapshots({ silent: true });
+              } else if (userRequestedStopLoss) {
+                await rollbackUnprotectedEntry('Stop-loss placement failed on the exchange. Entry was auto-closed.');
+                return false;
+              }
+            }
           }
           return true;
         } catch (e) {

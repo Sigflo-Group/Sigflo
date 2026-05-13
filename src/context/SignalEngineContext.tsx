@@ -43,7 +43,6 @@ import {
   adaptationConfidenceAdjustment,
   createEmptyUserAdaptationStore,
   registerSignalFollow,
-  registerSignalIgnore,
   registerSignalImpression,
   type UserAdaptationStore,
 } from '@/lib/userAdaptation';
@@ -499,8 +498,8 @@ function useSignalEngineValue(): SignalEngineState {
         strategyPersonalityProfile: STRATEGY_PERSONALITY_PROFILES[strategyPersonalityModeRef.current],
         adaptationConfidenceAdjustmentForSetup: (setupType) =>
           adaptationConfidenceAdjustment(userAdaptationRef.current, setupType),
-        adaptiveFeedbackForSetup: (setupType) =>
-          deriveAdaptiveFeedback(signalLifecycleStoreRef.current, symbol, setupType),
+        adaptiveFeedbackForSetup: (setupType, side) =>
+          deriveAdaptiveFeedback(signalLifecycleStoreRef.current, symbol, setupType, side),
       });
       signalLifecycleStoreRef.current = updateSignalLifecycleOutcomes({
         store: signalLifecycleStoreRef.current,
@@ -585,10 +584,11 @@ function useSignalEngineValue(): SignalEngineState {
         !prev ||
         now - prev.emittedAt >= COOLDOWN_MS * (STRATEGY_PERSONALITY_PROFILES[strategyPersonalityModeRef.current]?.cooldownMultiplier ?? 1);
       if (!(cooldownPassed || scoreImproved || priceMoved)) {
-        userAdaptationRef.current = registerSignalIgnore(userAdaptationRef.current, {
-          confidence: signal.signal.confidence ?? signal.signal.setupScore,
-        });
-        persistUserAdaptationStore(userAdaptationRef.current);
+        // Suppress duplicate emit events, but keep live lifecycle/timing state current in UI.
+        signalBookRef.current[key] = signal.signal;
+        lifecycleRef.current[key] = signal.lifecycle;
+        flushAiSnapshot(nextMemory, signal.signal, nextRegimePredictor.output);
+        pushState(mode, wsConnectedRef.current ? 'connected' : 'disconnected');
         return;
       }
       userAdaptationRef.current = registerSignalImpression(userAdaptationRef.current, {

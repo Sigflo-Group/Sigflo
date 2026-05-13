@@ -72,6 +72,7 @@ import { positionMicroInsight } from '@/lib/positionMicroInsight';
 import {
   buildTrackedFallbackSignal,
   deriveMarketStatus,
+  pickBestSignalForPair,
   parseMarketStatusQuery,
   symbolToPair,
 } from '@/lib/marketScannerRows';
@@ -5171,7 +5172,7 @@ function resolveShellSignalForLegacyId(signalId: string, liveSignals: CryptoSign
   };
   const m = map[signalId];
   if (!m) return null;
-  return liveSignals.find((s) => s.pair === m.pair) ?? buildTrackedFallbackSignal(m.pair, m.symbol);
+  return pickBestSignalForPair(liveSignals, m.pair) ?? buildTrackedFallbackSignal(m.pair, m.symbol);
 }
 
 function buildSignalContextFromQuery(params: URLSearchParams, signalId: string): CryptoSignal | null {

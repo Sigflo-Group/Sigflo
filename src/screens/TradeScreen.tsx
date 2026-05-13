@@ -4629,6 +4629,7 @@ export function TradeScreen() {
               timeline={manageTimelineLines}
               actionsDisabled={!!orderPending}
               canMoveStops={Boolean(useRealExecution && exchangePositionForSymbol)}
+              triggeredPairCount={triggeredPairCount}
             />
           ) : null}
           <div className="flex flex-col gap-1">

@@ -3,10 +3,11 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useBotStatuses } from '@/hooks/useBotStatuses';
 import { useSignalEngine } from '@/hooks/useSignalEngine';
 import { baseBots, shortActionLabel, statusTone } from '@/lib/bots';
-import { deriveMarketStatus } from '@/lib/marketScannerRows';
+import { countTriggeredPairs, deriveMarketStatus } from '@/lib/marketScannerRows';
 import { uiSignalStateClasses, uiSignalStateFromMarketStatus, uiSignalStateLabel } from '@/lib/signalState';
 import { feedActionablePath } from '@/config/appRoutes';
 import { buildTradeQueryString } from '@/lib/tradeNavigation';
+import { TriggeredStatusBadge } from '@/components/ui/TriggeredStatusBadge';
 
 export default function BotDetailScreen() {
   const { botId } = useParams<{ botId: string }>();
@@ -19,6 +20,7 @@ export default function BotDetailScreen() {
     if (!bot) return null;
     return signals.find((s) => s.id === bot.signalId) ?? signals[0] ?? null;
   }, [bot, signals]);
+  const triggeredPairCount = useMemo(() => countTriggeredPairs(signals), [signals]);
 
   if (!bot) {
     return (
@@ -57,13 +59,18 @@ export default function BotDetailScreen() {
     <div className="min-h-[100dvh] bg-sigflo-bg pb-6 pt-4">
       <div className="mx-auto w-full max-w-lg space-y-3 px-4">
         <header className="rounded-2xl border border-white/[0.06] bg-sigflo-surface sigflo-panel-texture p-4">
-          <p className="text-[11px] uppercase tracking-[0.14em] text-sigflo-muted">Agent</p>
-          <h1 className="mt-1 text-2xl font-bold tracking-tight text-white">{bot.name}</h1>
-          <p className="text-xs uppercase tracking-[0.12em] text-sigflo-muted">{bot.strategy}</p>
-          <p className={`mt-2 inline-flex items-center gap-1 text-xs font-semibold ${tone.className}`}>
-            <span className={`h-1.5 w-1.5 rounded-full ${status === 'paused' ? 'bg-slate-500' : stateStyle.dot}`} />
-            {tone.label}
-          </p>
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-[11px] uppercase tracking-[0.14em] text-sigflo-muted">Agent</p>
+              <h1 className="mt-1 text-2xl font-bold tracking-tight text-white">{bot.name}</h1>
+              <p className="text-xs uppercase tracking-[0.12em] text-sigflo-muted">{bot.strategy}</p>
+              <p className={`mt-2 inline-flex items-center gap-1 text-xs font-semibold ${tone.className}`}>
+                <span className={`h-1.5 w-1.5 rounded-full ${status === 'paused' ? 'bg-slate-500' : stateStyle.dot}`} />
+                {tone.label}
+              </p>
+            </div>
+            <TriggeredStatusBadge count={triggeredPairCount} />
+          </div>
           <div className="mt-3 grid grid-cols-2 gap-2">
             <Link
               to={`/bots/${bot.id}/focus`}

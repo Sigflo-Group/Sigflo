@@ -5,6 +5,7 @@ import type { PositionBiasStat } from '@/lib/positionBiasStat';
 import type { PositionHealthResult, PositionHealthStatus } from '@/lib/positionHealth';
 import type { ExitAiCoPilotModel } from '@/lib/exitAiCoPilot';
 import { ExitAiCoPilotBlock } from '@/components/trade/exit/ExitAiCoPilotBlock';
+import { TriggeredStatusBadge } from '@/components/ui/TriggeredStatusBadge';
 import { formatQuoteNumber } from '@/lib/formatQuote';
 import type { TradeSide } from '@/types/trade';
 import { playAlertSound } from '@/utils/sound';
@@ -107,6 +108,7 @@ export type ManagePositionControlPanelProps = {
   timeline: string[];
   actionsDisabled: boolean;
   canMoveStops: boolean;
+  triggeredPairCount: number;
 };
 
 export function ManagePositionControlPanel({
@@ -133,6 +135,7 @@ export function ManagePositionControlPanel({
   timeline,
   actionsDisabled,
   canMoveStops,
+  triggeredPairCount,
 }: ManagePositionControlPanelProps) {
   const chipSide: TradeSide =
     isFutures && (exchangeLegSide === 'long' || exchangeLegSide === 'short') ? exchangeLegSide : manageCtx.side;
@@ -198,6 +201,9 @@ export function ManagePositionControlPanel({
           <span className="text-landing-muted">·</span>
           <span className="text-landing-muted">Lev</span>
           <span className="font-mono font-semibold text-landing-text">{leverageLabel}</span>
+        </div>
+        <div className="mt-2">
+          <TriggeredStatusBadge count={triggeredPairCount} className="text-[9px]" />
         </div>
         <dl className="mt-2 grid grid-cols-2 gap-2 text-[11px]">
           <div>

@@ -10,6 +10,7 @@ import {
 import { BotExecutionSheet } from '@/components/bots/BotExecutionSheet';
 import { AdjustRiskSheet, type AdjustRiskPositionSnapshot } from '@/components/trade/AdjustRiskSheet';
 import { TradeChartPanel } from '@/components/trade/TradeChartPanel';
+import { TriggeredStatusBadge } from '@/components/ui/TriggeredStatusBadge';
 import {
   BOT_FOCUS_CHART_PLOT_PX,
   BOT_FOCUS_FULL_CHART_DOCK_GAP_PX,
@@ -240,10 +241,12 @@ function mergeModelWithBotLevels(
 function BotFocusHeader({
   bot,
   cardStatus,
+  triggeredPairCount,
   onBack,
 }: {
   bot: BotAgent;
   cardStatus: ReturnType<typeof resolveBotCardStatus>;
+  triggeredPairCount: number;
   onBack?: () => void;
 }) {
   const personality = botPersonality(bot.personalityId);
@@ -291,6 +294,7 @@ function BotFocusHeader({
             <span className="inline-flex max-w-full rounded-full border border-landing-accent/30 bg-landing-accent-dim/50 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-landing-accent-hi">
               {personality.label}
             </span>
+            <TriggeredStatusBadge count={triggeredPairCount} className="bg-landing-accent-dim/50 text-[9px]" />
           </div>
         </div>
       </div>
@@ -1314,6 +1318,7 @@ export default function BotFocusScreen() {
             <BotFocusHeader
               bot={bot}
               cardStatus={cardStatus}
+              triggeredPairCount={triggeredPairCount}
               onBack={canGoBack ? () => navigate(-1) : undefined}
             />
             <div className="border-t border-landing-border/50 bg-black/20 px-3 py-1.5">

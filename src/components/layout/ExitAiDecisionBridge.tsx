@@ -1,9 +1,6 @@
 import { useEffect, useRef } from 'react';
-<<<<<<< HEAD
 import { isActionableExitAiPopupMessage } from '@/lib/exitAiPopupGate';
-=======
 import { isActionableExitAiPopupActivity } from '@/lib/aiExitAutomation';
->>>>>>> 53ef2818a37cb45118dfe40508c15d7db79a5f8a
 import { emitGlobalAnnouncement } from '@/lib/globalAnnouncements';
 import type { ExitAutomationActivityEntry, ExitAutomationActivityKind } from '@/types/aiExitAutomation';
 
@@ -73,11 +70,8 @@ export function ExitAiDecisionBridge() {
       let dirty = false;
       for (const e of readActivityLog()) {
         if (!POPUP_KINDS.has(e.kind)) continue;
-<<<<<<< HEAD
         if (!isActionableExitAiPopupMessage(e)) continue;
-=======
         if (!isActionableExitAiPopupActivity(e)) continue;
->>>>>>> 53ef2818a37cb45118dfe40508c15d7db79a5f8a
         if (seen.has(e.id)) continue;
         // Do not replay very old events after reload.
         if (e.ts < now - 10 * 60_000) {

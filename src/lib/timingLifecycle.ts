@@ -154,6 +154,10 @@ export function evaluateTimingLifecycle(args: {
   const ema20 = ema20Series.at(-1) ?? close;
   const swingHigh = recentSwingHigh(candles, 40);
   const swingLow = recentSwingLow(candles, 40);
+  // Breakout trigger levels must come from completed history, not the active candle.
+  const priorCandles = candles.length > 1 ? candles.slice(0, -1) : candles;
+  const triggerSwingHigh = recentSwingHigh(priorCandles, 40) || swingHigh;
+  const triggerSwingLow = recentSwingLow(priorCandles, 40) || swingLow;
   const candleRange = (candles.at(-1)?.high ?? close) - (candles.at(-1)?.low ?? close);
   const volume = candles.at(-1)?.volume ?? 0;
   const volumeAvg =
@@ -175,7 +179,7 @@ export function evaluateTimingLifecycle(args: {
     side: args.side,
     close,
     prevClose,
-    triggerLevel: args.side === 'long' ? swingHigh : swingLow,
+    triggerLevel: args.side === 'long' ? triggerSwingHigh : triggerSwingLow,
     atrNow,
     candleRange,
     roomToTargetAtr,
@@ -212,18 +216,34 @@ export function evaluateTimingLifecycle(args: {
 
   const candleIndex = Math.max(0, candles.length - 1);
   const previousTrigger = args.previous?.trigger;
-  const firstValidEntryCandleIndex =
-    previousTrigger?.firstValidEntryCandleIndex != null
-      ? previousTrigger.firstValidEntryCandleIndex
-      : selected.triggerHit
-        ? candleIndex
-        : null;
-  const idealEntryPrice =
-    previousTrigger?.idealEntryPrice != null
-      ? previousTrigger.idealEntryPrice
-      : selected.triggerHit
-        ? close
-        : null;
+  const previousTriggerIndex = previousTrigger?.firstValidEntryCandleIndex ?? null;
+  const previousCandlesSinceTrigger =
+    previousTriggerIndex != null ? Math.max(0, candleIndex - previousTriggerIndex) : null;
+  const shouldRearmTrigger =
+    selected.triggerHit &&
+    (
+      previousTriggerIndex == null ||
+      args.previous?.state === 'extended' ||
+      args.previous?.state === 'expired' ||
+      (previousCandlesSinceTrigger != null && previousCandlesSinceTrigger > config.extendedAfterCandles)
+    );
+  const shouldClearStaleTrigger =
+    !selected.triggerHit &&
+    previousTriggerIndex != null &&
+    (
+      args.previous?.state === 'expired' ||
+      (previousCandlesSinceTrigger != null && previousCandlesSinceTrigger > config.expiredAfterCandles)
+    );
+  const firstValidEntryCandleIndex = shouldRearmTrigger
+    ? candleIndex
+    : shouldClearStaleTrigger
+      ? null
+      : previousTriggerIndex;
+  const idealEntryPrice = shouldRearmTrigger
+    ? close
+    : shouldClearStaleTrigger
+      ? null
+      : (previousTrigger?.idealEntryPrice ?? null);
 
   const candlesSinceTrigger =
     firstValidEntryCandleIndex != null ? Math.max(0, candleIndex - firstValidEntryCandleIndex) : null;
@@ -315,9 +335,12 @@ export function evaluateTimingLifecycle(args: {
   const lifecycle: CandidateLifecycle = {
     state,
     trigger: {
-      triggerType: previousTrigger?.triggerType && previousTrigger.triggerType !== 'unknown'
-        ? previousTrigger.triggerType
-        : selected.triggerType,
+      triggerType:
+        shouldClearStaleTrigger
+          ? 'unknown'
+          : shouldRearmTrigger || !previousTrigger?.triggerType || previousTrigger.triggerType === 'unknown'
+          ? selected.triggerType
+          : previousTrigger.triggerType,
       triggerReason: selected.triggerReason,
       firstValidEntryCandleIndex,
       idealEntryPrice,

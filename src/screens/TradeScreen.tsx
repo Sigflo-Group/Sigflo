@@ -71,6 +71,7 @@ import { computePositionHealth } from '@/lib/positionHealth';
 import { positionMicroInsight } from '@/lib/positionMicroInsight';
 import {
   buildTrackedFallbackSignal,
+  countTriggeredPairs,
   deriveMarketStatus,
   pickBestSignalForPair,
   parseMarketStatusQuery,
@@ -709,6 +710,7 @@ export function TradeScreen() {
   const uiState = uiSignalStateFromMarketStatus(scannerStatus);
   const uiStateStyle = uiSignalStateClasses(uiState);
   const isTriggered = uiState === 'triggered';
+  const triggeredPairCount = useMemo(() => countTriggeredPairs(liveSignals), [liveSignals]);
   const stateAgeLabel = useMemo(
     () => formatElapsedAgo(postedAgoToSeconds(selectedSignal.postedAgo) + tick),
     [selectedSignal.postedAgo, tick],
@@ -4008,6 +4010,9 @@ export function TradeScreen() {
                       </span>
                       <span className="shrink-0 font-normal text-sigflo-muted">· {stateAgeLabel}</span>
                     </span>
+                    <span className="max-w-full truncate font-normal text-sigflo-muted">
+                      Triggered {triggeredPairCount}
+                    </span>
                   </button>
                 ) : (
                   <div
@@ -4023,7 +4028,7 @@ export function TradeScreen() {
                       <span className="truncate">{uiSignalStateLabel(uiState)}</span>
                     </span>
                     <span className="max-w-full truncate font-normal text-sigflo-muted">
-                      {live.mode} · {live.connection}
+                      Triggered {triggeredPairCount} · {live.mode} · {live.connection}
                     </span>
                   </div>
                 )}

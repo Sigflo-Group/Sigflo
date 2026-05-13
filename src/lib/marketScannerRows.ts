@@ -261,6 +261,18 @@ export function deriveMarketStatus(signal: CryptoSignal): MarketRowStatus {
   return 'idle';
 }
 
+/** Distinct pairs currently in triggered state (dedupes multi-setup variants per asset). */
+export function countTriggeredPairs(signals: readonly CryptoSignal[]): number {
+  const triggeredPairs = new Set<string>();
+  for (const signal of signals) {
+    if (deriveMarketStatus(signal) !== 'triggered') continue;
+    const pairKey = signal.pair.trim().toUpperCase();
+    if (!pairKey) continue;
+    triggeredPairs.add(pairKey);
+  }
+  return triggeredPairs.size;
+}
+
 /**
  * User watchlist (Trade header star). Order matches `favoriteBases`.
  * Uses engine signal when present; else ticker-driven synthetic or a neutral shell when offline.

@@ -40,6 +40,7 @@ import {
 } from '@/lib/bots';
 import {
   buildTrackedFallbackSignal,
+  countTriggeredPairs,
   deriveMarketStatus,
   isFeedActionableOpportunity,
   pickBestSignalForPair,
@@ -390,6 +391,7 @@ export default function BotFocusScreen() {
 
   const selectedWatched = selectedPairRaw ?? bot?.watchedPairs[0] ?? 'BTC';
   const linearSymbol = pairToLinearSymbol(selectedWatched);
+  const triggeredPairCount = useMemo(() => countTriggeredPairs(signals), [signals]);
 
   const focusSignal = useMemo(() => {
     if (!bot) return null;
@@ -1234,6 +1236,7 @@ export default function BotFocusScreen() {
             bot={bot}
             onBack={() => setFullChartMode(false)}
             pairLabel={chartModel.pair}
+            triggeredPairCount={triggeredPairCount}
             onOpenTradeWorkspace={() => {
               if (focusSignal) navigate(`/trade?${buildTradeQueryString(focusSignal, { marketStatus })}&reviewTop=1`);
             }}

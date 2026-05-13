@@ -71,6 +71,7 @@ import { computePositionHealth } from '@/lib/positionHealth';
 import { positionMicroInsight } from '@/lib/positionMicroInsight';
 import {
   buildTrackedFallbackSignal,
+  countTriggeredPairs,
   deriveMarketStatus,
   pickBestSignalForPair,
   parseMarketStatusQuery,
@@ -255,6 +256,7 @@ const SYMBOL_MIN_NOTIONAL_USD: Record<string, number> = {
   BTCUSDT: 5,
   ETHUSDT: 5,
 };
+const EXIT_AI_AUTO_TRIM_MIN_POSITION_AGE_MS = 30_000;
 
 function resolveMinOrderUsd(symbol: string, _market: MarketMode): number {
   const s = symbol.toUpperCase();
@@ -709,6 +711,7 @@ export function TradeScreen() {
   const uiState = uiSignalStateFromMarketStatus(scannerStatus);
   const uiStateStyle = uiSignalStateClasses(uiState);
   const isTriggered = uiState === 'triggered';
+  const triggeredPairCount = useMemo(() => countTriggeredPairs(liveSignals), [liveSignals]);
   const stateAgeLabel = useMemo(
     () => formatElapsedAgo(postedAgoToSeconds(selectedSignal.postedAgo) + tick),
     [selectedSignal.postedAgo, tick],
@@ -3471,6 +3474,22 @@ export function TradeScreen() {
     const canAutoExit =
       (market === 'futures' && exchangePositionForSymbol != null) ||
       (market === 'spot' && exchangeSpotFreeBaseQty != null && exchangeSpotFreeBaseQty > 0);
+    const openedAtMs =
+      primaryChartOpenPosition?.openedAtMs != null && Number.isFinite(primaryChartOpenPosition.openedAtMs)
+        ? primaryChartOpenPosition.openedAtMs
+        : positionOpenedAtMs;
+    const withinAutoTrimWarmup =
+      curr === 'trim' &&
+      openedAtMs != null &&
+      Number.isFinite(openedAtMs) &&
+      openedAtMs > 0 &&
+      Date.now() - openedAtMs < EXIT_AI_AUTO_TRIM_MIN_POSITION_AGE_MS;
+
+    if (withinAutoTrimWarmup) {
+      // Seed state during post-open noise so Auto mode doesn't immediately trim right after entry fill.
+      prevAutoStateRef.current = curr;
+      return;
+    }
 
     let blockedAdvancePrev = false;
     if (prev !== null && prev !== curr) {
@@ -3537,6 +3556,8 @@ export function TradeScreen() {
     onActiveCloseAllConfirm,
     onActivePartialClose,
     orderPending,
+    positionOpenedAtMs,
+    primaryChartOpenPosition?.openedAtMs,
     useRealExecution,
   ]);
 
@@ -4008,6 +4029,9 @@ export function TradeScreen() {
                       </span>
                       <span className="shrink-0 font-normal text-sigflo-muted">· {stateAgeLabel}</span>
                     </span>
+                    <span className="max-w-full truncate font-normal text-sigflo-muted">
+                      Triggered {triggeredPairCount}
+                    </span>
                   </button>
                 ) : (
                   <div
@@ -4023,7 +4047,7 @@ export function TradeScreen() {
                       <span className="truncate">{uiSignalStateLabel(uiState)}</span>
                     </span>
                     <span className="max-w-full truncate font-normal text-sigflo-muted">
-                      {live.mode} · {live.connection}
+                      Triggered {triggeredPairCount} · {live.mode} · {live.connection}
                     </span>
                   </div>
                 )}

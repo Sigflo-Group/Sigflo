@@ -3,7 +3,7 @@ import { feedActionablePath, getFeedRoute } from '@/config/appRoutes';
 import { useCanGoBack } from '@/hooks/useCanGoBack';
 import { useSignalEngine } from '@/hooks/useSignalEngine';
 import { emitGlobalAnnouncement } from '@/lib/globalAnnouncements';
-import { isFeedActionableOpportunity } from '@/lib/marketScannerRows';
+import { countTriggeredPairs } from '@/lib/marketScannerRows';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 
 /** Main hub screens: show shared tagline beside “Sigflo” in the top bar. */
@@ -25,8 +25,7 @@ export function AppTopBar() {
   const p = pathname.replace(/\/$/, '') || '/';
   const showBrandingLogo = p !== '/trade';
   const { signals, loading, proIntelligenceMode, setProIntelligenceMode } = useSignalEngine();
-  /** Must match Feed → Actionable filter (`isFeedActionableOpportunity`), since the badge links there. */
-  const actionableCount = signals.filter(isFeedActionableOpportunity).length;
+  const triggeredPairCount = countTriggeredPairs(signals);
 
   return (
     <header className="sticky top-0 z-30 -mx-4 shrink-0 border-b border-white/[0.06] bg-sigflo-bg/80 px-4 pb-3 pt-[calc(env(safe-area-inset-top,0px)+0.75rem)] backdrop-blur-xl">
@@ -70,19 +69,13 @@ export function AppTopBar() {
         <Link
           to={feedActionablePath()}
           className="inline-flex min-h-[2.75rem] shrink-0 items-center gap-1.5 rounded-full border border-sigflo-accent/25 bg-sigflo-accentDim px-3 py-2 text-[11px] font-bold uppercase leading-none tracking-wider text-sigflo-accent transition hover:border-sigflo-accent/40 hover:bg-sigflo-accent/14 sm:min-h-0 sm:h-7 sm:px-2.5 sm:py-0 sm:text-[10px]"
-          aria-label="Open feed filtered to actionable setups"
+          aria-label="Open feed and view triggered setups"
         >
           <span className="relative flex h-1.5 w-1.5">
             <span className="absolute inline-flex h-full w-full animate-pulse-dot rounded-full bg-sigflo-accent [animation-duration:1.8s]" />
             <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-sigflo-accent" />
           </span>
-          {loading
-            ? 'Syncing...'
-            : actionableCount === 0
-              ? '0 setups'
-              : actionableCount === 1
-                ? '1 setup'
-                : `${actionableCount} setups`}
+          {loading ? 'Syncing...' : `Triggered ${triggeredPairCount}`}
         </Link>
         <button
           type="button"

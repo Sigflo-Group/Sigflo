@@ -246,17 +246,17 @@ export function ManagePositionControlPanel({
 
       <section>
         <p className="mb-1.5 text-[9px] font-bold uppercase tracking-[0.16em] text-landing-muted">Quick actions</p>
-        {onAdjustRisk ? (
-          <button
-            type="button"
-            disabled={actionsDisabled}
-            onClick={onAdjustRisk}
-            className="mb-2 min-h-[44px] w-full rounded-xl border border-landing-accent/35 bg-landing-accent-dim/40 px-3 py-3 text-sm font-bold leading-tight text-landing-accent-hi transition hover:border-landing-accent/50 active:scale-[0.99] disabled:opacity-45 sm:min-h-[40px] sm:py-2.5 sm:text-[11px]"
-          >
-            Adjust risk
-          </button>
-        ) : null}
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+        <div className="grid grid-cols-2 gap-2">
+          {onAdjustRisk ? (
+            <button
+              type="button"
+              disabled={actionsDisabled}
+              onClick={onAdjustRisk}
+              className="min-h-[44px] rounded-xl border border-landing-accent/35 bg-landing-accent-dim/40 px-3 py-3 text-sm font-bold leading-tight text-landing-accent-hi transition hover:border-landing-accent/50 active:scale-[0.99] disabled:opacity-45 sm:min-h-[40px] sm:py-2.5 sm:text-[11px]"
+            >
+              Adjust risk
+            </button>
+          ) : null}
           <button
             type="button"
             disabled={actionsDisabled}
@@ -294,20 +294,20 @@ export function ManagePositionControlPanel({
               type="button"
               disabled={actionsDisabled || !isFutures}
               onClick={onReversePosition}
-              className="min-h-[44px] rounded-xl border border-amber-300/35 bg-amber-500/12 px-3 py-3 text-sm font-bold leading-tight text-amber-100 transition hover:border-amber-200/65 hover:bg-amber-500/24 hover:text-amber-50 active:scale-[0.99] disabled:opacity-45 sm:col-span-2 sm:min-h-[40px] sm:py-2.5 sm:text-[11px]"
+              className="min-h-[44px] rounded-xl border border-amber-300/35 bg-amber-500/12 px-3 py-3 text-sm font-bold leading-tight text-amber-100 transition hover:border-amber-200/65 hover:bg-amber-500/24 hover:text-amber-50 active:scale-[0.99] disabled:opacity-45 sm:min-h-[40px] sm:py-2.5 sm:text-[11px]"
             >
               Reverse position
             </button>
           ) : null}
+          <button
+            type="button"
+            disabled={actionsDisabled}
+            onClick={onAddToPosition}
+            className="min-h-[46px] rounded-xl bg-landing-accent px-3 py-3.5 text-[15px] font-bold leading-tight text-landing-bg shadow-landing-glow-sm transition hover:brightness-110 active:scale-[0.99] disabled:opacity-45 sm:min-h-[42px] sm:py-3 sm:text-sm"
+          >
+            Add to position
+          </button>
         </div>
-        <button
-          type="button"
-          disabled={actionsDisabled}
-          onClick={onAddToPosition}
-          className="mt-2 min-h-[46px] w-full rounded-xl bg-landing-accent px-3 py-3.5 text-[15px] font-bold leading-tight text-landing-bg shadow-landing-glow-sm transition hover:brightness-110 active:scale-[0.99] disabled:opacity-45 sm:min-h-[42px] sm:py-3 sm:text-sm"
-        >
-          Add to position
-        </button>
       </section>
 
       <ExitAiCoPilotBlock

@@ -10,10 +10,13 @@ import PriorityOpportunityCard from '@/components/bots/PriorityOpportunityCard';
 import ReadyAlertSettings from '@/components/bots/ReadyAlertSettings';
 import ScanningStateCard from '@/components/bots/ScanningStateCard';
 import SystemEventRow from '@/components/bots/SystemEventRow';
+import { TriggeredStatusBadge } from '@/components/ui/TriggeredStatusBadge';
 import { mockCommandBar } from '@/data/mockCommandBar';
 import { mockEngines } from '@/data/mockEngines';
 import { mockSystemEvents } from '@/data/mockSystemEvents';
+import { useSignalEngine } from '@/hooks/useSignalEngine';
 import { buildLatestActivityLine } from '@/lib/botsOpportunityIntel';
+import { countTriggeredPairs } from '@/lib/marketScannerRows';
 import { getAlertPreferences, saveAlertPreferences } from '@/services/alerts/alertPreferences';
 import { getOpportunityRepository, listOpportunities } from '@/services/opportunities';
 import { getPositionRepository, sigfloActivePositionFromExchange, sigfloActiveToStripPosition } from '@/services/positions';
@@ -98,6 +101,7 @@ function symbolToDisplayPair(symbol: string): string {
 
 export default function BotsScreen() {
   const navigate = useNavigate();
+  const { signals, loading: signalsLoading } = useSignalEngine();
   const [searchParams, setSearchParams] = useSearchParams();
   const liveSectionRef = useRef<HTMLDivElement>(null);
   const formingSectionRef = useRef<HTMLElement>(null);
@@ -118,6 +122,7 @@ export default function BotsScreen() {
   const [expandedOpportunityId, setExpandedOpportunityId] = useState<string | null>(null);
   const [positionRevision, setPositionRevision] = useState(0);
   const [paperTradeToast, setPaperTradeToast] = useState<string | null>(null);
+  const triggeredPairCount = useMemo(() => countTriggeredPairs(signals), [signals]);
   const { highlightIds, commandBarFlashKey, setupReadyBanner } = useSetupAlerts(opportunities);
   const { items: accountSnapshots } = useAccountSnapshot();
   const riskSettings = useRiskSettings();
@@ -455,6 +460,12 @@ export default function BotsScreen() {
   return (
     <div className="min-h-[100dvh] bg-[#050505] pb-24 pt-4">
       <div className="mx-auto w-full max-w-lg space-y-4 px-4">
+        <motion.div custom={0} initial="hidden" animate="visible" variants={sectionVariants}>
+          <div className="flex items-center justify-between gap-2 rounded-2xl border border-white/[0.06] bg-sigflo-surface sigflo-panel-texture px-3 py-2.5">
+            <h1 className="text-sm font-bold uppercase tracking-[0.14em] text-sigflo-text">Bots</h1>
+            <TriggeredStatusBadge count={triggeredPairCount} loading={signalsLoading} />
+          </div>
+        </motion.div>
         <motion.div custom={0} initial="hidden" animate="visible" variants={sectionVariants}>
           <AutomationCommandBar
             model={commandBarModel}

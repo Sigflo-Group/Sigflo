@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
+import { TriggeredStatusBadge } from '@/components/ui/TriggeredStatusBadge';
 import { useTradingControlMode } from '@/context/TradingControlModeContext';
+import { useSignalEngine } from '@/hooks/useSignalEngine';
 import { useBotUserConfig } from '@/hooks/useBotUserConfig';
 import { useExitAutomation } from '@/hooks/useExitAutomation';
 import {
@@ -12,6 +14,7 @@ import {
   type BotUserRiskLevel,
 } from '@/lib/botUserConfig';
 import { baseBots, botPersonality, type BotPersonalityId } from '@/lib/bots';
+import { countTriggeredPairs } from '@/lib/marketScannerRows';
 import {
   TRADING_AUTO_EXECUTION_ACTIVE,
   TRADING_CONTROL_MODE_ORDER,
@@ -78,6 +81,7 @@ export default function BotSettingsScreen() {
   const { botId } = useParams<{ botId: string }>();
   const navigate = useNavigate();
   const { configById, updateBotConfig } = useBotUserConfig();
+  const { signals, loading: signalsLoading } = useSignalEngine();
   const { mode: tradingMode, setMode: setTradingMode } = useTradingControlMode();
   const exitAuto = useExitAutomation('bot-settings');
 
@@ -94,6 +98,7 @@ export default function BotSettingsScreen() {
   const [toast, setToast] = useState<string | null>(null);
   const toastTimerRef = useRef<number>(0);
   const [extraMarkets, setExtraMarkets] = useState('');
+  const triggeredPairCount = useMemo(() => countTriggeredPairs(signals), [signals]);
 
   useEffect(() => {
     if (!effective) return;
@@ -217,6 +222,7 @@ export default function BotSettingsScreen() {
             <h1 className="mt-2 text-xl font-bold tracking-tight text-white">Bot settings</h1>
             <p className="mt-1 text-xs text-sigflo-muted">Fine-tune how this agent behaves. Changes apply instantly.</p>
           </div>
+          <TriggeredStatusBadge count={triggeredPairCount} loading={signalsLoading} />
           <Link
             to={`/bots/${bot.id}/focus`}
             className="shrink-0 rounded-xl border border-white/[0.1] bg-white/[0.04] px-3 py-2 text-[11px] font-semibold text-cyan-100/90"

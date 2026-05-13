@@ -5,8 +5,11 @@ import { EngineFocusCard } from '@/components/engines/EngineFocusCard';
 import { EngineHeaderCard } from '@/components/engines/EngineHeaderCard';
 import { EngineJournal } from '@/components/engines/EngineJournal';
 import { EngineOpportunityList } from '@/components/engines/EngineOpportunityList';
+import { TriggeredStatusBadge } from '@/components/ui/TriggeredStatusBadge';
 import { mockEngines } from '@/data/mockEngines';
 import { mockSystemEvents } from '@/data/mockSystemEvents';
+import { useSignalEngine } from '@/hooks/useSignalEngine';
+import { countTriggeredPairs } from '@/lib/marketScannerRows';
 import { parseSourceEngineFromOpportunityId } from '@/lib/tradeReviewCockpit';
 import { getAlertPreferences } from '@/services/alerts/alertPreferences';
 import { playUiTapSound } from '@/utils/sound';
@@ -18,11 +21,13 @@ import { sortOpportunities } from '@/types/botSystem';
 export default function EngineDetailScreen() {
   const { engineId } = useParams<{ engineId: string }>();
   const navigate = useNavigate();
+  const { signals, loading: signalsLoading } = useSignalEngine();
   const [opportunities, setOpportunities] = useState<OpportunityCardModel[]>([]);
   const [oppLoading, setOppLoading] = useState(true);
   const [isPausedLocally, setIsPausedLocally] = useState(false);
   const [localJournalEvents, setLocalJournalEvents] = useState<SystemEventModel[]>([]);
   const [alertPrefs, setAlertPrefs] = useState<AlertPreference>(() => getAlertPreferences());
+  const triggeredPairCount = useMemo(() => countTriggeredPairs(signals), [signals]);
 
   const engine = useMemo(
     () => (engineId ? mockEngines.find((e) => e.engineId === engineId) ?? null : null),
@@ -147,7 +152,10 @@ export default function EngineDetailScreen() {
   return (
     <div className="min-h-[100dvh] bg-[#050505] pb-28 pt-3">
       <div className="mx-auto w-full max-w-md space-y-3 px-3">
-        <p className="text-[10px] font-medium text-zinc-600">Engine intelligence · demo</p>
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-[10px] font-medium text-zinc-600">Engine intelligence · demo</p>
+          <TriggeredStatusBadge count={triggeredPairCount} loading={signalsLoading} />
+        </div>
 
         <EngineHeaderCard engine={engine} isPausedLocally={isPausedLocally} />
 

@@ -109,6 +109,10 @@ function signalPairToLinearKey(pair: string): string {
   return `${clean || 'BTC'}USDT`;
 }
 
+function signalEmitKey(symbol: string, setupType: string, side: 'long' | 'short'): string {
+  return `${symbol}:${setupType}:${side}`;
+}
+
 function wsTickerToSymbolTicker(t: BybitWsTicker): SymbolTicker {
   return {
     symbol: t.symbol,
@@ -476,10 +480,6 @@ function useSignalEngineValue(): SignalEngineState {
       const symbolCandles = candlesRef.current[symbol];
       const ticker = tickersRef.current[symbol];
       if (!symbolCandles || !ticker || symbolCandles['15'].length < 60) return;
-      const priorLifecycle =
-        lifecycleRef.current[`${symbol}:breakout`] ??
-        lifecycleRef.current[`${symbol}:pullback`] ??
-        lifecycleRef.current[`${symbol}:overextended`];
       const btc15 = candlesRef.current.BTCUSDT?.['15'] ?? [];
       const eth15 = candlesRef.current.ETHUSDT?.['15'] ?? [];
       if (btc15.length < 60 || eth15.length < 60) return;
@@ -491,7 +491,9 @@ function useSignalEngineValue(): SignalEngineState {
         candles15m: symbolCandles['15'],
         candles5m: symbolCandles['5'],
         regime,
-        previousLifecycle: priorLifecycle,
+        previousLifecycleForSetupSide: (setupType, side) =>
+          lifecycleRef.current[signalEmitKey(symbol, setupType, side)] ??
+          lifecycleRef.current[`${symbol}:${setupType}`],
         previousMarketMemory: marketMemoryRef.current[symbol],
         strategyPersonalityMode: strategyPersonalityModeRef.current,
         strategyPersonalityProfile: STRATEGY_PERSONALITY_PROFILES[strategyPersonalityModeRef.current],
@@ -572,7 +574,7 @@ function useSignalEngineValue(): SignalEngineState {
       );
 
       if (!signal) return;
-      const key = `${symbol}:${signal.signal.setupType}`;
+      const key = signalEmitKey(symbol, signal.signal.setupType, signal.signal.side);
       const now = Date.now();
       const prev = lastSignalRef.current[key];
       const atrNow = Math.max(0.000001, atr(symbolCandles['15'], 14).at(-1) ?? 1);

@@ -126,15 +126,12 @@ export function useExitAutomation(scopeKey: string) {
         const next = appendActivityEntry(prev, entry);
         persistActivity(next);
         const added = next[next.length - 1];
-<<<<<<< HEAD
         if (added && EXIT_AI_POPUP_KINDS.has(added.kind) && isActionableExitAiPopupMessage(added)) {
-=======
         if (added && EXIT_AI_POPUP_KINDS.has(added.kind) && isActionableExitAiPopupActivity(added)) {
           const now = Date.now();
           const last = popupLastEmittedAtRef.current[added.kind] ?? 0;
           if (now - last < EXIT_AI_POPUP_COOLDOWN_MS) return next;
           popupLastEmittedAtRef.current[added.kind] = now;
->>>>>>> 53ef2818a37cb45118dfe40508c15d7db79a5f8a
           queueMicrotask(() => {
             emitGlobalAnnouncement({
               id: added.id,

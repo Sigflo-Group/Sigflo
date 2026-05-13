@@ -216,18 +216,23 @@ export function evaluateTimingLifecycle(args: {
 
   const candleIndex = Math.max(0, candles.length - 1);
   const previousTrigger = args.previous?.trigger;
-  const firstValidEntryCandleIndex =
-    previousTrigger?.firstValidEntryCandleIndex != null
-      ? previousTrigger.firstValidEntryCandleIndex
-      : selected.triggerHit
-        ? candleIndex
-        : null;
-  const idealEntryPrice =
-    previousTrigger?.idealEntryPrice != null
-      ? previousTrigger.idealEntryPrice
-      : selected.triggerHit
-        ? close
-        : null;
+  const previousTriggerIndex = previousTrigger?.firstValidEntryCandleIndex ?? null;
+  const previousCandlesSinceTrigger =
+    previousTriggerIndex != null ? Math.max(0, candleIndex - previousTriggerIndex) : null;
+  const shouldRearmTrigger =
+    selected.triggerHit &&
+    (
+      previousTriggerIndex == null ||
+      args.previous?.state === 'extended' ||
+      args.previous?.state === 'expired' ||
+      (previousCandlesSinceTrigger != null && previousCandlesSinceTrigger > config.extendedAfterCandles)
+    );
+  const firstValidEntryCandleIndex = shouldRearmTrigger
+    ? candleIndex
+    : previousTriggerIndex;
+  const idealEntryPrice = shouldRearmTrigger
+    ? close
+    : (previousTrigger?.idealEntryPrice ?? null);
 
   const candlesSinceTrigger =
     firstValidEntryCandleIndex != null ? Math.max(0, candleIndex - firstValidEntryCandleIndex) : null;
@@ -319,9 +324,10 @@ export function evaluateTimingLifecycle(args: {
   const lifecycle: CandidateLifecycle = {
     state,
     trigger: {
-      triggerType: previousTrigger?.triggerType && previousTrigger.triggerType !== 'unknown'
-        ? previousTrigger.triggerType
-        : selected.triggerType,
+      triggerType:
+        shouldRearmTrigger || !previousTrigger?.triggerType || previousTrigger.triggerType === 'unknown'
+          ? selected.triggerType
+          : previousTrigger.triggerType,
       triggerReason: selected.triggerReason,
       firstValidEntryCandleIndex,
       idealEntryPrice,

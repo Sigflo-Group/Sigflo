@@ -1338,6 +1338,23 @@ export function TradeScreen() {
 
   const timingInPosition = exchangeOpenLegForTiming != null;
 
+  /** Live exchange (or spot) leg exists — auto-submit is possible. */
+  const exitAutoCanExchangeExecute = useMemo(
+    () =>
+      (market === 'futures' && exchangePositionForSymbol != null) ||
+      (market === 'spot' && exchangeSpotFreeBaseQty != null && exchangeSpotFreeBaseQty > 0),
+    [exchangePositionForSymbol, exchangeSpotFreeBaseQty, market],
+  );
+
+  /** Still in a position (live, demo, or manage) — avoid Exit AI decision spam after flat. */
+  const shouldSurfaceAutoExitPopups = useMemo(
+    () =>
+      exitAutoCanExchangeExecute ||
+      hasActiveTradePosition ||
+      (isManageMode && hasManageOpenExposure),
+    [exitAutoCanExchangeExecute, hasActiveTradePosition, hasManageOpenExposure, isManageMode],
+  );
+
   const tradeTimingScopeKey = `${selectedSignal.id}:${mergedModel.pair}`;
   const [triggerLock, setTriggerLock] = useState<TriggerLockSnapshot | null>(null);
 
@@ -2427,14 +2444,23 @@ export function TradeScreen() {
     const pnl = exitFlow.pnlPct;
     const prev = prevPnlForSafeguardRef.current;
     const crossed = prev !== null && prev > -maxL && pnl <= -maxL;
-    if (crossed) {
+    const hasPositionForSafeguard =
+      hasActiveTradePosition || (isManageMode && hasManageOpenExposure);
+    if (crossed && hasPositionForSafeguard) {
       exitAuto.pushActivity({
         kind: 'safeguard',
         message: 'Max loss safeguard crossed — favoring protective exit.',
       });
     }
     prevPnlForSafeguardRef.current = pnl;
-  }, [exitFlow, exitAuto.safeguards.maxLossPct, exitAuto.pushActivity]);
+  }, [
+    exitFlow,
+    exitAuto.safeguards.maxLossPct,
+    exitAuto.pushActivity,
+    hasActiveTradePosition,
+    hasManageOpenExposure,
+    isManageMode,
+  ]);
 
   const flashTradeToast = useCallback(
     (message: string, durationMs = 2600, cta?: { label: string; href: string } | null) => {
@@ -3404,28 +3430,28 @@ export function TradeScreen() {
     }
     const curr = exitFlow.effective.state;
     const prev = prevAutoStateRef.current;
-    const canAutoExit =
-      (market === 'futures' && exchangePositionForSymbol != null) ||
-      (market === 'spot' && exchangeSpotFreeBaseQty != null && exchangeSpotFreeBaseQty > 0);
 
     let blockedAdvancePrev = false;
     if (prev !== null && prev !== curr) {
-      emitGlobalAnnouncement({
-        id: `auto-exit-decision-${Date.now()}`,
-        kind: 'ai_action',
-        title: 'Auto Exit AI Decision',
-        subtitle: `${prev.toUpperCase()} → ${curr.toUpperCase()} near $${formatQuoteNumber(exitFlow.lastPrice)} · ${exitFlow.nextPlanned}`,
-      });
       const trimEdge = curr === 'trim' && prev === 'hold' && exitAuto.safeguards.allowPartialExits;
       const exitEdge =
         curr === 'exit' &&
         exitAuto.safeguards.allowFullAutoClose &&
         (prev === 'hold' || prev === 'trim');
 
+      if ((trimEdge || exitEdge) && shouldSurfaceAutoExitPopups) {
+        emitGlobalAnnouncement({
+          id: `auto-exit-decision-${Date.now()}`,
+          kind: 'ai_action',
+          title: 'Auto Exit AI Decision',
+          subtitle: `${prev.toUpperCase()} → ${curr.toUpperCase()} near $${formatQuoteNumber(exitFlow.lastPrice)} · ${exitFlow.nextPlanned}`,
+        });
+      }
+
       if (trimEdge || exitEdge) {
         if (orderPending) {
           blockedAdvancePrev = true;
-        } else if (useRealExecution && canAutoExit) {
+        } else if (useRealExecution && exitAutoCanExchangeExecute) {
           if (trimEdge) {
             exitAuto.pushActivity({
               kind: 'auto_trim',
@@ -3442,14 +3468,14 @@ export function TradeScreen() {
         } else {
           if (trimEdge) {
             exitAuto.pushActivity({
-              kind: 'auto_trim',
+              kind: 'exit_state',
               message: useRealExecution
                 ? `Trim signal near $${formatQuoteNumber(exitFlow.lastPrice)} — no exchange position on this pair.`
                 : `Trim signal near $${formatQuoteNumber(exitFlow.lastPrice)} — connect Bybit in Account to auto-execute.`,
             });
           } else if (exitEdge) {
             exitAuto.pushActivity({
-              kind: 'auto_close',
+              kind: 'exit_state',
               message: useRealExecution
                 ? `Exit signal near $${formatQuoteNumber(exitFlow.lastPrice)} — no exchange position on this pair.`
                 : `Exit signal near $${formatQuoteNumber(exitFlow.lastPrice)} — connect Bybit in Account to auto-execute.`,
@@ -3474,6 +3500,8 @@ export function TradeScreen() {
     onActivePartialClose,
     orderPending,
     useRealExecution,
+    shouldSurfaceAutoExitPopups,
+    exitAutoCanExchangeExecute,
   ]);
 
   const onClosePosition = useCallback(() => {
@@ -4468,7 +4496,7 @@ export function TradeScreen() {
                 executionQuality={executionQuality}
               />
             ) : null}
-            {!isManageMode && !isBotsReviewCockpit ? (
+            {!isManageMode && !isBotsReviewCockpit && proIntelligenceMode ? (
               <WhyThisTradePanel model={whyThisTradeModel} />
             ) : null}
             {!isManageMode && !isBotsReviewCockpit ? (

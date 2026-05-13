@@ -4,6 +4,7 @@ import {
   appendActivityEntry,
   parseActivityLogJson,
 } from '@/lib/aiExitAutomation';
+import { isActionableExitAiPopupMessage } from '@/lib/exitAiPopupGate';
 import { emitGlobalAnnouncement } from '@/lib/globalAnnouncements';
 import { DEFAULT_CUSTOM_STRATEGY_THRESHOLDS, sanitizeExitStrategyThresholds } from '@/lib/exitGuidance';
 import type {
@@ -122,7 +123,7 @@ export function useExitAutomation(scopeKey: string) {
         const next = appendActivityEntry(prev, entry);
         persistActivity(next);
         const added = next[next.length - 1];
-        if (added && EXIT_AI_POPUP_KINDS.has(added.kind)) {
+        if (added && EXIT_AI_POPUP_KINDS.has(added.kind) && isActionableExitAiPopupMessage(added)) {
           queueMicrotask(() => {
             emitGlobalAnnouncement({
               id: added.id,

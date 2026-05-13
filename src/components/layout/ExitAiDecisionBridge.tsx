@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { isActionableExitAiPopupMessage } from '@/lib/exitAiPopupGate';
 import { emitGlobalAnnouncement } from '@/lib/globalAnnouncements';
 import type { ExitAutomationActivityEntry, ExitAutomationActivityKind } from '@/types/aiExitAutomation';
 
@@ -10,24 +11,6 @@ const POPUP_KINDS: ReadonlySet<ExitAutomationActivityKind> = new Set([
   'auto_close',
   'safeguard',
 ]);
-
-function isActionablePopupMessage(entry: ExitAutomationActivityEntry): boolean {
-  const msg = entry.message.toLowerCase();
-  // Do not surface blocking “decision” popups for informational/no-position logs.
-  if (
-    msg.includes('no exchange position') ||
-    msg.includes('connect bybit') ||
-    msg.includes('no live position') ||
-    msg.includes('no position on this pair')
-  ) {
-    return false;
-  }
-  // Assisted prompts should represent an actionable confirm step, not stale/non-actionable chatter.
-  if (entry.kind === 'assisted_ready') {
-    if (!(msg.includes('submitting') || msg.includes('confirm') || msg.includes('prepared'))) return false;
-  }
-  return true;
-}
 
 function readActivityLog(): ExitAutomationActivityEntry[] {
   try {
@@ -86,7 +69,7 @@ export function ExitAiDecisionBridge() {
       let dirty = false;
       for (const e of readActivityLog()) {
         if (!POPUP_KINDS.has(e.kind)) continue;
-        if (!isActionablePopupMessage(e)) continue;
+        if (!isActionableExitAiPopupMessage(e)) continue;
         if (seen.has(e.id)) continue;
         // Do not replay very old events after reload.
         if (e.ts < now - 10 * 60_000) {

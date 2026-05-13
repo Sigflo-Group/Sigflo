@@ -346,10 +346,13 @@ function useSignalEngineValue(): SignalEngineState {
     },
     [advancedLayout, proIntelligenceMode],
   );
-  const isAdvancedPanelExpanded = useCallback(
-    (panelId: string) => advancedPanelsExpanded[panelId] ?? true,
-    [advancedPanelsExpanded],
-  );
+  const isAdvancedPanelExpanded = useCallback((panelId: string) => {
+    const v = advancedPanelsExpanded[panelId];
+    if (v !== undefined) return v;
+    // Market conditions panel: start collapsed until the user opens it (preference persists once toggled).
+    if (panelId === 'early-regime-warning') return false;
+    return true;
+  }, [advancedPanelsExpanded]);
   const lastSignalRef = useRef<Record<string, { emittedAt: number; setupScore: number; refPrice: number; atr: number }>>({});
   const signalBookRef = useRef<Record<string, CryptoSignal>>({});
   const lifecycleRef = useRef<Record<string, CandidateLifecycle>>({});

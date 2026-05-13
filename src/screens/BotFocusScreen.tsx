@@ -42,6 +42,7 @@ import {
   buildTrackedFallbackSignal,
   deriveMarketStatus,
   isFeedActionableOpportunity,
+  pickBestSignalForPair,
 } from '@/lib/marketScannerRows';
 import {
   SIGFLO_CHART_INTERVAL_EVENT,
@@ -395,7 +396,7 @@ export default function BotFocusScreen() {
     const watchBase = pairFromWatched(selectedWatched);
     const sym = pairToLinearSymbol(selectedWatched);
     const byId = signals.find((s) => s.id === bot.signalId);
-    const forPair = signals.find((s) => pairFromWatched(s.pair) === watchBase);
+    const forPair = pickBestSignalForPair(signals, watchBase);
     if (byId && pairFromWatched(byId.pair) === watchBase) return byId;
     if (forPair) return forPair;
     return buildTrackedFallbackSignal(watchBase, sym);

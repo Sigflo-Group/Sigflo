@@ -33,8 +33,8 @@ const STALE_SIGNAL_AFTER_MS = 18 * 60 * 60 * 1000;
 const STALE_SIGNAL_AFTER_15M_CANDLES = 72;
 const CANDLE_15M_MS = 15 * 60 * 1000;
 
-function keyOf(symbol: string, setupType: SignalSetupType): string {
-  return `${symbol}:${setupType}`;
+function keyOf(symbol: string, setupType: SignalSetupType, side?: 'long' | 'short'): string {
+  return side ? `${symbol}:${setupType}:${side}` : `${symbol}:${setupType}`;
 }
 
 function signedMove(event: SignalLifecycleEvent, price: number): number {
@@ -107,7 +107,7 @@ function aggregateFeedback(events: SignalLifecycleEvent[]): Record<string, Feedb
   const map: Record<string, FeedbackBySetup> = {};
   for (const e of events) {
     if (e.outcome == null) continue;
-    const key = keyOf(e.symbol, e.setupType);
+    const key = keyOf(e.symbol, e.setupType, e.bias);
     const row = map[key] ?? { samples: 0, wins: 0, losses: 0, neutrals: 0, fakeouts: 0, avgQuality: 0 };
     row.samples += 1;
     if (e.outcome === 'win') row.wins += 1;
@@ -227,7 +227,8 @@ export function updateSignalLifecycleOutcomes(args: {
   if (recentCompleted.length >= 4) {
     const losses = recentCompleted.filter((e) => e.outcome === 'loss').length;
     const fakeouts = recentCompleted.filter((e) => e.notes.some((n) => n.toLowerCase().includes('fakeout'))).length;
-    const key = keyOf(args.symbol, recentCompleted.at(-1)!.setupType);
+    const latest = recentCompleted.at(-1)!;
+    const key = keyOf(args.symbol, latest.setupType, latest.bias);
     const lastInsightTs = generatedInsights.filter((i) => i.symbol === args.symbol).at(-1)?.ts ?? 0;
     if (args.now - lastInsightTs > 30 * 60 * 1000) {
       if (fakeouts >= 2) {
@@ -269,8 +270,11 @@ export function deriveAdaptiveFeedback(
   store: SignalLifecycleTrackerStore,
   symbol: string,
   setupType: SignalSetupType,
+  side?: 'long' | 'short',
 ): OutcomeAdaptiveFeedback {
-  const row = store.feedbackBySymbolSetup[keyOf(symbol, setupType)];
+  const row =
+    (side ? store.feedbackBySymbolSetup[keyOf(symbol, setupType, side)] : undefined) ??
+    store.feedbackBySymbolSetup[keyOf(symbol, setupType)];
   if (!row || row.samples < 3) {
     return {
       confidenceAdjustment: 0,

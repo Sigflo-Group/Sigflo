@@ -1088,7 +1088,7 @@ export function buildSignalFromMarket(input: {
   strategyPersonalityMode?: StrategyPersonalityMode;
   strategyPersonalityProfile?: StrategyPersonalityProfile;
   adaptationConfidenceAdjustmentForSetup?: (setupType: SignalSetupType) => number;
-  adaptiveFeedbackForSetup?: (setupType: SignalSetupType) => OutcomeAdaptiveFeedback;
+  adaptiveFeedbackForSetup?: (setupType: SignalSetupType, side: SignalSide) => OutcomeAdaptiveFeedback;
 }): { signal: CryptoSignal; lifecycle: CandidateLifecycle } | null {
   const thresholds = thresholdsForRegime(input.regime ?? 'neutral');
   let best: { out: DetectorOutput; setupScore: number; bias: BiasAssessment } | null = null;
@@ -1106,7 +1106,7 @@ export function buildSignalFromMarket(input: {
       strategyPersonalityMode: input.strategyPersonalityMode,
       strategyPersonalityProfile: input.strategyPersonalityProfile,
       adaptationConfidenceAdjustment: input.adaptationConfidenceAdjustmentForSetup?.(out.setupType),
-      adaptiveFeedback: input.adaptiveFeedbackForSetup?.(out.setupType),
+      adaptiveFeedback: input.adaptiveFeedbackForSetup?.(out.setupType, out.side),
     });
     const emitThreshold = input.strategyPersonalityProfile?.minConfidenceToEmit ?? 45;
     if (bias.confidence < emitThreshold) continue;

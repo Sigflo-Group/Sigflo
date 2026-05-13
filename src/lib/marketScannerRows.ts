@@ -126,13 +126,47 @@ function buildSyntheticTrendingSignal(symbol: string, pair: string, ticker: Symb
   };
 }
 
+function signalTimingPriority(signal: CryptoSignal): number {
+  if (signal.timingState === 'triggered') return 5;
+  if (signal.timingState === 'ready') return 4;
+  if (signal.timingState === 'developing') return 3;
+  if (signal.timingState === 'extended') return 2;
+  if (signal.timingState === 'expired') return 1;
+  return 0;
+}
+
+/**
+ * Prefer the most actionable live state per pair (triggered > ready > developing), then score.
+ * This avoids a higher-score non-triggered variant masking an actually triggered setup for the same pair.
+ */
+export function pickBestSignalForPair(engineSignals: CryptoSignal[], pair: string): CryptoSignal | null {
+  const pairUpper = pair.toUpperCase();
+  let best: CryptoSignal | null = null;
+  for (const signal of engineSignals) {
+    if (signal.pair.toUpperCase() !== pairUpper) continue;
+    if (best == null) {
+      best = signal;
+      continue;
+    }
+    const timingDelta = signalTimingPriority(signal) - signalTimingPriority(best);
+    if (timingDelta > 0) {
+      best = signal;
+      continue;
+    }
+    if (timingDelta === 0 && signal.setupScore > best.setupScore) {
+      best = signal;
+    }
+  }
+  return best;
+}
+
 function pickSignalForMarket(
   symbol: string,
   pair: string,
   engineSignals: CryptoSignal[],
   ticker: SymbolTicker,
 ): CryptoSignal {
-  const byEngine = engineSignals.find((s) => s.pair === pair);
+  const byEngine = pickBestSignalForPair(engineSignals, pair);
   if (byEngine) return byEngine;
   return buildSyntheticTrendingSignal(symbol, pair, ticker);
 }
@@ -177,7 +211,7 @@ export function buildTrackedScannerRows(
   return TRACKED_SYMBOLS.map((symbol) => {
     const pair = symbolToPair(symbol);
     const ticker = tickersBySymbol[symbol];
-    const fromEngine = engineSignals.find((s) => s.pair === pair);
+    const fromEngine = pickBestSignalForPair(engineSignals, pair);
     const signal = fromEngine ?? buildTrackedFallbackSignal(pair, symbol);
 
     const lastPrice = ticker != null ? ticker.lastPrice : Number.NaN;
@@ -246,7 +280,7 @@ export function buildWatchlistMarketRows(
     seenSym.add(symbol);
 
     const ticker = tickersBySymbol[symbol];
-    const fromEngine = engineSignals.find((s) => s.pair === pair);
+    const fromEngine = pickBestSignalForPair(engineSignals, pair);
     const signal =
       fromEngine ??
       (ticker != null ? buildSyntheticTrendingSignal(symbol, pair, ticker) : buildTrackedFallbackSignal(pair, symbol));

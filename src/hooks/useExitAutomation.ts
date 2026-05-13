@@ -142,7 +142,7 @@ export function useExitAutomation(scopeKey: string) {
           });
         }
         return next;
-      });
+      };
     },
     [persistActivity],
   );

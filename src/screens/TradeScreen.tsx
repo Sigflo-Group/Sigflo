@@ -71,7 +71,9 @@ import { computePositionHealth } from '@/lib/positionHealth';
 import { positionMicroInsight } from '@/lib/positionMicroInsight';
 import {
   buildTrackedFallbackSignal,
+  countTriggeredPairs,
   deriveMarketStatus,
+  pickBestSignalForPair,
   parseMarketStatusQuery,
   symbolToPair,
 } from '@/lib/marketScannerRows';
@@ -254,6 +256,7 @@ const SYMBOL_MIN_NOTIONAL_USD: Record<string, number> = {
   BTCUSDT: 5,
   ETHUSDT: 5,
 };
+const EXIT_AI_AUTO_TRIM_MIN_POSITION_AGE_MS = 30_000;
 
 function resolveMinOrderUsd(symbol: string, _market: MarketMode): number {
   const s = symbol.toUpperCase();
@@ -708,6 +711,7 @@ export function TradeScreen() {
   const uiState = uiSignalStateFromMarketStatus(scannerStatus);
   const uiStateStyle = uiSignalStateClasses(uiState);
   const isTriggered = uiState === 'triggered';
+  const triggeredPairCount = useMemo(() => countTriggeredPairs(liveSignals), [liveSignals]);
   const stateAgeLabel = useMemo(
     () => formatElapsedAgo(postedAgoToSeconds(selectedSignal.postedAgo) + tick),
     [selectedSignal.postedAgo, tick],
@@ -2856,6 +2860,8 @@ export function TradeScreen() {
         setOrderPending('open');
         try {
           let linearReverseAwaitPostSyncClear = false;
+          let openedNewFuturesEntry: { side: 'Buy' | 'Sell'; qty: string; positionIdx: number } | null = null;
+          const userRequestedStopLoss = Number.isFinite(stopParsed) && stopParsed > 0;
           const orderNotionalUsd = applyOpenOrderNotionalBuffer(metrics.positionSizeUsd, {
             minNotionalUsd: minOrderUsd,
           });
@@ -2943,6 +2949,13 @@ export function TradeScreen() {
                 targetParsed,
                 stopParsed,
               );
+              if (userRequestedStopLoss && skippedStop) {
+                flashTradeToast(
+                  'Stop-loss is required for this entry and must be on the correct side of entry. Order was not sent.',
+                  7000,
+                );
+                return false;
+              }
               if (skippedTarget || skippedStop) {
                 flashTradeToast(
                   'Target/stop must be on the correct side of entry for exchange TP/SL — invalid level(s) were not sent.',
@@ -2958,6 +2971,11 @@ export function TradeScreen() {
                       slTriggerBy: futuresTpSlTriggerBy,
                     }
                   : {};
+              openedNewFuturesEntry = {
+                side: sideBybit,
+                qty: qtyStr,
+                positionIdx: 0,
+              };
               await postBybitLinearOrder({
                 symbol: orderSymbol,
                 side: sideBybit,
@@ -2978,31 +2996,80 @@ export function TradeScreen() {
             (Number.isFinite(targetParsed) && targetParsed > 0) ||
             (Number.isFinite(stopParsed) && stopParsed > 0);
           if (market === 'futures' && !isManageMode && hasUserTpSl) {
-              const pos = findBybitLinearOpenLeg(snapshotsAfter, orderSymbol, nextSide);
-              if (pos && Number.isFinite(pos.entryPrice) && pos.entryPrice > 0) {
-                const synced = linearTpSlStringsForOpen(nextSide, pos.entryPrice, targetParsed, stopParsed);
-                if (synced.skippedTarget || synced.skippedStop) {
-                  flashTradeToast(
-                    'TP/SL vs average fill: a level is on the wrong side — adjust in the form and use Apply TP/SL on manage if needed.',
-                    7000,
-                  );
-                }
-                if (synced.tpSl.takeProfit || synced.tpSl.stopLoss) {
-                  try {
-                    await postBybitLinearTradingStop({
-                      symbol: orderSymbol,
-                      positionIdx: pos.positionIdx ?? 0,
-                      takeProfit: synced.tpSl.takeProfit ?? '0',
-                      stopLoss: synced.tpSl.stopLoss ?? '0',
-                      tpTriggerBy: futuresTpSlTriggerBy,
-                      slTriggerBy: futuresTpSlTriggerBy,
-                    });
-                  } catch (e) {
-                    flashTradeToast(formatBybitTradeErrorMessage(e, 'TP/SL sync after fill failed'), 5200);
-                  }
-                  await refreshAccountSnapshots({ silent: true });
-                }
+            const rollbackUnprotectedEntry = async (reason: string, details?: string) => {
+              if (!openedNewFuturesEntry) {
+                flashTradeToast(reason, 7600);
+                return;
               }
+              const closeSide = openedNewFuturesEntry.side === 'Buy' ? 'Sell' : 'Buy';
+              try {
+                await postBybitLinearOrder({
+                  symbol: orderSymbol,
+                  side: closeSide,
+                  qty: openedNewFuturesEntry.qty,
+                  orderType: 'Market',
+                  reduceOnly: true,
+                  positionIdx: openedNewFuturesEntry.positionIdx,
+                });
+                await refreshAccountSnapshots({ silent: true });
+                flashTradeToast(details ? `${reason} ${details}` : reason, 7600);
+              } catch (closeErr) {
+                flashTradeToast(
+                  formatBybitTradeErrorMessage(closeErr, `${reason} Auto-close also failed — close manually now.`),
+                  9000,
+                );
+              }
+            };
+
+            const pos = findBybitLinearOpenLeg(snapshotsAfter, orderSymbol, nextSide);
+            if (!pos || !Number.isFinite(pos.entryPrice) || pos.entryPrice <= 0) {
+              if (userRequestedStopLoss) {
+                await rollbackUnprotectedEntry(
+                  'Stop-loss could not be verified on the new position. Entry was auto-closed.',
+                  'Retry once account sync is stable.',
+                );
+                return false;
+              }
+            } else {
+              const synced = linearTpSlStringsForOpen(nextSide, pos.entryPrice, targetParsed, stopParsed);
+              if (synced.skippedTarget || synced.skippedStop) {
+                flashTradeToast(
+                  'TP/SL vs average fill: a level is on the wrong side — adjust in the form and use Apply TP/SL on manage if needed.',
+                  7000,
+                );
+              }
+              if (userRequestedStopLoss && (synced.skippedStop || !synced.tpSl.stopLoss)) {
+                await rollbackUnprotectedEntry(
+                  'Stop-loss could not be applied against the average fill price. Entry was auto-closed.',
+                );
+                return false;
+              }
+              if (synced.tpSl.takeProfit || synced.tpSl.stopLoss) {
+                try {
+                  await postBybitLinearTradingStop({
+                    symbol: orderSymbol,
+                    positionIdx: pos.positionIdx ?? 0,
+                    takeProfit: synced.tpSl.takeProfit ?? '0',
+                    stopLoss: synced.tpSl.stopLoss ?? '0',
+                    tpTriggerBy: futuresTpSlTriggerBy,
+                    slTriggerBy: futuresTpSlTriggerBy,
+                  });
+                } catch (e) {
+                  if (userRequestedStopLoss) {
+                    await rollbackUnprotectedEntry(
+                      'Stop-loss placement failed on the exchange. Entry was auto-closed.',
+                      `Exchange error: ${e instanceof Error ? e.message : String(e)}`,
+                    );
+                    return false;
+                  }
+                  flashTradeToast(formatBybitTradeErrorMessage(e, 'TP/SL sync after fill failed'), 5200);
+                }
+                await refreshAccountSnapshots({ silent: true });
+              } else if (userRequestedStopLoss) {
+                await rollbackUnprotectedEntry('Stop-loss placement failed on the exchange. Entry was auto-closed.');
+                return false;
+              }
+            }
           }
           return true;
         } catch (e) {
@@ -3430,6 +3497,22 @@ export function TradeScreen() {
     }
     const curr = exitFlow.effective.state;
     const prev = prevAutoStateRef.current;
+    const openedAtMs =
+      primaryChartOpenPosition?.openedAtMs != null && Number.isFinite(primaryChartOpenPosition.openedAtMs)
+        ? primaryChartOpenPosition.openedAtMs
+        : positionOpenedAtMs;
+    const withinAutoTrimWarmup =
+      curr === 'trim' &&
+      openedAtMs != null &&
+      Number.isFinite(openedAtMs) &&
+      openedAtMs > 0 &&
+      Date.now() - openedAtMs < EXIT_AI_AUTO_TRIM_MIN_POSITION_AGE_MS;
+
+    if (withinAutoTrimWarmup) {
+      // Seed state during post-open noise so Auto mode doesn't immediately trim right after entry fill.
+      prevAutoStateRef.current = curr;
+      return;
+    }
 
     let blockedAdvancePrev = false;
     if (prev !== null && prev !== curr) {
@@ -3499,6 +3582,8 @@ export function TradeScreen() {
     onActiveCloseAllConfirm,
     onActivePartialClose,
     orderPending,
+    positionOpenedAtMs,
+    primaryChartOpenPosition?.openedAtMs,
     useRealExecution,
     shouldSurfaceAutoExitPopups,
     exitAutoCanExchangeExecute,
@@ -3972,6 +4057,9 @@ export function TradeScreen() {
                       </span>
                       <span className="shrink-0 font-normal text-sigflo-muted">· {stateAgeLabel}</span>
                     </span>
+                    <span className="max-w-full truncate font-normal text-sigflo-muted">
+                      Triggered {triggeredPairCount}
+                    </span>
                   </button>
                 ) : (
                   <div
@@ -3987,7 +4075,7 @@ export function TradeScreen() {
                       <span className="truncate">{uiSignalStateLabel(uiState)}</span>
                     </span>
                     <span className="max-w-full truncate font-normal text-sigflo-muted">
-                      {live.mode} · {live.connection}
+                      Triggered {triggeredPairCount} · {live.mode} · {live.connection}
                     </span>
                   </div>
                 )}
@@ -4569,6 +4657,7 @@ export function TradeScreen() {
               timeline={manageTimelineLines}
               actionsDisabled={!!orderPending}
               canMoveStops={Boolean(useRealExecution && exchangePositionForSymbol)}
+              triggeredPairCount={triggeredPairCount}
             />
           ) : null}
           <div className="flex flex-col gap-1">
@@ -5136,7 +5225,7 @@ function resolveShellSignalForLegacyId(signalId: string, liveSignals: CryptoSign
   };
   const m = map[signalId];
   if (!m) return null;
-  return liveSignals.find((s) => s.pair === m.pair) ?? buildTrackedFallbackSignal(m.pair, m.symbol);
+  return pickBestSignalForPair(liveSignals, m.pair) ?? buildTrackedFallbackSignal(m.pair, m.symbol);
 }
 
 function buildSignalContextFromQuery(params: URLSearchParams, signalId: string): CryptoSignal | null {

@@ -10,6 +10,7 @@ import {
 import { BotExecutionSheet } from '@/components/bots/BotExecutionSheet';
 import { AdjustRiskSheet, type AdjustRiskPositionSnapshot } from '@/components/trade/AdjustRiskSheet';
 import { TradeChartPanel } from '@/components/trade/TradeChartPanel';
+import { TriggeredStatusBadge } from '@/components/ui/TriggeredStatusBadge';
 import {
   BOT_FOCUS_CHART_PLOT_PX,
   BOT_FOCUS_FULL_CHART_DOCK_GAP_PX,
@@ -40,8 +41,10 @@ import {
 } from '@/lib/bots';
 import {
   buildTrackedFallbackSignal,
+  countTriggeredPairs,
   deriveMarketStatus,
   isFeedActionableOpportunity,
+  pickBestSignalForPair,
 } from '@/lib/marketScannerRows';
 import {
   SIGFLO_CHART_INTERVAL_EVENT,
@@ -238,10 +241,12 @@ function mergeModelWithBotLevels(
 function BotFocusHeader({
   bot,
   cardStatus,
+  triggeredPairCount,
   onBack,
 }: {
   bot: BotAgent;
   cardStatus: ReturnType<typeof resolveBotCardStatus>;
+  triggeredPairCount: number;
   onBack?: () => void;
 }) {
   const personality = botPersonality(bot.personalityId);
@@ -289,6 +294,7 @@ function BotFocusHeader({
             <span className="inline-flex max-w-full rounded-full border border-landing-accent/30 bg-landing-accent-dim/50 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-landing-accent-hi">
               {personality.label}
             </span>
+            <TriggeredStatusBadge count={triggeredPairCount} className="bg-landing-accent-dim/50 text-[9px]" />
           </div>
         </div>
       </div>
@@ -389,13 +395,14 @@ export default function BotFocusScreen() {
 
   const selectedWatched = selectedPairRaw ?? bot?.watchedPairs[0] ?? 'BTC';
   const linearSymbol = pairToLinearSymbol(selectedWatched);
+  const triggeredPairCount = useMemo(() => countTriggeredPairs(signals), [signals]);
 
   const focusSignal = useMemo(() => {
     if (!bot) return null;
     const watchBase = pairFromWatched(selectedWatched);
     const sym = pairToLinearSymbol(selectedWatched);
     const byId = signals.find((s) => s.id === bot.signalId);
-    const forPair = signals.find((s) => pairFromWatched(s.pair) === watchBase);
+    const forPair = pickBestSignalForPair(signals, watchBase);
     if (byId && pairFromWatched(byId.pair) === watchBase) return byId;
     if (forPair) return forPair;
     return buildTrackedFallbackSignal(watchBase, sym);
@@ -1233,6 +1240,7 @@ export default function BotFocusScreen() {
             bot={bot}
             onBack={() => setFullChartMode(false)}
             pairLabel={chartModel.pair}
+            triggeredPairCount={triggeredPairCount}
             onOpenTradeWorkspace={() => {
               if (focusSignal) navigate(`/trade?${buildTradeQueryString(focusSignal, { marketStatus })}&reviewTop=1`);
             }}
@@ -1310,6 +1318,7 @@ export default function BotFocusScreen() {
             <BotFocusHeader
               bot={bot}
               cardStatus={cardStatus}
+              triggeredPairCount={triggeredPairCount}
               onBack={canGoBack ? () => navigate(-1) : undefined}
             />
             <div className="border-t border-landing-border/50 bg-black/20 px-3 py-1.5">

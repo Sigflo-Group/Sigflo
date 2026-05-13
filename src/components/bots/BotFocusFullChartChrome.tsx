@@ -7,11 +7,13 @@ export function BotFocusFullChartTopBar({
   bot,
   onBack,
   pairLabel,
+  triggeredPairCount,
   onOpenTradeWorkspace,
 }: {
   bot: BotAgent;
   onBack: () => void;
   pairLabel: string;
+  triggeredPairCount: number;
   onOpenTradeWorkspace: () => void;
 }) {
   return (
@@ -41,6 +43,9 @@ export function BotFocusFullChartTopBar({
           </p>
           <p className="mt-0.5 truncate text-[10px] font-semibold uppercase tracking-wider text-landing-accent-hi/90">
             {pairLabel}
+          </p>
+          <p className="mt-1 text-[9px] font-semibold uppercase tracking-[0.12em] text-landing-accent-hi/90">
+            Triggered {triggeredPairCount}
           </p>
         </div>
         <button

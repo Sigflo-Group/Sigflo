@@ -786,14 +786,15 @@ export function PriceChartCard({
    * often read stale `clientHeight`. ResizeObserver + rAF resizes after layout and through the transition. */
   useLayoutEffect(() => {
     const el = chartContainerRef.current;
-    const chart = chartRef.current;
-    if (!el || !chart) return;
+    if (!el || !chartRef.current) return;
 
     let raf = 0;
     const fit = () => {
       if (raf !== 0) cancelAnimationFrame(raf);
       raf = window.requestAnimationFrame(() => {
         raf = 0;
+        const chart = chartRef.current;
+        if (!chart) return;
         const w = Math.max(1, Math.round(el.clientWidth));
         const h = Math.max(1, Math.round(el.clientHeight));
         chart.resize(w, h);

@@ -43,7 +43,6 @@ import {
   adaptationConfidenceAdjustment,
   createEmptyUserAdaptationStore,
   registerSignalFollow,
-  registerSignalIgnore,
   registerSignalImpression,
   type UserAdaptationStore,
 } from '@/lib/userAdaptation';
@@ -90,9 +89,9 @@ export type SignalEngineState = {
   setAdvancedPanelExpanded: (panelId: string, expanded: boolean) => void;
 };
 
-const COOLDOWN_MS = 45 * 60 * 1000;
-const SCORE_IMPROVE_BYPASS = 8;
-const ATR_MOVE_BYPASS = 0.8;
+const COOLDOWN_MS = 20 * 60 * 1000;
+const SCORE_IMPROVE_BYPASS = 6;
+const ATR_MOVE_BYPASS = 0.6;
 const MARKET_MEMORY_STORE_KEY = '__SIGFLO_MARKET_MEMORY_V1__';
 const SIGNAL_LIFECYCLE_STORE_KEY = '__SIGFLO_SIGNAL_LIFECYCLE_V1__';
 const USER_ADAPTATION_STORE_KEY = '__SIGFLO_USER_ADAPTATION_V1__';
@@ -107,6 +106,10 @@ function signalPairToLinearKey(pair: string): string {
   const base = raw.includes('/') ? raw.split('/')[0].trim() : raw.replace(/USDT$/i, '').trim();
   const clean = base.replace(/[^A-Z0-9]/g, '');
   return `${clean || 'BTC'}USDT`;
+}
+
+function signalEmitKey(symbol: string, setupType: string, side: 'long' | 'short'): string {
+  return `${symbol}:${setupType}:${side}`;
 }
 
 function wsTickerToSymbolTicker(t: BybitWsTicker): SymbolTicker {
@@ -479,10 +482,6 @@ function useSignalEngineValue(): SignalEngineState {
       const symbolCandles = candlesRef.current[symbol];
       const ticker = tickersRef.current[symbol];
       if (!symbolCandles || !ticker || symbolCandles['15'].length < 60) return;
-      const priorLifecycle =
-        lifecycleRef.current[`${symbol}:breakout`] ??
-        lifecycleRef.current[`${symbol}:pullback`] ??
-        lifecycleRef.current[`${symbol}:overextended`];
       const btc15 = candlesRef.current.BTCUSDT?.['15'] ?? [];
       const eth15 = candlesRef.current.ETHUSDT?.['15'] ?? [];
       if (btc15.length < 60 || eth15.length < 60) return;
@@ -494,14 +493,16 @@ function useSignalEngineValue(): SignalEngineState {
         candles15m: symbolCandles['15'],
         candles5m: symbolCandles['5'],
         regime,
-        previousLifecycle: priorLifecycle,
+        previousLifecycleForSetupSide: (setupType, side) =>
+          lifecycleRef.current[signalEmitKey(symbol, setupType, side)] ??
+          lifecycleRef.current[`${symbol}:${setupType}`],
         previousMarketMemory: marketMemoryRef.current[symbol],
         strategyPersonalityMode: strategyPersonalityModeRef.current,
         strategyPersonalityProfile: STRATEGY_PERSONALITY_PROFILES[strategyPersonalityModeRef.current],
         adaptationConfidenceAdjustmentForSetup: (setupType) =>
           adaptationConfidenceAdjustment(userAdaptationRef.current, setupType),
-        adaptiveFeedbackForSetup: (setupType) =>
-          deriveAdaptiveFeedback(signalLifecycleStoreRef.current, symbol, setupType),
+        adaptiveFeedbackForSetup: (setupType, side) =>
+          deriveAdaptiveFeedback(signalLifecycleStoreRef.current, symbol, setupType, side),
       });
       signalLifecycleStoreRef.current = updateSignalLifecycleOutcomes({
         store: signalLifecycleStoreRef.current,
@@ -575,7 +576,7 @@ function useSignalEngineValue(): SignalEngineState {
       );
 
       if (!signal) return;
-      const key = `${symbol}:${signal.signal.setupType}`;
+      const key = signalEmitKey(symbol, signal.signal.setupType, signal.signal.side);
       const now = Date.now();
       const prev = lastSignalRef.current[key];
       const atrNow = Math.max(0.000001, atr(symbolCandles['15'], 14).at(-1) ?? 1);
@@ -586,10 +587,11 @@ function useSignalEngineValue(): SignalEngineState {
         !prev ||
         now - prev.emittedAt >= COOLDOWN_MS * (STRATEGY_PERSONALITY_PROFILES[strategyPersonalityModeRef.current]?.cooldownMultiplier ?? 1);
       if (!(cooldownPassed || scoreImproved || priceMoved)) {
-        userAdaptationRef.current = registerSignalIgnore(userAdaptationRef.current, {
-          confidence: signal.signal.confidence ?? signal.signal.setupScore,
-        });
-        persistUserAdaptationStore(userAdaptationRef.current);
+        // Suppress duplicate emit events, but keep live lifecycle/timing state current in UI.
+        signalBookRef.current[key] = signal.signal;
+        lifecycleRef.current[key] = signal.lifecycle;
+        flushAiSnapshot(nextMemory, signal.signal, nextRegimePredictor.output);
+        pushState(mode, wsConnectedRef.current ? 'connected' : 'disconnected');
         return;
       }
       userAdaptationRef.current = registerSignalImpression(userAdaptationRef.current, {

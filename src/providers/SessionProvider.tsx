@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { SecurityState } from '@/types/auth';
 import { getCurrentSessionState } from '@/lib/api/session';
 import { useAuthProvider } from '@/providers/AuthProvider';
@@ -17,7 +17,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const [sessionReady, setSessionReady] = useState(false);
   const [securityState, setSecurityState] = useState<SecurityState | null>(null);
 
-  const refreshSecurityState = async () => {
+  const refreshSecurityState = useCallback(async () => {
     if (!user) {
       setSecurityState(null);
       setSessionReady(true);
@@ -30,12 +30,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     } finally {
       setSessionReady(true);
     }
-  };
+  }, [user]);
 
   useEffect(() => {
     void refreshSecurityState();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.id]);
+  }, [refreshSecurityState]);
 
   const value = useMemo<SessionProviderValue>(
     () => ({
@@ -44,7 +43,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       stepUpRequired: Boolean(securityState?.stepUp.required),
       refreshSecurityState,
     }),
-    [securityState, sessionReady],
+    [securityState, sessionReady, refreshSecurityState],
   );
 
   return <SessionProviderContext.Provider value={value}>{children}</SessionProviderContext.Provider>;

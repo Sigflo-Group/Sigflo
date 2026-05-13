@@ -154,6 +154,10 @@ export function evaluateTimingLifecycle(args: {
   const ema20 = ema20Series.at(-1) ?? close;
   const swingHigh = recentSwingHigh(candles, 40);
   const swingLow = recentSwingLow(candles, 40);
+  // Breakout trigger levels must come from completed history, not the active candle.
+  const priorCandles = candles.length > 1 ? candles.slice(0, -1) : candles;
+  const triggerSwingHigh = recentSwingHigh(priorCandles, 40) || swingHigh;
+  const triggerSwingLow = recentSwingLow(priorCandles, 40) || swingLow;
   const candleRange = (candles.at(-1)?.high ?? close) - (candles.at(-1)?.low ?? close);
   const volume = candles.at(-1)?.volume ?? 0;
   const volumeAvg =
@@ -175,7 +179,7 @@ export function evaluateTimingLifecycle(args: {
     side: args.side,
     close,
     prevClose,
-    triggerLevel: args.side === 'long' ? swingHigh : swingLow,
+    triggerLevel: args.side === 'long' ? triggerSwingHigh : triggerSwingLow,
     atrNow,
     candleRange,
     roomToTargetAtr,

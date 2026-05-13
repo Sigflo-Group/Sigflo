@@ -1,5 +1,9 @@
 import { calculateSetupScore, getSetupScoreLabel } from '@/lib/setupScore';
-import { evaluateTimingLifecycle, type CandidateLifecycle } from '@/lib/timingLifecycle';
+import {
+  evaluateTimingLifecycle,
+  type CandidateLifecycle,
+  type TimingDiagnostics,
+} from '@/lib/timingLifecycle';
 import { atr, ema, recentSwingHigh, recentSwingLow, rollingAvg, rsi } from '@/lib/indicators';
 import type { MarketMemorySnapshot } from '@/lib/marketMemory';
 import type { OutcomeAdaptiveFeedback } from '@/lib/signalLifecycleTracker';
@@ -1075,6 +1079,15 @@ function mapRiskTag(score: number, detectorRisk: SignalRiskTag): SignalRiskTag {
   return 'High Risk';
 }
 
+function timingStatePriority(state: CandidateLifecycle['state'] | undefined): number {
+  if (state === 'triggered') return 5;
+  if (state === 'ready') return 4;
+  if (state === 'developing') return 3;
+  if (state === 'extended') return 2;
+  if (state === 'expired') return 1;
+  return 0;
+}
+
 export function buildSignalFromMarket(input: {
   symbol: string;
   exchange: string;
@@ -1091,7 +1104,13 @@ export function buildSignalFromMarket(input: {
   adaptiveFeedbackForSetup?: (setupType: SignalSetupType, side: SignalSide) => OutcomeAdaptiveFeedback;
 }): { signal: CryptoSignal; lifecycle: CandidateLifecycle } | null {
   const thresholds = thresholdsForRegime(input.regime ?? 'neutral');
-  let best: { out: DetectorOutput; setupScore: number; bias: BiasAssessment } | null = null;
+  let best: {
+    out: DetectorOutput;
+    setupScore: number;
+    bias: BiasAssessment;
+    lifecycle: CandidateLifecycle;
+    diagnostics: TimingDiagnostics;
+  } | null = null;
   for (const detector of MARKET_DETECTORS) {
     const out = detector(input.candles15m, thresholds);
     if (!out) continue;
@@ -1110,21 +1129,31 @@ export function buildSignalFromMarket(input: {
     });
     const emitThreshold = input.strategyPersonalityProfile?.minConfidenceToEmit ?? 45;
     if (bias.confidence < emitThreshold) continue;
-    if (!best || bias.confidence > best.bias.confidence) {
-      best = { out, setupScore, bias };
+    const previousLifecycle =
+      input.previousLifecycleForSetupSide?.(out.setupType, out.side) ?? input.previousLifecycle;
+    const { lifecycle, diagnostics } = evaluateTimingLifecycle({
+      setupType: out.setupType,
+      side: out.side,
+      setupScore,
+      candles: input.candles15m,
+      previous: previousLifecycle,
+    });
+    if (!best) {
+      best = { out, setupScore, bias, lifecycle, diagnostics };
+      continue;
+    }
+    const nextPriority = timingStatePriority(lifecycle.state);
+    const bestPriority = timingStatePriority(best.lifecycle.state);
+    if (
+      nextPriority > bestPriority ||
+      (nextPriority === bestPriority && bias.confidence > best.bias.confidence) ||
+      (nextPriority === bestPriority && bias.confidence === best.bias.confidence && setupScore > best.setupScore)
+    ) {
+      best = { out, setupScore, bias, lifecycle, diagnostics };
     }
   }
   if (!best) return null;
-  const { out, setupScore, bias } = best;
-  const previousLifecycle =
-    input.previousLifecycleForSetupSide?.(out.setupType, out.side) ?? input.previousLifecycle;
-  const { lifecycle, diagnostics } = evaluateTimingLifecycle({
-    setupType: out.setupType,
-    side: out.side,
-    setupScore,
-    candles: input.candles15m,
-    previous: previousLifecycle,
-  });
+  const { out, setupScore, bias, lifecycle, diagnostics } = best;
   const signal: CryptoSignal = {
     id: `live-${input.symbol}-${Date.now()}`,
     pair: input.symbol.replace('USDT', ''),

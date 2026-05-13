@@ -441,7 +441,9 @@ function scoreContextLocation(params: {
     score -= 10;
     warnings.push('Volatility is muted, reducing follow-through odds.');
   }
-  if (setupType === 'breakout' && (distToResistanceAtr > 0.15 || distToSupportAtr > 0.15)) {
+  const breakoutHasRoom =
+    side === 'long' ? distToResistanceAtr > 0.15 : distToSupportAtr > 0.15;
+  if (setupType === 'breakout' && breakoutHasRoom) {
     score += 10;
     reasons.push('Breakout location has room if confirmation holds.');
   }
@@ -1081,6 +1083,7 @@ export function buildSignalFromMarket(input: {
   candles5m?: Candle[];
   regime?: MarketRegime;
   previousLifecycle?: CandidateLifecycle;
+  previousLifecycleForSetupSide?: (setupType: SignalSetupType, side: SignalSide) => CandidateLifecycle | undefined;
   previousMarketMemory?: MarketMemorySnapshot;
   strategyPersonalityMode?: StrategyPersonalityMode;
   strategyPersonalityProfile?: StrategyPersonalityProfile;
@@ -1113,12 +1116,14 @@ export function buildSignalFromMarket(input: {
   }
   if (!best) return null;
   const { out, setupScore, bias } = best;
+  const previousLifecycle =
+    input.previousLifecycleForSetupSide?.(out.setupType, out.side) ?? input.previousLifecycle;
   const { lifecycle, diagnostics } = evaluateTimingLifecycle({
     setupType: out.setupType,
     side: out.side,
     setupScore,
     candles: input.candles15m,
-    previous: input.previousLifecycle,
+    previous: previousLifecycle,
   });
   const signal: CryptoSignal = {
     id: `live-${input.symbol}-${Date.now()}`,

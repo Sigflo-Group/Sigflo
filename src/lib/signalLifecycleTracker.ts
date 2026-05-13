@@ -29,6 +29,9 @@ export type SignalLifecycleTrackerStore = {
 
 const MAX_EVENTS = 300;
 const ARCHIVE_AFTER_MS = 7 * 24 * 60 * 60 * 1000;
+const STALE_SIGNAL_AFTER_MS = 18 * 60 * 60 * 1000;
+const STALE_SIGNAL_AFTER_15M_CANDLES = 72;
+const CANDLE_15M_MS = 15 * 60 * 1000;
 
 function keyOf(symbol: string, setupType: SignalSetupType): string {
   return `${symbol}:${setupType}`;
@@ -70,7 +73,10 @@ function classifyOutcome(args: {
   if (favorableAtr >= 0.5) return { status: 'evolving', outcome: null, done: false };
   if (favorableAtr >= 0.2) return { status: 'active', outcome: null, done: false };
   if (adverseAtr >= 0.65) return { status: 'rejected', outcome: null, done: false };
-  if (ageMs >= 18 * 60 * 60 * 1000 || candleTs - event.timestamp >= 72 * 60 * 1000) {
+  if (
+    ageMs >= STALE_SIGNAL_AFTER_MS ||
+    candleTs - event.timestamp >= STALE_SIGNAL_AFTER_15M_CANDLES * CANDLE_15M_MS
+  ) {
     const net = favorableAtr - adverseAtr;
     if (Math.abs(net) < 0.25 && event.maxFavorableExcursion < 0.5) {
       return { status: 'completed', outcome: 'neutral', done: true, note: 'Sideways chop persisted without meaningful resolution.' };

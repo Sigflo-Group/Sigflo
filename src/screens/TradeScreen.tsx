@@ -1,3 +1,4 @@
+import { ariaExpanded, ariaPressed, ariaSelected } from '@/a11y/ariaBoolean';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { AssistedExitConfirmBar } from '@/components/trade/AssistedExitConfirmBar';
@@ -3984,7 +3985,7 @@ export function TradeScreen() {
                   <button
                     type="button"
                     id="trade-pair-menu-button"
-                    aria-expanded={tradePairMenuOpen}
+                    {...ariaExpanded(tradePairMenuOpen)}
                     aria-haspopup="listbox"
                     aria-controls="trade-pair-menu"
                     onClick={() => {
@@ -4020,7 +4021,7 @@ export function TradeScreen() {
                             key={s.id}
                             type="button"
                             role="option"
-                            aria-selected={active}
+                            {...ariaSelected(active)}
                             onClick={() => onPickTradePair(s)}
                             className={`flex w-full items-center justify-between gap-2 px-3 py-2.5 text-left text-sm transition hover:bg-white/[0.06] active:bg-white/[0.08] ${
                               active ? 'bg-white/[0.05]' : ''
@@ -4092,7 +4093,7 @@ export function TradeScreen() {
                       : 'border-white/[0.08] text-sigflo-muted hover:text-amber-200/90'
                   }`}
                   aria-label={isPairInWatchlist ? 'Remove from watchlist' : 'Add to watchlist'}
-                  aria-pressed={isPairInWatchlist}
+                  {...ariaPressed(isPairInWatchlist)}
                 >
                   <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden fill="none" stroke="currentColor" strokeWidth="1.75">
                     <path
@@ -4106,7 +4107,7 @@ export function TradeScreen() {
                   <button
                     type="button"
                     id="trade-header-more-button"
-                    aria-expanded={tradeHeaderMoreOpen}
+                    {...ariaExpanded(tradeHeaderMoreOpen)}
                     aria-haspopup="menu"
                     aria-controls="trade-header-more-menu"
                     onClick={() => {
@@ -4919,7 +4920,7 @@ export function TradeScreen() {
                       ? 'text-sigflo-muted hover:text-white'
                       : 'sigflo-chart-dock-chevron-btn hover:text-cyan-100'
                   }`}
-                  aria-expanded={chartDockOpen}
+                  {...ariaExpanded(chartDockOpen)}
                   aria-label={chartDockOpen ? 'Collapse chart' : 'Expand chart'}
                 >
                   <svg
@@ -4944,7 +4945,7 @@ export function TradeScreen() {
                     type="button"
                     onClick={toggleChartDock}
                     className="max-w-full truncate rounded py-[2px] pr-[6px] text-left transition hover:bg-white/[0.03] active:bg-white/[0.05]"
-                    aria-expanded={chartDockOpen}
+                    {...ariaExpanded(chartDockOpen)}
                     aria-label={
                       chartDockOpen
                         ? `Collapse chart (${intervalLabel})`
@@ -5034,7 +5035,7 @@ export function TradeScreen() {
                       type="button"
                       disabled={!!orderPending}
                       id="sigflo-dock-partial-toggle"
-                      aria-expanded={dockPartialOpen}
+                      {...ariaExpanded(dockPartialOpen)}
                       aria-controls="sigflo-dock-partial-panel"
                       onClick={() => setDockPartialOpen((o) => !o)}
                       className="flex w-full items-center justify-between gap-1 rounded py-0.5 pl-0 pr-0.5 text-left leading-none transition hover:bg-white/[0.04] active:bg-white/[0.06] disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:bg-transparent"
@@ -5076,9 +5077,6 @@ export function TradeScreen() {
                               disabled={!!orderPending}
                               onChange={(e) => setDockPartialPct(Number(e.target.value))}
                               className="sigflo-partial-slider sigflo-partial-slider--compact h-4 w-full min-w-0 cursor-pointer touch-manipulation disabled:cursor-not-allowed disabled:opacity-40"
-                              aria-valuemin={5}
-                              aria-valuemax={100}
-                              aria-valuenow={dockPartialPct}
                               aria-valuetext={`${dockPartialPct} percent`}
                               aria-describedby="sigflo-dock-partial-slider-hint"
                             />

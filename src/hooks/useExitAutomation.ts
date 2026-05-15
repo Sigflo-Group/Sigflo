@@ -126,8 +126,12 @@ export function useExitAutomation(scopeKey: string) {
         const next = appendActivityEntry(prev, entry);
         persistActivity(next);
         const added = next[next.length - 1];
-        if (added && EXIT_AI_POPUP_KINDS.has(added.kind) && isActionableExitAiPopupMessage(added)) {
-        if (added && EXIT_AI_POPUP_KINDS.has(added.kind) && isActionableExitAiPopupActivity(added)) {
+        if (
+          added &&
+          EXIT_AI_POPUP_KINDS.has(added.kind) &&
+          isActionableExitAiPopupMessage(added) &&
+          isActionableExitAiPopupActivity(added)
+        ) {
           const now = Date.now();
           const last = popupLastEmittedAtRef.current[added.kind] ?? 0;
           if (now - last < EXIT_AI_POPUP_COOLDOWN_MS) return next;
@@ -142,7 +146,7 @@ export function useExitAutomation(scopeKey: string) {
           });
         }
         return next;
-      };
+      });
     },
     [persistActivity],
   );

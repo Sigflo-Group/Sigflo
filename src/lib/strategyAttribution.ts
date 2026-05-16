@@ -132,11 +132,11 @@ function generateInsights(
     if (cells < 2) continue;
     if (row.regimeSpread < 0.12) {
       out.push(
-        `${row.label} shows similar win rates across regimes with data (spread ${(row.regimeSpread * 100).toFixed(0)} pts) — relatively stable in this sample.`,
+        `${row.label} shows similar win rates across market conditions in this sample (spread ${(row.regimeSpread * 100).toFixed(0)} pts).`,
       );
     } else if (row.regimeSpread >= 0.28) {
       out.push(
-        `${row.label} is regime-sensitive: about ${(row.regimeSpread * 100).toFixed(0)} points between its best and worst market environments here.`,
+        `${row.label} is sensitive to market conditions: about ${(row.regimeSpread * 100).toFixed(0)} points between its best and worst environments here.`,
       );
     }
   }
@@ -165,7 +165,7 @@ function generateInsights(
     vol.winRate - rangeCell.winRate >= 0.2
   ) {
     out.push(
-      `${label(agg)} shows a wide gap: volatile ${pct(vol.winRate)} vs range ${pct(rangeCell.winRate)} in recorded outcomes.`,
+      `${label(agg)} shows a wide gap: fast-moving markets ${pct(vol.winRate)} vs choppy markets ${pct(rangeCell.winRate)} in recorded outcomes.`,
     );
   }
 
@@ -180,7 +180,7 @@ function generateInsights(
     comp.winRate >= rangeC.winRate + 0.12
   ) {
     out.push(
-      `${label(breakSpec)} has tended to outperform more in compression than in range in this dataset.`,
+      `${label(breakSpec)} has tended to outperform more in quiet markets than in choppy markets in this dataset.`,
     );
   }
 
@@ -188,13 +188,13 @@ function generateInsights(
   const consProf = modeDrawdown.find((d) => d.mode === cons);
   if (consProf && consProf.regimeSpread < 0.15 && consProf.avgWinRate > 0) {
     out.push(
-      `${label(cons)} maintains a tight cross-regime spread here — defensive posture with limited regime lottery.`,
+      `${label(cons)} stays relatively steady across market conditions here — defensive posture with limited environment lottery.`,
     );
   }
 
   if (out.length === 0) {
     out.push(
-      'Add more completed signals with stored personality + regime tags to unlock richer cross-regime commentary.',
+      'Add more completed signals with stored personality and market-condition tags to unlock richer commentary.',
     );
   }
 

@@ -39,6 +39,13 @@ import {
   type SignalLifecycleTrackerStore,
 } from '@/lib/signalLifecycleTracker';
 import { recordScannerDiagnostic } from '@/lib/scannerDiagnostics';
+import { SCANNER_LIFECYCLE_CONFIG } from '@/lib/scannerConfig';
+import { deriveMarketStatus } from '@/lib/marketScannerRows';
+import {
+  explainNotTriggered,
+  logScannerHealthSummary,
+  recordScannerPipelineReport,
+} from '@/lib/scannerPipelineHealth';
 import {
   adaptationConfidenceAdjustment,
   createEmptyUserAdaptationStore,
@@ -478,13 +485,37 @@ function useSignalEngineValue(): SignalEngineState {
       }
     }
 
+    function pipelineHealthCtx(mode: SignalEngineState['mode'], connection: SignalEngineState['connection']) {
+      const triggeredPairs = Object.values(signalBookRef.current)
+        .filter((s) => deriveMarketStatus(s) === 'triggered')
+        .map((s) => s.pair);
+      return {
+        engineMode: mode,
+        connection,
+        streamReady: streamReadyRef.current,
+        wsConnected: wsConnectedRef.current,
+        triggeredPairs,
+      };
+    }
+
     function recomputeForSymbol(symbol: string, mode: SignalEngineState['mode']) {
+      const connection = wsConnectedRef.current ? 'connected' : 'disconnected';
+      const healthCtx = () => pipelineHealthCtx(mode, connection);
       const symbolCandles = candlesRef.current[symbol];
       const ticker = tickersRef.current[symbol];
-      if (!symbolCandles || !ticker || symbolCandles['15'].length < 60) return;
+      if (!symbolCandles || !ticker || symbolCandles['15'].length < 60) {
+        recordScannerPipelineReport(
+          { symbol, stage: !ticker ? 'skip_no_ticker' : 'skip_insufficient_candles', ts: Date.now() },
+          healthCtx(),
+        );
+        return;
+      }
       const btc15 = candlesRef.current.BTCUSDT?.['15'] ?? [];
       const eth15 = candlesRef.current.ETHUSDT?.['15'] ?? [];
-      if (btc15.length < 60 || eth15.length < 60) return;
+      if (btc15.length < 60 || eth15.length < 60) {
+        recordScannerPipelineReport({ symbol, stage: 'skip_btc_eth_warmup', ts: Date.now() }, healthCtx());
+        return;
+      }
       const regime = inferMarketRegime({ btc15m: btc15, eth15m: eth15 });
       const signal = buildSignalFromMarket({
         symbol,
@@ -575,7 +606,10 @@ function useSignalEngineValue(): SignalEngineState {
         nextRegimePredictor.output,
       );
 
-      if (!signal) return;
+      if (!signal) {
+        recordScannerPipelineReport({ symbol, stage: 'skip_no_detector', ts: Date.now() }, healthCtx());
+        return;
+      }
       const key = signalEmitKey(symbol, signal.signal.setupType, signal.signal.side);
       const now = Date.now();
       const prev = lastSignalRef.current[key];
@@ -591,6 +625,33 @@ function useSignalEngineValue(): SignalEngineState {
         signalBookRef.current[key] = signal.signal;
         lifecycleRef.current[key] = signal.lifecycle;
         flushAiSnapshot(nextMemory, signal.signal, nextRegimePredictor.output);
+        recordScannerPipelineReport(
+          {
+            symbol,
+            stage: 'emitted_cooldown_suppressed',
+            setupType: signal.signal.setupType,
+            side: signal.signal.side,
+            timingState: signal.signal.timingState,
+            setupScore: signal.signal.setupScore,
+            actionabilityScore: signal.signal.actionabilityScore,
+            entryFreshnessScore: signal.signal.entryFreshnessScore,
+            timingScore: signal.signal.timingScore,
+            triggerHit: signal.signal.triggerType != null && signal.signal.triggerType !== 'unknown',
+            triggerType: signal.signal.triggerType,
+            emitThreshold:
+              STRATEGY_PERSONALITY_PROFILES[strategyPersonalityModeRef.current]?.minConfidenceToEmit ?? 45,
+            notTriggeredReasons: explainNotTriggered({
+              timingState: signal.signal.timingState,
+              triggerHit: signal.signal.triggerType != null && signal.signal.triggerType !== 'unknown',
+              actionabilityScore: signal.signal.actionabilityScore,
+              entryFreshnessScore: signal.signal.entryFreshnessScore,
+              triggeredActionabilityMin: SCANNER_LIFECYCLE_CONFIG.triggeredActionabilityMin,
+              triggeredFreshnessMin: SCANNER_LIFECYCLE_CONFIG.triggeredFreshnessMin,
+            }),
+            ts: Date.now(),
+          },
+          healthCtx(),
+        );
         pushState(mode, wsConnectedRef.current ? 'connected' : 'disconnected');
         return;
       }
@@ -647,6 +708,33 @@ function useSignalEngineValue(): SignalEngineState {
       });
       console.log(
         `[Sigflo][Engine] detector triggered ${symbol} ${signal.signal.setupType} ${signal.signal.setupScore} state=${signal.signal.timingState ?? 'n/a'}`
+      );
+      recordScannerPipelineReport(
+        {
+          symbol,
+          stage: 'emitted',
+          setupType: signal.signal.setupType,
+          side: signal.signal.side,
+          timingState: signal.signal.timingState,
+          setupScore: signal.signal.setupScore,
+          actionabilityScore: signal.signal.actionabilityScore,
+          entryFreshnessScore: signal.signal.entryFreshnessScore,
+          timingScore: signal.signal.timingScore,
+          triggerHit: signal.signal.triggerType != null && signal.signal.triggerType !== 'unknown',
+          triggerType: signal.signal.triggerType,
+          emitThreshold:
+            STRATEGY_PERSONALITY_PROFILES[strategyPersonalityModeRef.current]?.minConfidenceToEmit ?? 45,
+          notTriggeredReasons: explainNotTriggered({
+            timingState: signal.signal.timingState,
+            triggerHit: signal.signal.triggerType != null && signal.signal.triggerType !== 'unknown',
+            actionabilityScore: signal.signal.actionabilityScore,
+            entryFreshnessScore: signal.signal.entryFreshnessScore,
+            triggeredActionabilityMin: SCANNER_LIFECYCLE_CONFIG.triggeredActionabilityMin,
+            triggeredFreshnessMin: SCANNER_LIFECYCLE_CONFIG.triggeredFreshnessMin,
+          }),
+          ts: now,
+        },
+        healthCtx(),
       );
       pushState(mode, wsConnectedRef.current ? 'connected' : 'disconnected');
     }
@@ -708,7 +796,13 @@ function useSignalEngineValue(): SignalEngineState {
       ws.connect();
     });
 
+    const healthSummaryTimer =
+      import.meta.env.DEV
+        ? window.setInterval(() => logScannerHealthSummary(), 60_000)
+        : undefined;
+
     return () => {
+      if (healthSummaryTimer != null) window.clearInterval(healthSummaryTimer);
       cancelled = true;
       if (tickerFlushRafRef.current != null) {
         window.cancelAnimationFrame(tickerFlushRafRef.current);

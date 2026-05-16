@@ -281,11 +281,11 @@ function scoreMarketStructure(params: {
   }
   if (choppy) {
     score -= deepChop ? 28 : 20;
-    warnings.push('Choppy or compressed structure reduces signal quality.');
+    warnings.push('Choppy or tight-range structure reduces signal quality.');
   }
   if (fakeBreakoutPressure) {
     score -= 12;
-    warnings.push('Repeated fake breakouts are reducing directional reliability.');
+    warnings.push('Repeated fake breakouts are making momentum less reliable.');
   }
   if (higher.structure === 'neutral') {
     score -= 10;
@@ -439,11 +439,11 @@ function scoreContextLocation(params: {
   }
   if (compression >= 0.72) {
     score -= 14;
-    warnings.push('Trade is developing inside a chop/compression zone.');
+    warnings.push('Trade is developing in a choppy, tight range.');
   }
   if (lowVolatility) {
     score -= 10;
-    warnings.push('Volatility is muted, reducing follow-through odds.');
+    warnings.push('Price movement is quiet, reducing follow-through odds.');
   }
   const breakoutHasRoom =
     side === 'long' ? distToResistanceAtr > 0.15 : distToSupportAtr > 0.15;
@@ -586,7 +586,7 @@ function assessDirectionalBias(params: {
     antiSpamReasons.push('Hard cap active in range-bound / fake-breakout conditions.');
   } else if (structure.choppy || context.lowVolatility || volatilityCompression) {
     confidence = Math.min(confidence, 62);
-    antiSpamReasons.push('Confidence capped in chop / low-volatility conditions.');
+    antiSpamReasons.push('Confidence capped in choppy or quiet market conditions.');
   }
   if (mtf.heavyConflict) {
     confidence = Math.min(confidence, 64);
@@ -726,9 +726,9 @@ function assessDirectionalBias(params: {
     params.strategyPersonalityProfile?.tone === 'cautious'
       ? 'Risk discipline is prioritized while waiting for stronger structural confirmation.'
       : params.strategyPersonalityProfile?.tone === 'opportunity'
-        ? 'Momentum opportunities are weighted earlier, with higher acceptance of tactical volatility.'
+        ? 'Momentum opportunities are weighted earlier, with higher acceptance of fast-moving conditions.'
         : params.strategyPersonalityProfile?.tone === 'breakout'
-          ? 'Compression-to-expansion behavior is emphasized over minor pullback noise.'
+          ? 'Breakout pressure and follow-through are emphasized over minor pullback noise.'
           : params.strategyPersonalityProfile?.tone === 'macro'
             ? 'Higher timeframe structure is prioritized over intraday fluctuations.'
             : '';

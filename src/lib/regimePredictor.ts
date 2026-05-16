@@ -171,8 +171,8 @@ function transitionTargets(args: {
   const { rsiSlope, momentumDivergenceHint } = momentumFeatures(candles15m);
   const life = recentLifecycleStats(lifecycleEvents, symbol);
 
-  if (de < 0.22) evidence.push(`Momentum is becoming less reliable (${ratioPct(de)}% efficiency).`);
-  if (alt > 0.45) evidence.push(`Price is flipping direction more often (${ratioPct(alt)}% alternation).`);
+  if (de < 0.22) evidence.push(`Momentum is becoming less reliable (${ratioPct(de)}% directional follow-through).`);
+  if (alt > 0.45) evidence.push(`Price is flipping direction more often (${ratioPct(alt)}% of recent bars).`);
   if (spread < 0.0035) evidence.push('Trend lines are flattening, which often signals weaker follow-through.');
   if (atrRatio < 0.9) evidence.push('Price movement has cooled versus recent activity.');
   if (atrRatio > 1.18) evidence.push('Price movement is heating up versus recent activity.');

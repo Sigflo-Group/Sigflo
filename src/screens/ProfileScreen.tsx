@@ -718,7 +718,7 @@ export default function ProfileScreen() {
         <div className="mt-2 space-y-2">
           <ToggleRow
             label="Pro Intelligence Mode"
-            subtext="Unlock replay internals, regime pressure, attribution analytics, and advanced diagnostics."
+            subtext="Unlock replay internals, market condition insights, attribution analytics, and advanced diagnostics."
             value={proIntelligenceMode}
             onChange={setProIntelligenceMode}
           />

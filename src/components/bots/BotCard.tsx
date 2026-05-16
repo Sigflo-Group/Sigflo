@@ -8,6 +8,7 @@ import {
   type BotCardStatus,
   type BotMarketContext,
 } from '@/lib/bots';
+import { humanizeTraderCopy } from '@/lib/marketConditionsCopy';
 import { deriveMarketStatus } from '@/lib/marketScannerRows';
 import type { BotCardExchangeStats } from '@/lib/portfolioBotAttribution';
 import { uiSignalStateFromMarketStatus, uiSignalStateLabel } from '@/lib/signalState';
@@ -73,7 +74,7 @@ function BotAvatar({ name }: { name: string }) {
 
 function ContextTagPills({ ctx }: { ctx: BotMarketContext }) {
   const items: { k: string; v: string }[] = [
-    { k: 'Volatility', v: ctx.volatility },
+    { k: 'Activity', v: ctx.volatility },
     { k: 'Structure', v: ctx.structure },
     { k: 'Volume', v: ctx.volume },
   ];
@@ -191,12 +192,13 @@ export function BotCard({
         context: d.marketContext,
       };
     }
-    const liveNote =
+    const liveNoteRaw =
       signal.aiExplanation.length > 0
         ? signal.aiExplanation.length > 280
           ? `${signal.aiExplanation.slice(0, 277)}…`
           : signal.aiExplanation
         : d.aiNote;
+    const liveNote = humanizeTraderCopy(liveNoteRaw);
     const fallbackAnchor =
       Number.isFinite(signal.idealEntryPrice) && (signal.idealEntryPrice ?? 0) > 0
         ? (signal.idealEntryPrice as number)

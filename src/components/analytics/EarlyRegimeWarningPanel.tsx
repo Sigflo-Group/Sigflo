@@ -1,44 +1,22 @@
 import { useSignalEngine } from '@/hooks/useSignalEngine';
+import {
+  CHANGE_RISK_LABEL,
+  CHANGE_RISK_TOOLTIP,
+  LIKELY_NEXT_CONDITIONS_LABEL,
+  MARKET_ACTIVITY_LABEL,
+  MARKET_CONDITIONS_CHANGING_TITLE,
+  MARKET_CONDITIONS_LABEL,
+  TREND_HEALTH_LABEL,
+  TREND_HEALTH_TOOLTIP,
+  marketConditionLabel,
+  transitionPressureLabel,
+} from '@/lib/marketConditionsCopy';
 import type { RegimePredictorOutput } from '@/types/regimePredictor';
 
 type Props = {
   model: RegimePredictorOutput | null;
   panelId?: string;
 };
-
-function pressureLabel(key: keyof RegimePredictorOutput['transitionPressures']): string {
-  switch (key) {
-    case 'trendToRange':
-      return 'Trend losing strength';
-    case 'rangeToTrend':
-      return 'Trend trying to form';
-    case 'compressionToExpansion':
-      return 'Breakout pressure building';
-    case 'expansionToCompression':
-      return 'Market calming down';
-    case 'stableToVolatile':
-      return 'Market becoming unstable';
-    case 'volatileToStable':
-      return 'Market settling down';
-    default:
-      return key;
-  }
-}
-
-function regimeLabel(regime: RegimePredictorOutput['currentRegime']): string {
-  switch (regime) {
-    case 'trend':
-      return 'Trending market';
-    case 'range':
-      return 'Choppy market';
-    case 'volatile':
-      return 'Fast-moving market';
-    case 'compression':
-      return 'Quiet market';
-    default:
-      return regime;
-  }
-}
 
 function toneForPressure(v: number): string {
   if (v >= 70) return 'bg-rose-400/65';
@@ -53,7 +31,7 @@ export function EarlyRegimeWarningPanel({ model, panelId = 'early-regime-warning
     return (
       <section className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3 backdrop-blur-sm">
         <div className="flex items-center justify-between gap-2">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-500">Market conditions changing</p>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-500">{MARKET_CONDITIONS_CHANGING_TITLE}</p>
           {proIntelligenceMode ? (
             <span className="rounded-md border border-white/10 bg-white/[0.04] px-1.5 py-0.5 text-[10px] font-semibold text-zinc-400">
               Awaiting data
@@ -74,7 +52,7 @@ export function EarlyRegimeWarningPanel({ model, panelId = 'early-regime-warning
   return (
     <section className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3 backdrop-blur-sm">
       <div className="flex items-center justify-between gap-2">
-        <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-500">Market conditions changing</p>
+        <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-500">{MARKET_CONDITIONS_CHANGING_TITLE}</p>
         {proIntelligenceMode ? (
           <button
             type="button"
@@ -87,38 +65,43 @@ export function EarlyRegimeWarningPanel({ model, panelId = 'early-regime-warning
       </div>
       {!expanded ? (
         <p className="mt-2 text-[11px] text-zinc-400">
-          Change risk {Math.round(model.shiftProbability)} / 100 · trend health {Math.round(model.regimeStability)} / 100
+          {CHANGE_RISK_LABEL} {Math.round(model.shiftProbability)} / 100 · {TREND_HEALTH_LABEL.toLowerCase()}{' '}
+          {Math.round(model.regimeStability)} / 100
         </p>
       ) : null}
       {expanded ? (
         <>
       <div className="mt-2 grid grid-cols-2 gap-2 text-[11px]">
         <div className="rounded-lg border border-white/10 bg-black/20 px-2 py-1.5">
-          <p className="text-zinc-500">Market conditions</p>
-          <p className="mt-0.5 font-semibold text-zinc-100">{regimeLabel(model.currentRegime)}</p>
+          <p className="text-zinc-500">{MARKET_CONDITIONS_LABEL}</p>
+          <p className="mt-0.5 font-semibold text-zinc-100">{marketConditionLabel(model.currentRegime)}</p>
         </div>
         <div className="rounded-lg border border-white/10 bg-black/20 px-2 py-1.5">
-          <p className="text-zinc-500">Likely next conditions</p>
+          <p className="text-zinc-500">{LIKELY_NEXT_CONDITIONS_LABEL}</p>
           <p className="mt-0.5 font-semibold text-zinc-100">
-            {model.likelyNextRegime ? regimeLabel(model.likelyNextRegime) : 'Unclear'}
+            {model.likelyNextRegime ? marketConditionLabel(model.likelyNextRegime) : 'Unclear'}
           </p>
         </div>
         <div className="rounded-lg border border-white/10 bg-black/20 px-2 py-1.5">
-          <p className="text-zinc-500" title="Internally calculated using regime stability metrics">Trend health</p>
+          <p className="text-zinc-500" title={TREND_HEALTH_TOOLTIP}>
+            {TREND_HEALTH_LABEL}
+          </p>
           <p className="mt-0.5 font-semibold text-zinc-100">{Math.round(model.regimeStability)} / 100</p>
         </div>
         <div className="rounded-lg border border-white/10 bg-black/20 px-2 py-1.5">
-          <p className="text-zinc-500" title="Internally calculated using transition-pressure metrics">Change risk</p>
+          <p className="text-zinc-500" title={CHANGE_RISK_TOOLTIP}>
+            {CHANGE_RISK_LABEL}
+          </p>
           <p className="mt-0.5 font-semibold text-zinc-100">{Math.round(model.shiftProbability)} / 100</p>
         </div>
       </div>
 
       <div className="mt-3 space-y-2">
-        <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-zinc-500">Market activity</p>
+        <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-zinc-500">{MARKET_ACTIVITY_LABEL}</p>
         {pressureRows.map(([key, value]) => (
           <div key={key} className="space-y-1">
             <div className="flex items-center justify-between text-[10px] text-zinc-400">
-              <span>{pressureLabel(key)}</span>
+              <span>{transitionPressureLabel(key)}</span>
               <span>{Math.round(value)}</span>
             </div>
             <div className="h-1.5 rounded-full bg-white/10">

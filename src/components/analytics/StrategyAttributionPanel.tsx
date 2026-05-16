@@ -7,6 +7,7 @@ import {
   type AttributionRegime,
   type StrategyAttributionModel,
 } from '@/lib/strategyAttribution';
+import { humanizeTraderCopy, marketConditionLabel } from '@/lib/marketConditionsCopy';
 import { STRATEGY_PERSONALITY_PROFILES } from '@/lib/strategyPersonality';
 
 function pct(n: number): string {
@@ -16,21 +17,6 @@ function pct(n: number): string {
 type Props = {
   model: StrategyAttributionModel;
 };
-
-function conditionLabel(regime: AttributionRegime): string {
-  switch (regime) {
-    case 'trend':
-      return 'Trending market';
-    case 'range':
-      return 'Choppy market';
-    case 'volatile':
-      return 'Fast-moving market';
-    case 'compression':
-      return 'Quiet market';
-    default:
-      return regime;
-  }
-}
 
 export function StrategyAttributionPanel({ model }: Props) {
   const [selectedRegime, setSelectedRegime] = useState<AttributionRegime | 'all'>('all');
@@ -113,7 +99,7 @@ export function StrategyAttributionPanel({ model }: Props) {
                   : 'border-white/[0.08] text-sigflo-muted'
               }`}
             >
-              {conditionLabel(r)}
+              {marketConditionLabel(r)}
             </button>
           ))}
         </div>
@@ -135,7 +121,7 @@ export function StrategyAttributionPanel({ model }: Props) {
                 className="rounded-2xl border border-white/[0.08] bg-sigflo-surface p-3"
               >
                 <p className="text-[10px] font-semibold uppercase tracking-wide text-sigflo-muted capitalize">
-                  {conditionLabel(row.regime)}
+                  {marketConditionLabel(row.regime)}
                 </p>
                 <div className="mt-2 space-y-1.5 text-[11px]">
                   <p>
@@ -183,7 +169,7 @@ export function StrategyAttributionPanel({ model }: Props) {
                 >
                   <span className="font-medium text-white/90">{d.label}</span>
                   <span className="tabular-nums text-sigflo-muted">
-                    spread {(d.regimeSpread * 100).toFixed(0)} pts · avg {pct(d.avgWinRate)}
+                    condition spread {(d.regimeSpread * 100).toFixed(0)} pts · avg {pct(d.avgWinRate)}
                   </span>
                 </li>
               ))}
@@ -194,7 +180,7 @@ export function StrategyAttributionPanel({ model }: Props) {
             <h3 className="text-[11px] font-semibold uppercase tracking-wide text-cyan-200/90">Auto insights</h3>
             <ul className="mt-2 list-inside list-disc space-y-1.5 text-[11px] leading-relaxed text-cyan-50/90">
               {model.insights.map((line) => (
-                <li key={line}>{line}</li>
+                <li key={line}>{humanizeTraderCopy(line)}</li>
               ))}
             </ul>
           </section>
@@ -214,7 +200,7 @@ export function StrategyAttributionPanel({ model }: Props) {
                       selectedRegime !== 'all' && selectedRegime === r ? 'text-cyan-200' : 'text-sigflo-muted'
                     }`}
                   >
-                    {conditionLabel(r)}
+                    {marketConditionLabel(r)}
                   </th>
                 ))}
               </tr>

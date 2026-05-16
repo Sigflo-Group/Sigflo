@@ -103,6 +103,7 @@ const MARKET_MEMORY_STORE_KEY = '__SIGFLO_MARKET_MEMORY_V1__';
 const SIGNAL_LIFECYCLE_STORE_KEY = '__SIGFLO_SIGNAL_LIFECYCLE_V1__';
 const USER_ADAPTATION_STORE_KEY = '__SIGFLO_USER_ADAPTATION_V1__';
 const PRO_INTELLIGENCE_PREFS_KEY = '__SIGFLO_PRO_INTELLIGENCE_PREFS_V1__';
+const LIFECYCLE_REF_STORE_KEY = '__SIGFLO_LIFECYCLE_REF_V2__';
 /** Same as Markets Tracked list — WS klines + tickers for live scanner + detectors. */
 const STREAM_SYMBOLS: string[] = [...TRACKED_SYMBOLS];
 
@@ -249,6 +250,25 @@ function persistProIntelligencePrefs(prefs: ProIntelligencePrefs): void {
   }
 }
 
+function loadLifecycleRef(): Record<string, CandidateLifecycle> {
+  try {
+    const raw = globalThis.localStorage?.getItem(LIFECYCLE_REF_STORE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as Record<string, CandidateLifecycle>;
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function persistLifecycleRef(store: Record<string, CandidateLifecycle>): void {
+  try {
+    globalThis.localStorage?.setItem(LIFECYCLE_REF_STORE_KEY, JSON.stringify(store));
+  } catch {
+    // ignore storage failures
+  }
+}
+
 function emptyIntervalCandles(): Record<KlineInterval, Candle[]> {
   return {
     '1': [],
@@ -365,7 +385,7 @@ function useSignalEngineValue(): SignalEngineState {
   }, [advancedPanelsExpanded]);
   const lastSignalRef = useRef<Record<string, { emittedAt: number; setupScore: number; refPrice: number; atr: number }>>({});
   const signalBookRef = useRef<Record<string, CryptoSignal>>({});
-  const lifecycleRef = useRef<Record<string, CandidateLifecycle>>({});
+  const lifecycleRef = useRef<Record<string, CandidateLifecycle>>(loadLifecycleRef());
   const marketMemoryRef = useRef<Record<string, MarketMemorySnapshot>>(loadMarketMemoryStore());
   const signalLifecycleStoreRef = useRef<SignalLifecycleTrackerStore>(loadSignalLifecycleStore());
   const regimePredictorStoreRef = useRef<Record<string, RegimePredictorState>>(loadRegimePredictorStore());
@@ -669,8 +689,33 @@ function useSignalEngineValue(): SignalEngineState {
       }
       if (!(cooldownPassed || scoreImproved || priceMoved)) {
         // Suppress duplicate emit events, but keep live lifecycle/timing state current in UI.
+        const prevLifecycleState = lifecycleRef.current[key]?.state;
+        const nextLifecycleState = signal.lifecycle.state;
+        const lifecycleTransition =
+          prevLifecycleState === undefined
+            ? 'created'
+            : nextLifecycleState === 'expired'
+              ? 'expired'
+              : prevLifecycleState !== nextLifecycleState
+                ? `${prevLifecycleState}→${nextLifecycleState}`
+                : 'cached';
+        console.log('[DETECTOR LIFECYCLE]', {
+          symbol,
+          key,
+          transition: lifecycleTransition,
+          prevState: prevLifecycleState ?? null,
+          nextState: nextLifecycleState,
+          setupType: signal.signal.setupType,
+          side: signal.signal.side,
+          timingState: signal.signal.timingState,
+          confidence: signal.signal.confidence,
+          candlesSinceTrigger: signal.signal.candlesSinceTrigger ?? null,
+          triggerType: signal.signal.triggerType,
+          suppressReason: 'cooldown',
+        });
         signalBookRef.current[key] = signal.signal;
         lifecycleRef.current[key] = signal.lifecycle;
+        persistLifecycleRef(lifecycleRef.current);
         flushAiSnapshot(nextMemory, signal.signal, nextRegimePredictor.output);
         recordScannerPipelineReport(
           {
@@ -709,9 +754,34 @@ function useSignalEngineValue(): SignalEngineState {
         counterTrend: signal.signal.facts?.counterTrend === 'yes',
       });
       persistUserAdaptationStore(userAdaptationRef.current);
+      const prevLifecycleStateOnEmit = lifecycleRef.current[key]?.state;
+      const nextLifecycleStateOnEmit = signal.lifecycle.state;
+      const lifecycleTransitionOnEmit =
+        prevLifecycleStateOnEmit === undefined
+          ? 'created'
+          : nextLifecycleStateOnEmit === 'expired'
+            ? 'expired'
+            : prevLifecycleStateOnEmit !== nextLifecycleStateOnEmit
+              ? `${prevLifecycleStateOnEmit}→${nextLifecycleStateOnEmit}`
+              : 'updated';
+      console.log('[DETECTOR LIFECYCLE]', {
+        symbol,
+        key,
+        transition: lifecycleTransitionOnEmit,
+        prevState: prevLifecycleStateOnEmit ?? null,
+        nextState: nextLifecycleStateOnEmit,
+        setupType: signal.signal.setupType,
+        side: signal.signal.side,
+        timingState: signal.signal.timingState,
+        confidence: signal.signal.confidence,
+        candlesSinceTrigger: signal.signal.candlesSinceTrigger ?? null,
+        triggerType: signal.signal.triggerType,
+        suppressReason: null,
+      });
       lastSignalRef.current[key] = { emittedAt: now, setupScore: signal.signal.setupScore, refPrice: priceNow, atr: atrNow };
       signalBookRef.current[key] = signal.signal;
       lifecycleRef.current[key] = signal.lifecycle;
+      persistLifecycleRef(lifecycleRef.current);
       signalLifecycleStoreRef.current = registerSignalLifecycleEvent({
         store: signalLifecycleStoreRef.current,
         signal: signal.signal,

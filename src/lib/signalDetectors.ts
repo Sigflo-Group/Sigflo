@@ -20,6 +20,11 @@ import type {
   SignalSide,
 } from '@/types/signal';
 
+// Enable verbose detector/confidence logging in dev, or at runtime via `window.__SIGFLO_DEBUG__ = true`.
+const DEBUG: boolean =
+  (import.meta as unknown as { env?: { DEV?: boolean } }).env?.DEV === true ||
+  !!(globalThis as Record<string, unknown>).__SIGFLO_DEBUG__;
+
 type DetectorOutput = {
   setupType: 'breakout' | 'pullback' | 'overextended';
   side: SignalSide;
@@ -566,11 +571,12 @@ function assessDirectionalBias(params: {
   const volatilityCompression = atrRatio < 0.86;
   const volatilitySpike = atrRatio > 1.35;
 
-  let confidence = clamp(
+  const rawConfidence = clamp(
     Math.round(structure.score * 0.35 + momentum.score * 0.25 + context.score * 0.2 + mtf.score * 0.2),
     0,
     100,
   );
+  let confidence = rawConfidence;
 
   const antiSpamReasons: string[] = [];
   if (momentum.weakVolume) {
@@ -644,6 +650,36 @@ function assessDirectionalBias(params: {
   }
   if (params.adaptationConfidenceAdjustment) {
     confidence = clamp(confidence + params.adaptationConfidenceAdjustment, 0, 100);
+  }
+
+  if (DEBUG) {
+    console.log(`[Sigflo][Bias] ${params.setupType}/${params.side} confidence`, {
+      raw: rawConfidence,
+      final: confidence,
+      cappedBy: antiSpamReasons,
+      structureScore: structure.score,
+      momentumScore: momentum.score,
+      contextScore: context.score,
+      mtfScore: mtf.score,
+      flags: {
+        weakVolume: momentum.weakVolume,
+        deepChop: structure.deepChop,
+        fakeBreakoutPressure: structure.fakeBreakoutPressure,
+        choppy: structure.choppy,
+        lowVolatility: context.lowVolatility,
+        volatilityCompression,
+        heavyConflict: mtf.heavyConflict,
+        counterTrend: mtf.counterTrend,
+        momentumStall: momentum.momentumStall,
+        breakoutWeak: momentum.breakoutWeak,
+        poorLocation: context.poorLocation,
+      },
+      rsiNow: m15.rsiNow,
+      atrNow: m15.atrNow,
+      close: m15.close,
+      ema20: m15.ema20,
+      ema50: m15.ema50,
+    });
   }
 
   const volatilityQuality = volatilityCompression ? 36 : volatilitySpike ? 48 : 72;
@@ -836,8 +872,34 @@ function breakoutPressureDetector(candles: Candle[], thresholds: DetectorThresho
   const bodyStrength = bodyNow / rangeNow;
   const followThrough = last && prev ? last.close >= prev.close : false;
   const breakoutValid = volOk && bodyStrength >= 0.5 && followThrough;
-  const passCount = [trend, compression > thresholds.breakoutCompression, nearBreakout, rsiOk, breakoutValid].filter(Boolean).length;
-  if (passCount < 4 || !breakoutValid) return null;
+  const conditions = {
+    trend,
+    compression: compression > thresholds.breakoutCompression,
+    nearBreakout,
+    rsiOk,
+    breakoutValid,
+  };
+  const passCount = Object.values(conditions).filter(Boolean).length;
+  // Hard guard: RSI > 76 means the setup is already overextended, not pre-breakout.
+  // This also prevents the breakout detector from co-activating with overextended when
+  // rsiOk=false is the only failing condition (letting passCount reach 4 via the 4/5 rule).
+  if (m.rsiNow > 76 || passCount < 4 || !breakoutValid) {
+    if (DEBUG) {
+      console.log('[Sigflo][Detector] breakoutPressure REJECT', {
+        passCount, conditions, rsiNow: m.rsiNow, rsiOk, volBoost, bodyStrength, followThrough,
+        distanceToBreakoutAtr: Number(distanceToBreakoutAtr.toFixed(3)),
+        compression: Number(compression.toFixed(3)),
+        close: m.close, ema20: m.ema20, ema50: m.ema50,
+      });
+    }
+    return null;
+  }
+  if (DEBUG) {
+    console.log('[Sigflo][Detector] breakoutPressure PASS', {
+      passCount, conditions, rsiNow: m.rsiNow, volBoost, bodyStrength, compression,
+      distanceToBreakoutAtr: Number(distanceToBreakoutAtr.toFixed(3)),
+    });
+  }
   return {
     setupType: 'breakout',
     side: 'long',
@@ -874,8 +936,13 @@ function pullbackContinuationDetector(candles: Candle[], thresholds: DetectorThr
   const redVol = recent.filter((c) => c.close < c.open).reduce((s, c) => s + c.volume, 0);
   const greenVol = recent.filter((c) => c.close >= c.open).reduce((s, c) => s + c.volume, 0);
   const volCool = redVol < greenVol * 1.05;
-  const passCount = [trendUp, nearEma, depthOk, rsiOk, volCool].filter(Boolean).length;
-  if (passCount < 4) return null;
+  const conditions = { trendUp, nearEma, depthOk, rsiOk, volCool };
+  const passCount = Object.values(conditions).filter(Boolean).length;
+  if (passCount < 4) {
+    if (DEBUG) console.log('[Sigflo][Detector] pullbackContinuation REJECT', { passCount, conditions, rsiNow: m.rsiNow, pullbackDepth: Number(pullbackDepth.toFixed(3)), close: m.close, ema20: m.ema20 });
+    return null;
+  }
+  if (DEBUG) console.log('[Sigflo][Detector] pullbackContinuation PASS', { passCount, conditions, rsiNow: m.rsiNow });
   return {
     setupType: 'pullback',
     side: 'long',
@@ -911,8 +978,13 @@ function overextendedDetector(candles: Candle[], thresholds: DetectorThresholds)
   const expansion = m.atrNow > 0 ? gain3 / m.atrNow : 0;
   const expansionOk = expansion > 1.5;
   const nearResistance = m.atrNow > 0 && m.swingHigh - m.close < 0.4 * m.atrNow;
-  const passCount = [stretchOk, rsiHot, expansionOk, nearResistance].filter(Boolean).length;
-  if (passCount < 3) return null;
+  const conditions = { stretchOk, rsiHot, expansionOk, nearResistance };
+  const passCount = Object.values(conditions).filter(Boolean).length;
+  if (passCount < 3) {
+    if (DEBUG) console.log('[Sigflo][Detector] overextended REJECT', { passCount, conditions, rsiNow: m.rsiNow, stretch: Number(stretch.toFixed(3)), expansion: Number(expansion.toFixed(3)) });
+    return null;
+  }
+  if (DEBUG) console.log('[Sigflo][Detector] overextended PASS', { passCount, conditions, rsiNow: m.rsiNow, stretch: Number(stretch.toFixed(3)) });
   return {
     setupType: 'overextended',
     side: 'long',
@@ -959,8 +1031,32 @@ function breakdownPressureDetector(candles: Candle[], thresholds: DetectorThresh
   const bodyStrength = bodyNow / rangeNow;
   const followThrough = last && prev ? last.close <= prev.close : false;
   const breakoutValid = volOk && bodyStrength >= 0.5 && followThrough;
-  const passCount = [trend, compression > thresholds.breakoutCompression, nearBreakdown, rsiOk, breakoutValid].filter(Boolean).length;
-  if (passCount < 4 || !breakoutValid) return null;
+  const conditions = {
+    trend,
+    compression: compression > thresholds.breakoutCompression,
+    nearBreakdown,
+    rsiOk,
+    breakoutValid,
+  };
+  const passCount = Object.values(conditions).filter(Boolean).length;
+  // Hard guard: RSI < 24 means the setup is already overextended short, not pre-breakdown.
+  if (m.rsiNow < 24 || passCount < 4 || !breakoutValid) {
+    if (DEBUG) {
+      console.log('[Sigflo][Detector] breakdownPressure REJECT', {
+        passCount, conditions, rsiNow: m.rsiNow, rsiOk, volBoost, bodyStrength, followThrough,
+        distanceToBreakdownAtr: Number(distanceToBreakdownAtr.toFixed(3)),
+        compression: Number(compression.toFixed(3)),
+        close: m.close, ema20: m.ema20, ema50: m.ema50,
+      });
+    }
+    return null;
+  }
+  if (DEBUG) {
+    console.log('[Sigflo][Detector] breakdownPressure PASS', {
+      passCount, conditions, rsiNow: m.rsiNow, volBoost, bodyStrength, compression,
+      distanceToBreakdownAtr: Number(distanceToBreakdownAtr.toFixed(3)),
+    });
+  }
   return {
     setupType: 'breakout',
     side: 'short',
@@ -998,8 +1094,13 @@ function pullbackContinuationShortDetector(candles: Candle[], thresholds: Detect
   const redVol = recent.filter((c) => c.close < c.open).reduce((s, c) => s + c.volume, 0);
   const greenVol = recent.filter((c) => c.close >= c.open).reduce((s, c) => s + c.volume, 0);
   const volCool = greenVol < redVol * 1.05;
-  const passCount = [trendDown, nearEma, depthOk, rsiOk, volCool].filter(Boolean).length;
-  if (passCount < 4) return null;
+  const conditions = { trendDown, nearEma, depthOk, rsiOk, volCool };
+  const passCount = Object.values(conditions).filter(Boolean).length;
+  if (passCount < 4) {
+    if (DEBUG) console.log('[Sigflo][Detector] pullbackContinuationShort REJECT', { passCount, conditions, rsiNow: m.rsiNow, bounceDepth: Number(bounceDepth.toFixed(3)), close: m.close, ema20: m.ema20 });
+    return null;
+  }
+  if (DEBUG) console.log('[Sigflo][Detector] pullbackContinuationShort PASS', { passCount, conditions, rsiNow: m.rsiNow });
   return {
     setupType: 'pullback',
     side: 'short',
@@ -1036,8 +1137,13 @@ function overextendedShortDetector(candles: Candle[], thresholds: DetectorThresh
   const expansion = m.atrNow > 0 ? drop3 / m.atrNow : 0;
   const expansionOk = expansion > 1.5;
   const nearSupport = m.atrNow > 0 && m.close - m.swingLow < 0.4 * m.atrNow;
-  const passCount = [stretchOk, rsiCold, expansionOk, nearSupport].filter(Boolean).length;
-  if (passCount < 3) return null;
+  const conditions = { stretchOk, rsiCold, expansionOk, nearSupport };
+  const passCount = Object.values(conditions).filter(Boolean).length;
+  if (passCount < 3) {
+    if (DEBUG) console.log('[Sigflo][Detector] overextendedShort REJECT', { passCount, conditions, rsiNow: m.rsiNow, stretch: Number(stretch.toFixed(3)), expansion: Number(expansion.toFixed(3)) });
+    return null;
+  }
+  if (DEBUG) console.log('[Sigflo][Detector] overextendedShort PASS', { passCount, conditions, rsiNow: m.rsiNow, stretch: Number(stretch.toFixed(3)) });
   return {
     setupType: 'overextended',
     side: 'short',
@@ -1102,6 +1208,11 @@ export function buildSignalFromMarket(input: {
   strategyPersonalityProfile?: StrategyPersonalityProfile;
   adaptationConfidenceAdjustmentForSetup?: (setupType: SignalSetupType) => number;
   adaptiveFeedbackForSetup?: (setupType: SignalSetupType, side: SignalSide) => OutcomeAdaptiveFeedback;
+  onReject?: (
+    detectorName: string,
+    reason: 'no_signal' | 'confidence_below_threshold',
+    meta?: { confidence?: number; threshold?: number },
+  ) => void;
 }): { signal: CryptoSignal; lifecycle: CandidateLifecycle } | null {
   const thresholds = thresholdsForRegime(input.regime ?? 'neutral');
   let best: {
@@ -1111,9 +1222,17 @@ export function buildSignalFromMarket(input: {
     lifecycle: CandidateLifecycle;
     diagnostics: TimingDiagnostics;
   } | null = null;
+  const debugRejectLog: Array<{ detector: string; reason: string; detail?: Record<string, unknown> }> = [];
+  const debugAcceptLog: Array<{ detector: string; confidence: number; timingState: string; setupScore: number }> = [];
+  const lastCandleTs = input.candles15m.at(-1)?.ts;
+  const lastCandleClosed = input.candles15m.at(-1)?.isClosed;
   for (const detector of MARKET_DETECTORS) {
     const out = detector(input.candles15m, thresholds);
-    if (!out) continue;
+    if (!out) {
+      input.onReject?.(detector.name, 'no_signal');
+      if (DEBUG) debugRejectLog.push({ detector: detector.name, reason: 'no_signal' });
+      continue;
+    }
     const setupScore = calculateSetupScore(out.breakdown);
     const bias = assessDirectionalBias({
       side: out.side,
@@ -1128,7 +1247,14 @@ export function buildSignalFromMarket(input: {
       adaptiveFeedback: input.adaptiveFeedbackForSetup?.(out.setupType, out.side),
     });
     const emitThreshold = input.strategyPersonalityProfile?.minConfidenceToEmit ?? 45;
-    if (bias.confidence < emitThreshold) continue;
+    if (bias.confidence < emitThreshold) {
+      input.onReject?.(detector.name, 'confidence_below_threshold', {
+        confidence: bias.confidence,
+        threshold: emitThreshold,
+      });
+      if (DEBUG) debugRejectLog.push({ detector: detector.name, reason: 'confidence_below_threshold', detail: { confidence: bias.confidence, threshold: emitThreshold } });
+      continue;
+    }
     const previousLifecycle =
       input.previousLifecycleForSetupSide?.(out.setupType, out.side) ?? input.previousLifecycle;
     const { lifecycle, diagnostics } = evaluateTimingLifecycle({
@@ -1138,6 +1264,7 @@ export function buildSignalFromMarket(input: {
       candles: input.candles15m,
       previous: previousLifecycle,
     });
+    if (DEBUG) debugAcceptLog.push({ detector: detector.name, confidence: bias.confidence, timingState: lifecycle.state, setupScore });
     if (!best) {
       best = { out, setupScore, bias, lifecycle, diagnostics };
       continue;
@@ -1151,6 +1278,17 @@ export function buildSignalFromMarket(input: {
     ) {
       best = { out, setupScore, bias, lifecycle, diagnostics };
     }
+  }
+  if (DEBUG) {
+    console.log(`[Sigflo][Engine] ${input.symbol} buildSignalFromMarket`, {
+      regime: input.regime ?? 'neutral',
+      candleCount: input.candles15m.length,
+      lastCandleTs: lastCandleTs ? new Date(lastCandleTs).toISOString() : null,
+      lastCandleClosed,
+      rejected: debugRejectLog,
+      accepted: debugAcceptLog,
+      selected: best ? { detector: `${best.out.setupType}/${best.out.side}`, confidence: best.bias.confidence, timingState: best.lifecycle.state } : null,
+    });
   }
   if (!best) return null;
   const { out, bias, lifecycle, diagnostics } = best;

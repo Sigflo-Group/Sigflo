@@ -12,6 +12,7 @@ import {
   type ScannerTriggerType,
 } from '@/lib/scannerConfig';
 import { evaluateBreakoutTiming } from '@/lib/timingEvaluators/breakoutTiming';
+import { evaluateMeanReversionTiming } from '@/lib/timingEvaluators/meanReversionTiming';
 import { evaluatePullbackTiming } from '@/lib/timingEvaluators/pullbackTiming';
 import { evaluateReclaimTiming } from '@/lib/timingEvaluators/reclaimTiming';
 import { atr, ema, recentSwingHigh, recentSwingLow, rsi } from '@/lib/indicators';
@@ -217,9 +218,27 @@ export function evaluateTimingLifecycle(args: {
     rsiSlope,
     hasPreviousTrigger: existingTrigger,
   });
+  const meanReversion = evaluateMeanReversionTiming({
+    side: args.side,
+    close,
+    prevClose,
+    ema20,
+    atrNow,
+    rsiNow,
+    rsiPrev,
+    rsiSlope,
+    roomToTargetAtr,
+    hasPreviousTrigger: existingTrigger,
+  });
 
   const selected =
-    args.setupType === 'pullback' ? pullback : args.setupType === 'breakout' ? breakout : reclaim;
+    args.setupType === 'pullback'
+      ? pullback
+      : args.setupType === 'breakout'
+        ? breakout
+        : args.setupType === 'overextended'
+          ? meanReversion
+          : reclaim;
 
   const candleIndex = Math.max(0, candles.length - 1);
   const lastCandleTs = candles.at(-1)?.ts ?? null;

@@ -13,10 +13,11 @@
     "dev:backend": "cross-env NODE_OPTIONS=--use-system-ca npm run dev --prefix backend",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
+    "test": "vitest run",
     "lint": "eslint .",
     "netlify:cli": "cross-env NODE_OPTIONS=--use-system-ca npx --yes netlify-cli",
     "deploy:netlify": "cross-env NODE_OPTIONS=--use-system-ca npx --yes netlify-cli deploy --prod",
-    "deploy:netlify:draft": "cross-env NODE_OPTIONS=--use-system-ca npx --yes netlify-cli deploy"
+    "seed": "tsx scripts/seed.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.105.3",
@@ -34,14 +35,17 @@
     "@vitejs/plugin-react": "^5.2.0",
     "autoprefixer": "^10.5.0",
     "cross-env": "^10.1.0",
+    "dotenv": "^17.4.2",
     "eslint": "^9.21.0",
     "eslint-plugin-react-hooks": "^5.1.0",
     "eslint-plugin-react-refresh": "^0.5.2",
     "globals": "^15.15.0",
     "postcss": "^8.5.14",
     "tailwindcss": "^3.4.17",
+    "tsx": "^4.22.0",
     "typescript": "~5.9.3",
     "typescript-eslint": "^8.59.2",
-    "vite": "~6.4.2"
+    "vite": "~6.4.2",
+    "vitest": "^4.1.6"
   }
 }

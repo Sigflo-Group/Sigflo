@@ -3,6 +3,7 @@ import { MarketDeepAnalysisSheet } from '@/components/trade/MarketDeepAnalysisSh
 import { MarketNewsScanSheet } from '@/components/news/MarketNewsScanSheet';
 import { StatusChip } from '@/components/trade/StatusChip';
 import { requestAssistantSuggestion } from '@/services/ai/client';
+import { humanizeTraderCopy } from '@/lib/marketConditionsCopy';
 import { spotBaseAssetFromOrderSymbol } from '@/lib/spotSymbol';
 import { buildTradeTimingUiModel } from '@/lib/tradeSetupExecutionModel';
 import type { AiStructuredAnalysis, GroundedMarketContext } from '@/types/aiGrounded';
@@ -90,7 +91,7 @@ function actionFor(
 
 /** Up to 4 short lines: prefer sentences from AI copy, then structural cues. */
 function previewBullets(signal: CryptoSignal, status: MarketRowStatus): string[] {
-  const raw = signal.aiExplanation.trim();
+  const raw = humanizeTraderCopy(signal.aiExplanation.trim());
   const sentences = raw
     .split(/(?<=[.!?])\s+|\n+/)
     .map((s) => s.replace(/\s+/g, ' ').trim())
@@ -271,7 +272,7 @@ export function ScannerInsightCard({
       </button>
       {readOpen ? (
         <p className="mt-1.5 rounded-lg border border-white/[0.06] bg-black/25 p-2 text-[11px] leading-relaxed text-sigflo-muted">
-          {signal.aiExplanation}
+          {humanizeTraderCopy(signal.aiExplanation)}
         </p>
       ) : null}
 
@@ -345,7 +346,9 @@ export function ScannerInsightCard({
                 {aiResult.source === 'remote' ? 'AI live' : 'Fallback'}
               </span>
             </div>
-            <p className="mt-1 whitespace-pre-line text-[10px] leading-relaxed text-sigflo-muted">{aiResult.body}</p>
+            <p className="mt-1 whitespace-pre-line text-[10px] leading-relaxed text-sigflo-muted">
+              {humanizeTraderCopy(aiResult.body)}
+            </p>
             {aiResult.structured ? (
               <div className="mt-2 space-y-1 rounded border border-white/[0.05] bg-black/20 px-2 py-1.5 text-[9px] text-sigflo-muted">
                 <p className="font-bold uppercase tracking-[0.12em] text-cyan-200/70">Grounded summary</p>

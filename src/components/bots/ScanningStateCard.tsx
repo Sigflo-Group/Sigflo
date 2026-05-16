@@ -1,4 +1,4 @@
-const SCAN_CHIPS = ['Volatility compression', 'Trend pullbacks', 'Momentum expansion'] as const;
+import { BOT_SCAN_CHIPS } from '@/lib/marketConditionsCopy';
 
 /**
  * Premium empty state when no priority / high-quality setup is available.
@@ -31,7 +31,7 @@ export default function ScanningStateCard() {
       </div>
 
       <div className="mt-5 flex flex-wrap gap-2">
-        {SCAN_CHIPS.map((label, i) => (
+        {BOT_SCAN_CHIPS.map((label, i) => (
           <div
             key={label}
             className="sigflo-scanning-chip rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-[11px] font-medium leading-snug text-zinc-400"

@@ -1,6 +1,7 @@
 import { useMemo, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { useSignalEngine } from '@/hooks/useSignalEngine';
+import { humanizeTraderCopy, marketConditionLabel } from '@/lib/marketConditionsCopy';
 import type { SignalLifecycleEvent } from '@/types/signal';
 
 function pct(n: number): string {
@@ -32,15 +33,6 @@ function toneClass(outcome: SignalLifecycleEvent['outcome']): string {
   if (outcome === 'loss') return 'text-rose-300 border-rose-500/30 bg-rose-500/10';
   if (outcome === 'neutral') return 'text-amber-300 border-amber-500/30 bg-amber-500/10';
   return 'text-sigflo-muted border-white/[0.08] bg-white/[0.03]';
-}
-
-function marketConditionLabel(
-  regime: NonNullable<SignalLifecycleEvent['entryContext']['marketRegime']>,
-): string {
-  if (regime === 'trend') return 'Trending market';
-  if (regime === 'range') return 'Choppy market';
-  if (regime === 'volatile') return 'Fast-moving market';
-  return 'Quiet market';
 }
 
 export default function PerformanceDashboardScreen() {
@@ -244,7 +236,7 @@ export default function PerformanceDashboardScreen() {
             ) : (
               insightLines.map((line) => (
                 <p key={line} className="rounded-lg border border-cyan-400/20 bg-cyan-500/[0.07] px-2 py-1.5 text-[11px] text-cyan-100/90">
-                  {line}
+                  {humanizeTraderCopy(line)}
                 </p>
               ))
             )}

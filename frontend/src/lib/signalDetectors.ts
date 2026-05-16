@@ -348,12 +348,16 @@ export function buildSignalFromMarket(input: {
   candles15m: Candle[];
   regime?: MarketRegime;
   previousLifecycle?: CandidateLifecycle;
+  onReject?: (detectorName: string, reason: 'no_signal') => void;
 }): { signal: CryptoSignal; lifecycle: CandidateLifecycle } | null {
   const thresholds = thresholdsForRegime(input.regime ?? 'neutral');
   let best: { out: DetectorOutput; setupScore: number } | null = null;
   for (const detector of MARKET_DETECTORS) {
     const out = detector(input.candles15m, thresholds);
-    if (!out) continue;
+    if (!out) {
+      input.onReject?.(detector.name, 'no_signal');
+      continue;
+    }
     const setupScore = calculateSetupScore(out.breakdown);
     if (!best || setupScore > best.setupScore) {
       best = { out, setupScore };

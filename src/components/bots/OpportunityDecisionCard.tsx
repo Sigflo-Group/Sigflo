@@ -44,7 +44,7 @@ const HEADLINES = {
 const SUBTEXT = {
   breakout: [
     'Range tightening after multiple tests.',
-    'Volatility compressing, expansion likely.',
+    'Range is tightening; a larger move may be next.',
     'Resistance keeps getting tested with little pullback.',
   ],
   reversal: [
@@ -54,7 +54,7 @@ const SUBTEXT = {
   ],
   momentum: ['Trend structure intact.', 'Follow-through is holding.', 'Continuation pressure remains steady.'],
   risk: [
-    'Volatility is increasing and conditions are unstable.',
+    'Market activity is picking up and conditions feel less stable.',
     'Price swings are widening around key levels.',
     'Exposure is high; keep risk controlled.',
   ],

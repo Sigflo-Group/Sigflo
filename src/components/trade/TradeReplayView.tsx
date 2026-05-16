@@ -1,6 +1,17 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSignalEngine } from '@/hooks/useSignalEngine';
+import {
+  CHANGE_RISK_LABEL,
+  marketConditionLabel,
+  MARKET_CONDITIONS_CHANGING_TITLE,
+  MARKET_CONDITIONS_LABEL,
+  momentumStateLabel,
+  OVERALL_CHANGE_PRESSURE_LABEL,
+  TREND_HEALTH_LABEL,
+  transitionPressureLabel,
+} from '@/lib/marketConditionsCopy';
 import { buildTradeReplay, type TradeReplayMarker } from '@/lib/tradeReplay';
+import type { RegimeKind } from '@/types/regimePredictor';
 import type { AiStateSnapshot } from '@/types/aiSnapshot';
 import type { SignalLifecycleEvent } from '@/types/signal';
 
@@ -267,8 +278,10 @@ export function TradeReplayView({ event, snapshots = [] }: Props) {
           <p className="text-[10px] uppercase tracking-wide text-sigflo-muted">Conviction</p>
           <p className="mt-1 text-white">Emit confidence {frame.confidence.toFixed(0)}</p>
           <p className="mt-0.5 text-sigflo-muted">Structure line {frame.structurePressure.toFixed(0)} / 100</p>
-          <p className="text-sigflo-muted">Market conditions {frame.marketRegime}</p>
-          <p className="text-sigflo-muted">Momentum {frame.momentumState}</p>
+          <p className="text-sigflo-muted">
+            {MARKET_CONDITIONS_LABEL} {marketConditionLabel(frame.marketRegime as RegimeKind | string)}
+          </p>
+          <p className="text-sigflo-muted">Momentum {momentumStateLabel(frame.momentumState)}</p>
         </div>
       </div>
 
@@ -279,7 +292,7 @@ export function TradeReplayView({ event, snapshots = [] }: Props) {
       {pressureTimeline.length > 0 ? (
         <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-2.5">
           <div className="flex items-center justify-between gap-2">
-            <p className="text-[10px] font-semibold uppercase tracking-wide text-sigflo-muted">Market conditions changing</p>
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-sigflo-muted">{MARKET_CONDITIONS_CHANGING_TITLE}</p>
             <button
               type="button"
               onClick={() =>
@@ -297,7 +310,7 @@ export function TradeReplayView({ event, snapshots = [] }: Props) {
             <>
           <div className={`mt-2 rounded-lg border px-2 py-1.5 ${compositeTone.badge}`}>
             <div className={`mb-1 flex items-center justify-between text-[10px] ${compositeTone.text}`}>
-              <span>overall change pressure</span>
+              <span>{OVERALL_CHANGE_PRESSURE_LABEL.toLowerCase()}</span>
               <span>
                 {Math.round(compositeLatest)} ({compositeTone.zone})
               </span>
@@ -322,12 +335,12 @@ export function TradeReplayView({ event, snapshots = [] }: Props) {
           <div className={`mt-2 ${advancedLayout === 'expanded' ? 'space-y-1.5' : 'space-y-1'}`}>
             {(
               [
-                ['trendToRange', 'trend losing strength'],
-                ['rangeToTrend', 'trend trying to form'],
-                ['compressionToExpansion', 'breakout pressure building'],
-                ['expansionToCompression', 'market calming down'],
-                ['stableToVolatile', 'market becoming unstable'],
-                ['volatileToStable', 'market settling down'],
+                ['trendToRange', transitionPressureLabel('trendToRange')],
+                ['rangeToTrend', transitionPressureLabel('rangeToTrend')],
+                ['compressionToExpansion', transitionPressureLabel('compressionToExpansion')],
+                ['expansionToCompression', transitionPressureLabel('expansionToCompression')],
+                ['stableToVolatile', transitionPressureLabel('stableToVolatile')],
+                ['volatileToStable', transitionPressureLabel('volatileToStable')],
               ] as const
             ).map(([k, label]) => {
               const vals = pressureTimeline.map((p) => p.pressures[k]);
@@ -354,14 +367,17 @@ export function TradeReplayView({ event, snapshots = [] }: Props) {
             })}
           </div>
           <p className="mt-2 text-[10px] text-sigflo-muted">
-            Latest change risk {Math.round(pressureTimeline.at(-1)?.shiftProbability ?? 0)} / 100 · trend health{' '}
-            {Math.round(pressureTimeline.at(-1)?.regimeStability ?? 0)} / 100
-            {pressureTimeline.at(-1)?.likelyNextRegime ? ` · likely next conditions: ${pressureTimeline.at(-1)?.likelyNextRegime}` : ''}
+            Latest {CHANGE_RISK_LABEL.toLowerCase()} {Math.round(pressureTimeline.at(-1)?.shiftProbability ?? 0)} / 100 ·{' '}
+            {TREND_HEALTH_LABEL.toLowerCase()} {Math.round(pressureTimeline.at(-1)?.regimeStability ?? 0)} / 100
+            {pressureTimeline.at(-1)?.likelyNextRegime
+              ? ` · likely next conditions: ${marketConditionLabel(pressureTimeline.at(-1)!.likelyNextRegime!)}`
+              : ''}
           </p>
             </>
           ) : (
             <p className="mt-2 text-[10px] text-sigflo-muted">
-              Overall change pressure {Math.round(compositeLatest)} ({compositeTone.zone}) · change risk{' '}
+              {OVERALL_CHANGE_PRESSURE_LABEL} {Math.round(compositeLatest)} ({compositeTone.zone}) ·{' '}
+              {CHANGE_RISK_LABEL.toLowerCase()}{' '}
               {Math.round(pressureTimeline.at(-1)?.shiftProbability ?? 0)} / 100
             </p>
           )}

@@ -11,22 +11,12 @@ import {
   uiSignalStateFromMarketStatus,
   uiSignalStateLabel,
 } from '@/lib/signalState';
+import { interpretSignal } from '@/lib/signalInterpretation';
+import { MarketPostureBar } from '@/components/shared/MarketPostureBar';
 import { TriggeredFireMark } from '@/components/ui/TriggeredFireMark';
 import { useSignalEngine } from '@/hooks/useSignalEngine';
 import type { CryptoSignal } from '@/types/signal';
 import type { Candle } from '@/types/market';
-
-function confidenceLabel(score: number): string {
-  if (score >= 85) return 'High Conviction';
-  if (score >= 75) return 'Strong';
-  if (score >= 60) return 'Moderate';
-  if (score >= 45) return 'Developing';
-  return 'No Trade';
-}
-
-function riskShort(tag: string): string {
-  return tag.replace(' Risk', '');
-}
 
 function isFreshPosted(postedAgo: string): boolean {
   const v = postedAgo.trim().toLowerCase();
@@ -99,6 +89,7 @@ export function SignalCard({
   const marketStatus = deriveMarketStatus(signal);
   const uiState = uiSignalStateFromMarketStatus(marketStatus);
   const uiStateStyle = uiSignalStateClasses(uiState);
+  const interp = useMemo(() => interpretSignal(signal, marketStatus), [signal, marketStatus]);
   const isTriggered = uiState === 'triggered';
   const justTriggered = useTriggeredMotion(isTriggered, 900);
   const isFreshTriggered = isTriggered && isFreshPosted(signal.postedAgo);
@@ -135,12 +126,6 @@ export function SignalCard({
   const chartH = 84;
   const line = sparkPath(miniSeries, chartW, chartH);
   const area = `${line} L${chartW},${chartH} L0,${chartH} Z`;
-  const riskColor =
-    signal.riskTag === 'High Risk'
-      ? 'text-rose-400'
-      : signal.riskTag === 'Low Risk'
-        ? 'text-emerald-400'
-        : 'text-sigflo-muted';
 
   const openTrade = () => {
     registerSignalFollowed(signal);
@@ -220,25 +205,17 @@ export function SignalCard({
           )}
         </div>
 
-        {/* Entry + confidence + risk */}
-        <div className="mt-7 flex items-end justify-between gap-3 text-xs">
-          <span className={`text-sigflo-muted ${isTriggered ? 'sigflo-trigger-entry-active' : ''}`}>
-            Entry:{' '}
-            <span className="animate-entry-pulse text-base font-bold tabular-nums tracking-tight text-white">
-              {formatQuoteNumber(entryValue)}
-            </span>
+        {/* Entry price */}
+        <div className={`mt-6 text-xs text-sigflo-muted ${isTriggered ? 'sigflo-trigger-entry-active' : ''}`}>
+          Entry:{' '}
+          <span className="animate-entry-pulse text-base font-bold tabular-nums tracking-tight text-white">
+            {formatQuoteNumber(entryValue)}
           </span>
-          <div className="flex items-center gap-4 text-right">
-            <span className="text-sigflo-muted">
-              Confidence:{' '}
-              <span className="font-semibold text-sigflo-accent">
-                {signal.setupScore}% ({confidenceLabel(signal.setupScore)})
-              </span>
-            </span>
-            <span className="text-sigflo-muted">
-              Risk: <span className={`font-semibold ${riskColor}`}>{riskShort(signal.riskTag)}</span>
-            </span>
-          </div>
+        </div>
+
+        {/* Posture interpretation — replaces raw confidence/risk numbers */}
+        <div className="mt-3">
+          <MarketPostureBar signal={signal} status={marketStatus} interp={interp} variant="headline" />
         </div>
 
         {/* CTA */}

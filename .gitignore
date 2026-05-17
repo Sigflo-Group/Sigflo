@@ -13,3 +13,6 @@ dist
 
 # Claude local worktrees (nested repos; not part of Sigflo source)
 .claude/worktrees/
+
+# Continue IDE local config (models, MCP servers, secrets placeholders)
+.continue/

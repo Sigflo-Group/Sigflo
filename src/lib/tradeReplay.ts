@@ -1,3 +1,4 @@
+import { marketConditionLabel } from '@/lib/marketConditionsCopy';
 import type { SignalEventStatus, SignalLifecycleEvent } from '@/types/signal';
 
 export type TradeReplayMarkerKind =
@@ -98,7 +99,7 @@ function classifyNoteEvents(note: string, setupType: SignalLifecycleEvent['setup
     out.push({ kind: 'support_test', label: 'Support / retest', detail: note });
   }
   if (lower.includes('sideways') || lower.includes('chop') || lower.includes('range')) {
-    out.push({ kind: 'regime_shift', label: 'Range / chop context', detail: note });
+    out.push({ kind: 'regime_shift', label: 'Choppy market context', detail: note });
   }
   if (lower.includes('target') || lower.includes('continuation') || lower.includes('confirmed')) {
     out.push({ kind: 'confirmation', label: 'Confirmation / follow-through', detail: note });
@@ -144,8 +145,8 @@ function priceAlongArc(
 }
 
 function buildStory(event: SignalLifecycleEvent): string {
-  const regime = event.entryContext.marketRegime ?? 'mixed';
-  const head = `Signal started with ${event.bias === 'long' ? 'bullish' : 'bearish'} ${event.setupType} structure and ${event.confidence.toFixed(0)}% confidence (${regime} regime).`;
+  const conditions = marketConditionLabel(event.entryContext.marketRegime ?? null);
+  const head = `Signal started with ${event.bias === 'long' ? 'bullish' : 'bearish'} ${event.setupType} structure and ${event.confidence.toFixed(0)}% confidence in a ${conditions.toLowerCase()}.`;
   const body = event.notes
     .slice(1)
     .filter(Boolean)
@@ -180,7 +181,7 @@ export function buildTradeReplay(event: SignalLifecycleEvent, nowMs: number): Tr
   const pMae = event.bias === 'long' ? entryPrice - event.maxAdverseExcursion * atr : entryPrice + event.maxAdverseExcursion * atr;
   const pEnd = resolutionPrice(event);
 
-  const regimeLabel = event.entryContext.marketRegime ?? '—';
+  const regimeLabel = marketConditionLabel(event.entryContext.marketRegime);
 
   type Draft = {
     timestamp: number;

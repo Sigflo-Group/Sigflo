@@ -1,3 +1,4 @@
+import { groundedMarketToneLabel } from '@/lib/marketConditionsCopy';
 import type { GroundedMarketContext } from '@/types/aiGrounded';
 import type { MarketRowStatus } from '@/types/markets';
 import type { CryptoSignal } from '@/types/signal';
@@ -61,7 +62,7 @@ export function buildDeepAnalysisFallback(
   const mkt = ctx?.market ? `Market mode: **${ctx.market}**. ` : '';
   const regime =
     ctx?.marketRegime != null
-      ? `Regime (engine tone context): **${ctx.marketRegime.replace(/_/g, ' ')}**. `
+      ? `Market tone (engine context): **${groundedMarketToneLabel(ctx.marketRegime)}**. `
       : '';
   const gaps =
     ctx?.dataGaps?.length ? `Insufficient data in package for: ${ctx.dataGaps.join(', ')}. ` : '';

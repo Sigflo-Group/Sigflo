@@ -610,7 +610,7 @@ export default function BotsScreen() {
                 <>
                   <p className="font-medium text-zinc-200">No setups meet our threshold right now</p>
                   <p className="mt-2">
-                    Engines keep scanning for compression, pullbacks, and momentum. Near-ready ideas show under{' '}
+                    Engines keep scanning for breakouts, pullbacks, and momentum. Near-ready ideas show under{' '}
                     <span className="text-zinc-300">Forming setups</span> below.
                   </p>
                 </>

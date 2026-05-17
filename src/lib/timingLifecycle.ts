@@ -26,6 +26,9 @@ export interface TriggerMetadata {
   triggerType: ScannerTriggerType;
   triggerReason: string;
   firstValidEntryCandleIndex: number | null;
+  /** Timestamp (ms) of the candle on which the trigger was first confirmed.
+   *  Used for candlesSinceTrigger counting — the ring-buffered array index is unreliable. */
+  triggerCandleTs: number | null;
   idealEntryPrice: number | null;
 }
 
@@ -44,8 +47,12 @@ export interface CandidateLifecycle {
   timingHistory: TimingSnapshot[];
   peakTimingScore: number;
   peakTimingCandleIndex: number | null;
+  /** Timestamp of the candle where timing score peaked. Replaces index for elapsed-candle counting. */
+  peakTimingCandleTs: number | null;
   peakActionabilityScore: number;
   peakActionabilityCandleIndex: number | null;
+  /** Timestamp of the candle where actionability score peaked. */
+  peakActionabilityCandleTs: number | null;
   candlesSinceTrigger: number | null;
   candlesSincePeakTiming: number | null;
   candlesSincePeakActionability: number | null;
@@ -215,25 +222,36 @@ export function evaluateTimingLifecycle(args: {
     args.setupType === 'pullback' ? pullback : args.setupType === 'breakout' ? breakout : reclaim;
 
   const candleIndex = Math.max(0, candles.length - 1);
+  const lastCandleTs = candles.at(-1)?.ts ?? null;
   const previousTrigger = args.previous?.trigger;
   const previousTriggerIndex = previousTrigger?.firstValidEntryCandleIndex ?? null;
+  // Use timestamp-based elapsed-candle counting: the ring-buffered array is capped at 240
+  // entries, so `candles.length - 1` is always 239, making index subtraction permanently 0.
+  const previousTriggerTs = previousTrigger?.triggerCandleTs ?? null;
   const previousCandlesSinceTrigger =
-    previousTriggerIndex != null ? Math.max(0, candleIndex - previousTriggerIndex) : null;
+    previousTriggerTs != null
+      ? candles.filter((c) => c.ts > previousTriggerTs).length
+      : null;
   const shouldRearmTrigger =
     selected.triggerHit &&
     (
-      previousTriggerIndex == null ||
+      previousTriggerTs == null ||
       args.previous?.state === 'extended' ||
       args.previous?.state === 'expired' ||
       (previousCandlesSinceTrigger != null && previousCandlesSinceTrigger > config.extendedAfterCandles)
     );
   const shouldClearStaleTrigger =
     !selected.triggerHit &&
-    previousTriggerIndex != null &&
+    previousTriggerTs != null &&
     (
       args.previous?.state === 'expired' ||
       (previousCandlesSinceTrigger != null && previousCandlesSinceTrigger > config.expiredAfterCandles)
     );
+  const triggerCandleTs = shouldRearmTrigger
+    ? lastCandleTs
+    : shouldClearStaleTrigger
+      ? null
+      : previousTriggerTs;
   const firstValidEntryCandleIndex = shouldRearmTrigger
     ? candleIndex
     : shouldClearStaleTrigger
@@ -246,14 +264,14 @@ export function evaluateTimingLifecycle(args: {
       : (previousTrigger?.idealEntryPrice ?? null);
 
   const candlesSinceTrigger =
-    firstValidEntryCandleIndex != null ? Math.max(0, candleIndex - firstValidEntryCandleIndex) : null;
+    triggerCandleTs != null ? candles.filter((c) => c.ts > triggerCandleTs).length : null;
   const atrExtensionFromIdeal =
     idealEntryPrice != null ? Math.abs(close - idealEntryPrice) / Math.max(atrNow, 1e-8) : 0;
   const pctExtensionFromIdeal =
     idealEntryPrice != null ? (Math.abs(close - idealEntryPrice) / Math.max(idealEntryPrice, 1e-8)) * 100 : 0;
   const postTriggerImpulseCandles =
-    candlesSinceTrigger != null
-      ? candles.slice(-(candlesSinceTrigger + 1)).filter((c) => (args.side === 'long' ? c.close > c.open : c.close < c.open)).length
+    candlesSinceTrigger != null && candlesSinceTrigger > 0
+      ? candles.slice(-candlesSinceTrigger).filter((c) => (args.side === 'long' ? c.close > c.open : c.close < c.open)).length
       : 0;
 
   const penalties =
@@ -292,20 +310,22 @@ export function evaluateTimingLifecycle(args: {
   const previousHistory = args.previous?.timingHistory ?? [];
   const historyWithoutNewest = [...previousHistory].slice(-Math.max(0, config.historyLimit - 1));
   const peakTimingScore = Math.max(args.previous?.peakTimingScore ?? 0, timingScore);
-  const peakTimingCandleIndex =
-    peakTimingScore === timingScore ? candleIndex : (args.previous?.peakTimingCandleIndex ?? candleIndex);
+  // Only advance the peak candle timestamp when this score strictly exceeds the previous peak.
+  // Using >= (equality) caused the peak clock to reset every scan where the score held steady,
+  // keeping candlesSincePeakTiming permanently 0 and preventing the extended transition.
+  const isNewTimingPeak = timingScore > (args.previous?.peakTimingScore ?? 0);
+  const peakTimingCandleIndex = isNewTimingPeak ? candleIndex : (args.previous?.peakTimingCandleIndex ?? candleIndex);
+  const peakTimingCandleTs = isNewTimingPeak ? lastCandleTs : (args.previous?.peakTimingCandleTs ?? lastCandleTs);
+
   const peakActionabilityScore = Math.max(args.previous?.peakActionabilityScore ?? 0, actionabilityScore);
-  const peakActionabilityCandleIndex =
-    peakActionabilityScore === actionabilityScore
-      ? candleIndex
-      : (args.previous?.peakActionabilityCandleIndex ?? candleIndex);
+  const isNewActionabilityPeak = actionabilityScore > (args.previous?.peakActionabilityScore ?? 0);
+  const peakActionabilityCandleIndex = isNewActionabilityPeak ? candleIndex : (args.previous?.peakActionabilityCandleIndex ?? candleIndex);
+  const peakActionabilityCandleTs = isNewActionabilityPeak ? lastCandleTs : (args.previous?.peakActionabilityCandleTs ?? lastCandleTs);
 
   const candlesSincePeakTiming =
-    peakTimingCandleIndex != null ? Math.max(0, candleIndex - peakTimingCandleIndex) : null;
+    peakTimingCandleTs != null ? candles.filter((c) => c.ts > peakTimingCandleTs).length : null;
   const candlesSincePeakActionability =
-    peakActionabilityCandleIndex != null
-      ? Math.max(0, candleIndex - peakActionabilityCandleIndex)
-      : null;
+    peakActionabilityCandleTs != null ? candles.filter((c) => c.ts > peakActionabilityCandleTs).length : null;
 
   const provisionalHistory = [
     ...historyWithoutNewest,
@@ -320,7 +340,7 @@ export function evaluateTimingLifecycle(args: {
   ];
 
   const state = computeState({
-    triggerSeen: firstValidEntryCandleIndex != null,
+    triggerSeen: triggerCandleTs != null,
     timingScore,
     freshnessScore: entryFreshnessScore,
     actionabilityScore,
@@ -343,13 +363,16 @@ export function evaluateTimingLifecycle(args: {
           : previousTrigger.triggerType,
       triggerReason: selected.triggerReason,
       firstValidEntryCandleIndex,
+      triggerCandleTs,
       idealEntryPrice,
     },
     timingHistory,
     peakTimingScore,
     peakTimingCandleIndex,
+    peakTimingCandleTs,
     peakActionabilityScore,
     peakActionabilityCandleIndex,
+    peakActionabilityCandleTs,
     candlesSinceTrigger,
     candlesSincePeakTiming,
     candlesSincePeakActionability,

@@ -13,39 +13,35 @@
     "dev:backend": "cross-env NODE_OPTIONS=--use-system-ca npm run dev --prefix backend",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "test": "vitest run",
     "lint": "eslint .",
     "netlify:cli": "cross-env NODE_OPTIONS=--use-system-ca npx --yes netlify-cli",
     "deploy:netlify": "cross-env NODE_OPTIONS=--use-system-ca npx --yes netlify-cli deploy --prod",
-    "seed": "tsx scripts/seed.ts"
+    "deploy:netlify:draft": "cross-env NODE_OPTIONS=--use-system-ca npx --yes netlify-cli deploy"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.105.3",
+    "@supabase/supabase-js": "^2.105.4",
     "framer-motion": "^12.38.0",
     "lightweight-charts": "^5.2.0",
-    "react": "^19.2.5",
-    "react-dom": "^19.2.5",
-    "react-router-dom": "^7.14.2"
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6",
+    "react-router-dom": "^7.15.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.21.0",
-    "@types/node": "^25.6.0",
+    "@types/node": "^25.7.0",
     "@types/react": "^19.0.10",
     "@types/react-dom": "^19.0.4",
     "@vitejs/plugin-react": "^5.2.0",
     "autoprefixer": "^10.5.0",
     "cross-env": "^10.1.0",
-    "dotenv": "^17.4.2",
     "eslint": "^9.21.0",
     "eslint-plugin-react-hooks": "^5.1.0",
     "eslint-plugin-react-refresh": "^0.5.2",
     "globals": "^15.15.0",
     "postcss": "^8.5.14",
     "tailwindcss": "^3.4.17",
-    "tsx": "^4.22.0",
     "typescript": "~5.9.3",
-    "typescript-eslint": "^8.59.2",
-    "vite": "~6.4.2",
-    "vitest": "^4.1.6"
+    "typescript-eslint": "^8.59.3",
+    "vite": "~6.4.2"
   }
 }

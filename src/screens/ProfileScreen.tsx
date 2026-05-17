@@ -590,7 +590,20 @@ export default function ProfileScreen() {
             </button>
           </div>
         ) : null}
-        {connectError ? <p className="mt-2 text-[11px] text-rose-300">{connectError}</p> : null}
+        {connectError ? (
+          <div className="mt-2 flex items-center gap-2">
+            <p className="text-[11px] text-rose-300">{connectError}</p>
+            {connectError.toLowerCase().includes('step-up') ? (
+              <button
+                type="button"
+                onClick={() => navigate('/security/step-up?redirect=' + encodeURIComponent('/profile'))}
+                className="shrink-0 rounded-lg border border-rose-300/40 bg-rose-300/10 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-rose-200 transition hover:bg-rose-300/15"
+              >
+                Verify session
+              </button>
+            ) : null}
+          </div>
+        ) : null}
       </section>
 
       {exchangeForm ? (

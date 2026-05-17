@@ -4,15 +4,17 @@ import { log } from '../lib/logger.js';
 export function errorHandler(err: unknown, req: Request & { requestId?: string }, res: Response, _next: NextFunction) {
   const msg = err instanceof Error ? err.message : String(err);
 
+  // Error objects are non-enumerable so JSON.stringify gives {}. Serialize
+  // message + stack explicitly so log lines are actually useful.
   log('error', 'Unhandled API error', {
     requestId: req.requestId,
-    error: err, // 👈 log full error object
+    error: err instanceof Error
+      ? { name: err.name, message: err.message, stack: err.stack }
+      : String(err),
   });
 
-  console.error('FULL ERROR:', err); // 👈 ADD THIS
-
   res.status(500).json({
-    error: msg, // 👈 SHOW REAL ERROR FOR NOW
-    requestId: req.requestId
+    error: msg,
+    requestId: req.requestId,
   });
 }

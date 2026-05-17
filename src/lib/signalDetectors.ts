@@ -645,8 +645,17 @@ function assessDirectionalBias(params: {
       confidence = clamp(confidence + params.strategyPersonalityProfile.overextendedPenalty, 0, 100);
     }
     if (mtf.counterTrend) confidence = Math.max(0, confidence - params.strategyPersonalityProfile.counterTrendPenalty);
-    if (structure.choppy) confidence = Math.max(0, confidence - params.strategyPersonalityProfile.chopPenalty);
-    if (momentum.weakVolume) confidence = Math.max(0, confidence - params.strategyPersonalityProfile.weakVolumePenalty);
+    // When an anti-spam cap already penalised the same condition, halve the additional
+    // personality deduction to avoid double-penalising. The cap sets a ceiling; the
+    // personality adjustment fine-tunes within that ceiling rather than compounding it.
+    const choppyCapFired = antiSpamReasons.some(
+      (r) => r.includes('choppy') || r.includes('quiet') || r.includes('range-bound') || r.includes('fake-breakout'),
+    );
+    const weakVolumeCapFired = antiSpamReasons.some((r) => r.includes('volume'));
+    const chopScale = structure.choppy && choppyCapFired ? 0.5 : 1;
+    const volScale = momentum.weakVolume && weakVolumeCapFired ? 0.5 : 1;
+    if (structure.choppy) confidence = Math.max(0, confidence - Math.round(params.strategyPersonalityProfile.chopPenalty * chopScale));
+    if (momentum.weakVolume) confidence = Math.max(0, confidence - Math.round(params.strategyPersonalityProfile.weakVolumePenalty * volScale));
   }
   if (params.adaptationConfidenceAdjustment) {
     confidence = clamp(confidence + params.adaptationConfidenceAdjustment, 0, 100);
@@ -880,10 +889,34 @@ function breakoutPressureDetector(candles: Candle[], thresholds: DetectorThresho
     breakoutValid,
   };
   const passCount = Object.values(conditions).filter(Boolean).length;
-  // Hard guard: RSI > 76 means the setup is already overextended, not pre-breakout.
-  // This also prevents the breakout detector from co-activating with overextended when
-  // rsiOk=false is the only failing condition (letting passCount reach 4 via the 4/5 rule).
-  if (m.rsiNow > 76 || passCount < 4 || !breakoutValid) {
+
+  // ── FORENSIC DEBUG BLOCK ─────────────────────────────────────────────────────
+  // Always-on (not DEBUG-gated) so the execution path is visible in every environment.
+  console.log('[BREAKOUT DEBUG]', {
+    candleTime: last?.ts ?? null,
+    rsiNow: m.rsiNow,
+    atrNow: m.atrNow,
+    passCount,
+    trendOk: trend,
+    nearBreakout,
+    breakoutValid,
+    compression: Number(compression.toFixed(4)),
+    rsiOk,
+    earlyReturnTriggered: m.rsiNow > 76,
+  });
+
+  // ── RSI OVEREXTENDED HARD GUARD ──────────────────────────────────────────────
+  // Separated from the passCount gate so the console.warn is unambiguously reachable.
+  if (m.rsiNow > 76) {
+    console.warn('[BREAKOUT BLOCKED] RSI overextended', {
+      rsiNow: m.rsiNow,
+      candleTime: last?.ts ?? null,
+    });
+    return null;
+  }
+
+  // ── PASSCOUNT / VALIDITY GATE ────────────────────────────────────────────────
+  if (passCount < 4 || !breakoutValid) {
     if (DEBUG) {
       console.log('[Sigflo][Detector] breakoutPressure REJECT', {
         passCount, conditions, rsiNow: m.rsiNow, rsiOk, volBoost, bodyStrength, followThrough,
@@ -894,12 +927,29 @@ function breakoutPressureDetector(candles: Candle[], thresholds: DetectorThresho
     }
     return null;
   }
+
   if (DEBUG) {
     console.log('[Sigflo][Detector] breakoutPressure PASS', {
       passCount, conditions, rsiNow: m.rsiNow, volBoost, bodyStrength, compression,
       distanceToBreakoutAtr: Number(distanceToBreakoutAtr.toFixed(3)),
     });
   }
+
+  // ── PRE-RETURN FORENSIC WARN ─────────────────────────────────────────────────
+  // Confirms this path is actually reached and not short-circuited upstream.
+  const debugSetupScore =
+    (trend ? 22 : 14) +
+    clamp(Math.round(((m.rsiNow - 50) / 22) * 20), 8, 18) +
+    clamp(Math.round((compression * 0.6 + (nearBreakout ? 0.4 : 0.2)) * 25), 10, 22) +
+    clamp(Math.round(Math.min(volBoost, 2) / 2 * 15), 6, 14) +
+    8;
+  console.warn('[BREAKOUT RETURNING DETECTOR]', {
+    rsiNow: m.rsiNow,
+    score: debugSetupScore,
+    confidence: 'computed downstream by assessDirectionalBias',
+    candleTime: last?.ts ?? null,
+  });
+
   return {
     setupType: 'breakout',
     side: 'long',
@@ -1039,8 +1089,32 @@ function breakdownPressureDetector(candles: Candle[], thresholds: DetectorThresh
     breakoutValid,
   };
   const passCount = Object.values(conditions).filter(Boolean).length;
-  // Hard guard: RSI < 24 means the setup is already overextended short, not pre-breakdown.
-  if (m.rsiNow < 24 || passCount < 4 || !breakoutValid) {
+
+  // ── FORENSIC DEBUG BLOCK ─────────────────────────────────────────────────────
+  console.log('[BREAKDOWN DEBUG]', {
+    candleTime: last?.ts ?? null,
+    rsiNow: m.rsiNow,
+    atrNow: m.atrNow,
+    passCount,
+    trendOk: trend,
+    nearBreakdown,
+    breakoutValid,
+    compression: Number(compression.toFixed(4)),
+    rsiOk,
+    earlyReturnTriggered: m.rsiNow < 24,
+  });
+
+  // ── RSI OVERSOLD HARD GUARD ──────────────────────────────────────────────────
+  if (m.rsiNow < 24) {
+    console.warn('[BREAKDOWN BLOCKED] RSI overextended short', {
+      rsiNow: m.rsiNow,
+      candleTime: last?.ts ?? null,
+    });
+    return null;
+  }
+
+  // ── PASSCOUNT / VALIDITY GATE ────────────────────────────────────────────────
+  if (passCount < 4 || !breakoutValid) {
     if (DEBUG) {
       console.log('[Sigflo][Detector] breakdownPressure REJECT', {
         passCount, conditions, rsiNow: m.rsiNow, rsiOk, volBoost, bodyStrength, followThrough,
@@ -1051,12 +1125,28 @@ function breakdownPressureDetector(candles: Candle[], thresholds: DetectorThresh
     }
     return null;
   }
+
   if (DEBUG) {
     console.log('[Sigflo][Detector] breakdownPressure PASS', {
       passCount, conditions, rsiNow: m.rsiNow, volBoost, bodyStrength, compression,
       distanceToBreakdownAtr: Number(distanceToBreakdownAtr.toFixed(3)),
     });
   }
+
+  // ── PRE-RETURN FORENSIC WARN ─────────────────────────────────────────────────
+  const debugSetupScore =
+    (trend ? 22 : 14) +
+    clamp(Math.round(((50 - m.rsiNow) / 22) * 20), 8, 18) +
+    clamp(Math.round((compression * 0.6 + (nearBreakdown ? 0.4 : 0.2)) * 25), 10, 22) +
+    clamp(Math.round(Math.min(volBoost, 2) / 2 * 15), 6, 14) +
+    8;
+  console.warn('[BREAKDOWN RETURNING DETECTOR]', {
+    rsiNow: m.rsiNow,
+    score: debugSetupScore,
+    confidence: 'computed downstream by assessDirectionalBias',
+    candleTime: last?.ts ?? null,
+  });
+
   return {
     setupType: 'breakout',
     side: 'short',

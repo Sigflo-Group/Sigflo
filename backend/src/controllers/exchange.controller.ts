@@ -1,42 +1,68 @@
 import type { Response } from 'express';
 import type { AuthedRequest } from '../middleware/auth.js';
-import { BybitAdapter } from '../exchanges/bybit.js';
-import { getBrokerAccountForUser, listBrokerAccountsForUser, upsertBrokerAccount } from '../db/queries/brokerAccounts.js';
+import { getAdapter } from '../exchanges/registry.js';
+import type { ExchangeId } from '../exchanges/types.js';
+import {
+  getBrokerAccountForUser,
+  listBrokerAccountsForUser,
+  upsertBrokerAccount,
+  deleteBrokerAccount,
+  type BrokerAccountRow,
+} from '../db/queries/brokerAccounts.js';
 import { encryptBrokerCredential, decryptBrokerCredential } from '../services/exchangeKey.service.js';
 import { writeAuditLog } from '../services/auditLog.service.js';
+import { log } from '../lib/logger.js';
 
-const bybit = new BybitAdapter();
+const SUPPORTED_BROKERS: ExchangeId[] = ['bybit', 'mexc'];
+
+function formatAccount(a: BrokerAccountRow) {
+  return {
+    id: a.id,
+    exchange: a.broker as ExchangeId,
+    status: a.status as 'connected' | 'invalid',
+    accountLabel: a.accountLabel,
+    lastValidatedAt: a.lastValidatedAt,
+    createdAt: a.createdAt,
+    updatedAt: a.updatedAt,
+  };
+}
 
 export async function getExchangeStatus(req: AuthedRequest, res: Response) {
   if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
   const accounts = await listBrokerAccountsForUser(req.user.userId);
-  return res.json({
-    accounts: accounts.map((a) => ({
-      id: a.id,
-      broker: a.broker,
-      linked: a.status === 'connected',
-      status: a.status,
-      accountLabel: a.accountLabel,
-      permissions: a.permissions ?? {},
-      lastValidatedAt: a.lastValidatedAt,
-    })),
-  });
+  return res.json(accounts.map(formatAccount));
 }
 
 export async function postLinkExchange(req: AuthedRequest, res: Response) {
   if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
-  const body = req.body as { broker: 'bybit'; apiKey: string; apiSecret: string; accountLabel?: string };
+  const { broker, apiKey, apiSecret, accountLabel } = req.body as {
+    broker: ExchangeId;
+    apiKey: string;
+    apiSecret: string;
+    accountLabel?: string;
+  };
 
-  const creds = { apiKey: body.apiKey, apiSecret: body.apiSecret };
-  const validation = await bybit.validateReadOnly(creds);
+  log('info', 'Exchange link attempt.', { userId: req.user.userId, broker });
+
+  let validation: Awaited<ReturnType<ReturnType<typeof getAdapter>['validateReadOnly']>>;
+  try {
+    const adapter = getAdapter(broker);
+    validation = await adapter.validateReadOnly({ apiKey, apiSecret });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    log('warn', 'Exchange link — adapter threw during validation.', { userId: req.user.userId, broker, error: msg });
+    return res.status(400).json({ error: `Connection failed: ${msg}` });
+  }
+
   if (!validation.ok) {
+    log('warn', 'Exchange link validation failed.', { userId: req.user.userId, broker, reason: validation.message });
     await writeAuditLog({
       userId: req.user.userId,
       requestId: req.requestId,
       action: 'exchange.link',
       objectType: 'broker_account',
       outcome: 'failure',
-      payload: { broker: body.broker },
+      payload: { broker },
       ipAddress: req.auditContext?.ipAddress,
       userAgent: req.auditContext?.userAgent,
       metadata: { reason: validation.message },
@@ -46,13 +72,15 @@ export async function postLinkExchange(req: AuthedRequest, res: Response) {
 
   const account = await upsertBrokerAccount({
     userId: req.user.userId,
-    broker: body.broker,
-    accountLabel: body.accountLabel ?? null,
-    apiKeyEncrypted: encryptBrokerCredential(body.apiKey),
-    apiSecretEncrypted: encryptBrokerCredential(body.apiSecret),
-    permissions: { withdrawalsEnabled: false, tradeEnabled: true },
+    broker,
+    accountLabel: accountLabel ?? null,
+    apiKeyEncrypted: encryptBrokerCredential(apiKey),
+    apiSecretEncrypted: encryptBrokerCredential(apiSecret),
+    permissions: { withdrawalsEnabled: false },
     status: 'connected',
   });
+
+  log('info', 'Exchange linked successfully.', { userId: req.user.userId, broker, accountId: account.id });
 
   await writeAuditLog({
     userId: req.user.userId,
@@ -61,33 +89,27 @@ export async function postLinkExchange(req: AuthedRequest, res: Response) {
     objectType: 'broker_account',
     objectId: account.id,
     outcome: 'success',
-    payload: { broker: body.broker },
+    payload: { broker },
     ipAddress: req.auditContext?.ipAddress,
     userAgent: req.auditContext?.userAgent,
   });
 
-  return res.json({
-    ok: true,
-    account: {
-      id: account.id,
-      broker: account.broker,
-      linked: account.status === 'connected',
-      status: account.status,
-      accountLabel: account.accountLabel,
-      permissions: account.permissions ?? {},
-      lastValidatedAt: account.lastValidatedAt,
-    },
-  });
+  return res.json(formatAccount(account));
 }
 
 export async function postRevalidateExchange(req: AuthedRequest, res: Response) {
   if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
   const accountId = String(req.body?.accountId ?? '');
   const account = await getBrokerAccountForUser(req.user.userId, accountId);
-  if (!account) return res.status(404).json({ error: 'Broker account not found' });
-  if (account.broker !== 'bybit') return res.status(400).json({ error: 'Unsupported broker' });
+  if (!account) return res.status(404).json({ error: 'Broker account not found.' });
 
-  const validation = await bybit.validateReadOnly({
+  const broker = account.broker as ExchangeId;
+  if (!SUPPORTED_BROKERS.includes(broker)) {
+    return res.status(400).json({ error: `Unsupported broker: ${broker}` });
+  }
+
+  const adapter = getAdapter(broker);
+  const validation = await adapter.validateReadOnly({
     apiKey: decryptBrokerCredential(account.apiKeyEncrypted),
     apiSecret: decryptBrokerCredential(account.apiSecretEncrypted),
   });
@@ -114,16 +136,30 @@ export async function postRevalidateExchange(req: AuthedRequest, res: Response) 
     userAgent: req.auditContext?.userAgent,
   });
 
-  return res.json({
-    ok: true,
-    account: {
-      id: updated.id,
-      broker: updated.broker,
-      linked: updated.status === 'connected',
-      status: updated.status,
-      accountLabel: updated.accountLabel,
-      permissions: updated.permissions ?? {},
-      lastValidatedAt: updated.lastValidatedAt,
-    },
+  return res.json(formatAccount(updated));
+}
+
+export async function deleteExchange(req: AuthedRequest, res: Response) {
+  if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
+  const broker = req.params.broker as ExchangeId;
+  if (!SUPPORTED_BROKERS.includes(broker)) {
+    return res.status(404).json({ error: 'Exchange not supported.' });
+  }
+
+  await deleteBrokerAccount(req.user.userId, broker);
+
+  log('info', 'Exchange disconnected.', { userId: req.user.userId, broker });
+
+  await writeAuditLog({
+    userId: req.user.userId,
+    requestId: req.requestId,
+    action: 'exchange.disconnect',
+    objectType: 'broker_account',
+    outcome: 'success',
+    payload: { broker },
+    ipAddress: req.auditContext?.ipAddress,
+    userAgent: req.auditContext?.userAgent,
   });
+
+  return res.status(204).end();
 }

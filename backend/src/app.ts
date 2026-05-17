@@ -8,7 +8,6 @@ import { auditContext } from './middleware/auditContext.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import { requireAuth } from './middleware/auth.js';
 import { authRouteLimiter } from './middleware/rateLimit.js';
-import { integrationsRouter } from './routes/integrations.js';
 import { portfolioRouter } from './routes/portfolio.js';
 import { tradeRouter } from './routes/trade.js';
 import { exitWatchRouter } from './routes/exitWatch.js';
@@ -22,9 +21,18 @@ import { authRouter } from './routes/auth.routes.js';
 export function createApp() {
   const isProd = process.env.NODE_ENV === 'production';
   const app = express();
+
+  // Build the allowed-origins list from the env var, then add the Vite dev
+  // server origins automatically in non-production so local development works
+  // without touching .env each time.
   const allowedOrigins = env.FRONTEND_ORIGIN.split(',')
     .map((v) => v.trim())
     .filter(Boolean);
+  if (!isProd) {
+    for (const o of ['http://localhost:5173', 'http://127.0.0.1:5173']) {
+      if (!allowedOrigins.includes(o)) allowedOrigins.push(o);
+    }
+  }
 
   app.set('trust proxy', 1);
   app.use(
@@ -41,6 +49,7 @@ export function createApp() {
   );
   app.use(
     cors({
+      credentials: true,
       origin(origin, callback) {
         if (!origin) return callback(null, true);
         if (allowedOrigins.includes(origin)) return callback(null, true);
@@ -64,7 +73,6 @@ export function createApp() {
   app.get('/health', (_req, res) => res.json({ ok: true }));
 
   app.use('/api/auth', authRouteLimiter, authRouter);
-  app.use('/api/integrations', requireAuth, integrationsRouter);
   app.use('/api/portfolio', requireAuth, portfolioRouter);
   app.use('/api/trade', requireAuth, tradeRouter);
   app.use('/api/exit-watch', requireAuth, exitWatchRouter);

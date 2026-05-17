@@ -15,7 +15,7 @@ const REQUIRED_PUBLIC_TABLES = [
   'opportunities',
 ] as const;
 
-export async function runStartupSchemaCheck(): Promise<void> {
+export async function runStartupSchemaCheck(): Promise<{ ready: boolean }> {
   try {
     const { rows } = await db.query<{ table_name: string }>(
       `select table_name
@@ -48,19 +48,21 @@ export async function runStartupSchemaCheck(): Promise<void> {
       missing.splice(missing.indexOf('user_sessions'), 1);
     }
     if (missing.length > 0) {
-      log('warn', 'Startup schema check: missing required tables.', {
+      log('warn', 'Startup schema check: missing required tables — workers will not start.', {
         missing,
         hint: 'Run supabase/migrations in order (001 -> latest) against DATABASE_URL.',
       });
-      return;
+      return { ready: false };
     }
     log('info', 'Startup schema check: required tables present.', {
       checked: REQUIRED_PUBLIC_TABLES.length,
     });
+    return { ready: true };
   } catch (e) {
-    log('warn', 'Startup schema check failed.', {
+    log('warn', 'Startup schema check failed — workers will not start.', {
       error: e instanceof Error ? e.message : String(e),
     });
+    return { ready: false };
   }
 }
 

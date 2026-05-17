@@ -1,14 +1,14 @@
 import { Router } from 'express';
 import type { AuthedRequest } from '../middleware/auth.js';
-import { listIntegrations } from '../repositories/integrationsRepo.js';
-import { decryptText } from '../security/crypto.js';
+import { listBrokerAccountsForUser } from '../db/queries/brokerAccounts.js';
+import { decryptBrokerCredential } from '../services/exchangeKey.service.js';
 import { getAdapter } from '../exchanges/registry.js';
 import { log } from '../lib/logger.js';
 import type { ClosedTradeItem, ExchangeId } from '../exchanges/types.js';
 
 type ClosedTradeRow = ClosedTradeItem & { exchange: ExchangeId };
 
-/** Avoid flooding logs when the SPA polls every ~12s with the same Bybit 403. */
+/** Avoid flooding logs when the SPA polls every ~12s with the same error. */
 const lastWarnAt = new Map<string, number>();
 const WARN_THROTTLE_MS = 60_000;
 
@@ -28,43 +28,30 @@ portfolioRouter.get('/accounts', async (req: AuthedRequest, res) => {
     return;
   }
 
-  const integrations = await listIntegrations(req.user.userId);
+  const accounts = await listBrokerAccountsForUser(req.user.userId);
   const snapshots = await Promise.all(
-    integrations.map(async (integration) => {
+    accounts.map(async (account) => {
+      const exchange = account.broker as ExchangeId;
       try {
-        const adapter = getAdapter(integration.exchange);
+        const adapter = getAdapter(exchange);
         const creds = {
-          apiKey: decryptText(integration.encryptedKey),
-          apiSecret: decryptText(integration.encryptedSecret),
-          passphrase: integration.encryptedPassphrase ? decryptText(integration.encryptedPassphrase) : undefined,
+          apiKey: decryptBrokerCredential(account.apiKeyEncrypted),
+          apiSecret: decryptBrokerCredential(account.apiSecretEncrypted),
         };
         const [balances, positions, accountBreakdown] = await Promise.all([
           adapter.fetchBalances(creds),
           adapter.fetchPositions(creds),
           adapter.fetchAccountBreakdown ? adapter.fetchAccountBreakdown(creds) : Promise.resolve(null),
         ]);
-        return {
-          exchange: integration.exchange,
-          status: 'connected',
-          balances,
-          positions,
-          accountBreakdown,
-        };
+        return { exchange, status: 'connected', balances, positions, accountBreakdown };
       } catch (error) {
         const msg = error instanceof Error ? error.message : String(error);
         logPortfolioWarnThrottled(
-          `snap:${integration.exchange}:${msg.slice(0, 120)}`,
+          `snap:${exchange}:${msg.slice(0, 120)}`,
           'Portfolio snapshot failed.',
-          { exchange: integration.exchange, error: msg },
+          { exchange, error: msg },
         );
-        return {
-          exchange: integration.exchange,
-          status: 'error',
-          balances: [],
-          positions: [],
-          accountBreakdown: null,
-          syncError: msg,
-        };
+        return { exchange, status: 'error', balances: [], positions: [], accountBreakdown: null, syncError: msg };
       }
     }),
   );
@@ -78,27 +65,25 @@ portfolioRouter.get('/closed-trades', async (req: AuthedRequest, res) => {
     return;
   }
 
-  const integrations = await listIntegrations(req.user.userId);
+  const accounts = await listBrokerAccountsForUser(req.user.userId);
   const merged: ClosedTradeRow[] = [];
 
-  for (const integration of integrations) {
+  for (const account of accounts) {
+    const exchange = account.broker as ExchangeId;
     try {
-      const adapter = getAdapter(integration.exchange);
+      const adapter = getAdapter(exchange);
       const creds = {
-        apiKey: decryptText(integration.encryptedKey),
-        apiSecret: decryptText(integration.encryptedSecret),
-        passphrase: integration.encryptedPassphrase ? decryptText(integration.encryptedPassphrase) : undefined,
+        apiKey: decryptBrokerCredential(account.apiKeyEncrypted),
+        apiSecret: decryptBrokerCredential(account.apiSecretEncrypted),
       };
       const rows = await adapter.fetchClosedTrades(creds, { limit: 50 });
-      for (const row of rows) {
-        merged.push({ ...row, exchange: integration.exchange });
-      }
+      for (const row of rows) merged.push({ ...row, exchange });
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
       logPortfolioWarnThrottled(
-        `closed:${integration.exchange}:${msg.slice(0, 120)}`,
+        `closed:${exchange}:${msg.slice(0, 120)}`,
         'Closed trades fetch failed.',
-        { exchange: integration.exchange, error: msg },
+        { exchange, error: msg },
       );
     }
   }

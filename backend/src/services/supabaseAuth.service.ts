@@ -11,6 +11,20 @@ function normalizeUrl(url: string): string {
   return url.replace(/\/+$/, '');
 }
 
+// Cached at module level so the JWKS is fetched once and reused across requests.
+let cachedJwks: ReturnType<typeof createRemoteJWKSet> | null = null;
+function getJwks(): ReturnType<typeof createRemoteJWKSet> | null {
+  if (!env.SUPABASE_URL) return null;
+  if (!cachedJwks) {
+    const base = normalizeUrl(env.SUPABASE_URL);
+    cachedJwks = createRemoteJWKSet(
+      new URL(`${base}/auth/v1/.well-known/jwks.json`),
+      { timeoutDuration: 5_000 },
+    );
+  }
+  return cachedJwks;
+}
+
 async function verifyWithHs256(token: string): Promise<VerifiedAuthUser | null> {
   if (!env.SUPABASE_JWT_SECRET) return null;
   try {
@@ -25,10 +39,10 @@ async function verifyWithHs256(token: string): Promise<VerifiedAuthUser | null> 
 }
 
 async function verifyWithJwks(token: string): Promise<VerifiedAuthUser | null> {
-  if (!env.SUPABASE_URL) return null;
+  const jwks = getJwks();
+  if (!jwks) return null;
   try {
-    const base = normalizeUrl(env.SUPABASE_URL);
-    const jwks = createRemoteJWKSet(new URL(`${base}/auth/v1/.well-known/jwks.json`));
+    const base = normalizeUrl(env.SUPABASE_URL!);
     const { payload } = await jwtVerify(token, jwks);
     const iss = typeof payload.iss === 'string' ? payload.iss : '';
     if (iss && !iss.startsWith(`${base}/auth/v1`)) return null;

@@ -38,6 +38,10 @@ export async function getBrokerAccountForUser(userId: string, accountId: string)
   return rows[0] ?? null;
 }
 
+export async function deleteBrokerAccount(userId: string, broker: string): Promise<void> {
+  await db.query('delete from broker_accounts where user_id = $1 and broker = $2', [userId, broker]);
+}
+
 export async function upsertBrokerAccount(input: {
   userId: string;
   broker: string;

@@ -10,7 +10,22 @@ const app = createApp();
 const host = process.env.HOST ?? '0.0.0.0';
 app.listen(env.PORT, host, () => {
   log('info', `Backend listening on ${host}:${env.PORT}`);
-  void runStartupSchemaCheck();
-  startExitAutomationWorker();
-  startOpportunitySyncWorker();
+
+  // Run schema check first and only start background workers when the DB is
+  // confirmed ready. Workers may crash the tick loop if required tables are
+  // absent, so skipping them until migrations are applied keeps startup clean.
+  void runStartupSchemaCheck()
+    .then(({ ready }) => {
+      if (!ready) {
+        log('warn', 'Background workers skipped — run migrations and restart to enable them.');
+        return;
+      }
+      startExitAutomationWorker();
+      startOpportunitySyncWorker();
+    })
+    .catch((e: unknown) => {
+      log('warn', 'Startup schema check threw unexpectedly — workers not started.', {
+        error: e instanceof Error ? e.message : String(e),
+      });
+    });
 });

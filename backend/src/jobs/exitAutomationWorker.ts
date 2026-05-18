@@ -132,14 +132,17 @@ async function processOneWatch(w: ExitAutomationWatchRow): Promise<void> {
 
   const now = new Date();
 
-  if (!trimEdge && !exitEdge) {
-    await updateExitWatchRuntime(w.id, {
-      lastGuidanceState: curr,
-      lastCheckedAt: now,
-      lastError: null,
-    });
-    return;
-  }
+  // Persist the new guidance state BEFORE attempting any order so that a
+  // subsequent DB failure cannot leave the edge gate open for re-firing.
+  // If this update fails we bail early — safer to miss a tick than to risk
+  // a duplicate order on the next tick.
+  await updateExitWatchRuntime(w.id, {
+    lastGuidanceState: curr,
+    lastCheckedAt: now,
+    lastError: null,
+  });
+
+  if (!trimEdge && !exitEdge) return;
 
   try {
     await bybit.ensureTradeEnabled(creds);
@@ -170,12 +173,7 @@ async function processOneWatch(w: ExitAutomationWatchRow): Promise<void> {
       kind: trimEdge ? 'trim' : 'close',
       qty: qtyStr,
     });
-    await updateExitWatchRuntime(w.id, {
-      lastGuidanceState: curr,
-      lastCheckedAt: now,
-      lastActionAt: now,
-      lastError: null,
-    });
+    await updateExitWatchRuntime(w.id, { lastActionAt: now });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     log('warn', 'Exit automation order failed.', { watchId: w.id, error: msg });

@@ -27,6 +27,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     try {
       const state = await getCurrentSessionState();
       setSecurityState(state);
+    } catch {
+      // Network / server error — treat step-up as required so protected
+      // routes don't silently pass through with unknown security state.
+      setSecurityState(null);
     } finally {
       setSessionReady(true);
     }

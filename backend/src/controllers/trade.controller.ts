@@ -102,6 +102,11 @@ export async function postTradeExecute(req: AuthedRequest, res: Response) {
     return res.status(422).json({ error: 'Execution intent is missing a valid entry price' });
   }
 
+  // Consume the intent BEFORE calling the broker so a retry after a partial
+  // failure cannot place a second order. If the broker call then fails, the
+  // user must create a new intent — better than a duplicate live position.
+  await consumeTradeIntent(req.user.userId, intent.id, body.idempotencyKey);
+
   const broker = await executeBrokerOrder({
     account,
     symbol: intent.symbol,
@@ -111,23 +116,47 @@ export async function postTradeExecute(req: AuthedRequest, res: Response) {
     entryPrice,
   });
 
-  const trade = await createTradeRow({
-    userId: req.user.userId,
-    brokerAccountId: intent.brokerAccountId,
-    tradeIntentId: intent.id,
-    brokerOrderId: broker.brokerOrderId,
-    symbol: intent.symbol,
-    direction: intent.direction,
-    positionSizeUsd: Number(intent.positionSizeUsd),
-    leverage: Number(intent.leverage),
-    entryPrice: intent.entryPrice,
-    stopPrice: intent.stopPrice,
-    targetPrice: intent.targetPrice,
-    status: 'submitted',
-    brokerResponse: broker.brokerResponse,
-  });
+  // Write the local trade record. If this fails the broker order still exists —
+  // record everything we know in the audit log so nothing is silently lost.
+  let trade: Awaited<ReturnType<typeof createTradeRow>> | null = null;
+  try {
+    trade = await createTradeRow({
+      userId: req.user.userId,
+      brokerAccountId: intent.brokerAccountId,
+      tradeIntentId: intent.id,
+      brokerOrderId: broker.brokerOrderId,
+      symbol: intent.symbol,
+      direction: intent.direction,
+      positionSizeUsd: Number(intent.positionSizeUsd),
+      leverage: Number(intent.leverage),
+      entryPrice: intent.entryPrice,
+      stopPrice: intent.stopPrice,
+      targetPrice: intent.targetPrice,
+      status: 'submitted',
+      brokerResponse: broker.brokerResponse,
+    });
+  } catch (dbErr) {
+    // The order is live on the broker. Persist what we can via audit log and
+    // still return success so the user knows the trade went through.
+    await writeAuditLog({
+      userId: req.user.userId,
+      requestId: req.requestId,
+      action: 'trade.execute',
+      objectType: 'trade',
+      outcome: 'failure',
+      payload: {
+        tradeIntentId: intent.id,
+        brokerOrderId: broker.brokerOrderId,
+        brokerResponse: broker.brokerResponse,
+        dbError: dbErr instanceof Error ? dbErr.message : String(dbErr),
+        note: 'Broker order placed but local trade row failed to persist.',
+      },
+      ipAddress: req.auditContext?.ipAddress,
+      userAgent: req.auditContext?.userAgent,
+    });
+    return res.json({ ok: true, trade: null, brokerOrderId: broker.brokerOrderId, warning: 'Order placed but local record failed to save. Contact support with your brokerOrderId.' });
+  }
 
-  await consumeTradeIntent(req.user.userId, intent.id, body.idempotencyKey);
   await writeAuditLog({
     userId: req.user.userId,
     requestId: req.requestId,

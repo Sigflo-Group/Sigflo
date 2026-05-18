@@ -8,21 +8,21 @@ import type {
 } from '@/types/trade';
 
 export function createTradeIntent(body: TradeExecutionIntentRequest) {
-  return apiFetch<TradeExecutionIntentResponse>('/trade/intent', {
+  return apiFetch<TradeExecutionIntentResponse>('/trade/managed/intent', {
     method: 'POST',
     body: JSON.stringify(body),
   });
 }
 
 export function executeTrade(body: TradeExecuteRequest) {
-  return apiFetch<TradeExecuteResponse>('/trade/execute', {
+  return apiFetch<TradeExecuteResponse>('/trade/managed/execute', {
     method: 'POST',
     body: JSON.stringify(body),
   });
 }
 
 export function getTradeById(id: string) {
-  return apiFetch<{ trade: TradeRecord }>(`/trade/${encodeURIComponent(id)}`);
+  return apiFetch<{ trade: TradeRecord }>(`/trade/managed/${encodeURIComponent(id)}`);
 }
 
 export function listTrades(cursor?: string) {

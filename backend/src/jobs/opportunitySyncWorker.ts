@@ -178,7 +178,19 @@ export async function runOpportunitySyncTick(): Promise<void> {
       log('warn', 'Opportunity sync symbol failed.', { symbol, error: errorWithCause(e) });
     }
   }
-  await upsertOpportunities(out);
+  if (out.length === 0) {
+    log('warn', 'Opportunity sync tick: no rows to upsert (all symbols failed or returned no data).');
+    return;
+  }
+  try {
+    await upsertOpportunities(out);
+  } catch (e) {
+    log('error', 'Opportunity sync DB upsert failed — opportunities not updated this tick.', {
+      error: errorWithCause(e),
+      symbolsAttempted: out.map((r) => r.pair),
+    });
+    return;
+  }
   const statusCounts = out.reduce<Record<string, number>>((acc, row) => {
     acc[row.status] = (acc[row.status] ?? 0) + 1;
     return acc;

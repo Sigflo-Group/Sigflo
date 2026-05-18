@@ -399,10 +399,11 @@ export function ScannerLabScreen() {
       <Card className="space-y-2 p-4">
         <h2 className="text-sm font-semibold text-white">Engine parity</h2>
         <p className="text-xs text-sigflo-muted">
-          Playback uses <code className="rounded bg-white/10 px-1 py-0.5 text-[10px]">@/engine/detectors</code> with{' '}
-          <code className="rounded bg-white/10 px-1 py-0.5 text-[10px]">pickBestDirectionalPair</code> — same stack as{' '}
-          <code className="rounded bg-white/10 px-1 py-0.5 text-[10px]">runScannerPipeline</code>. Per-bar toggles were removed
-          so the lab cannot drift from production thresholds.
+          Playback calls{' '}
+          <code className="rounded bg-white/10 px-1 py-0.5 text-[10px]">runAllDetectorsForLab</code> from{' '}
+          <code className="rounded bg-white/10 px-1 py-0.5 text-[10px]">src/lib/signalDetectors.ts</code> — the same
+          six production detectors (including RSI guards and regime-aware thresholds) used by the live signal engine.
+          No separate stub file; drift is structurally impossible.
         </p>
       </Card>
 

@@ -79,7 +79,10 @@ export function createApp() {
 
   app.use('/api/session', requireAuth, sessionRouter);
   app.use('/api/exchange', requireAuth, exchangeRouter);
-  app.use('/api/trade', requireAuth, secureTradeRouter);
+  // secureTradeRouter handles intent/execute flows — mounted on /api/trade/managed
+  // to avoid sharing a prefix with tradeRouter (/api/trade/bybit/*) which would
+  // make route conflicts invisible until a path clash actually occurs.
+  app.use('/api/trade/managed', requireAuth, secureTradeRouter);
   app.get('/api/trades', requireAuth, (req, res, next) => {
     listTrades(req as Parameters<typeof listTrades>[0], res).catch(next);
   });

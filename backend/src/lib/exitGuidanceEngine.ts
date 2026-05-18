@@ -346,7 +346,7 @@ export function resolveExitWatchGuidance(input: {
   safeguards: AutomationSafeguards;
 }): ResolvedExitWatchGuidance {
   const pnlPct =
-    input.entry > 0 && input.mark > 0
+    Number.isFinite(input.entry) && input.entry > 0 && Number.isFinite(input.mark) && input.mark > 0
       ? ((input.side === 'long' ? input.mark - input.entry : input.entry - input.mark) / input.entry) * 100
       : 0;
   const lastPrice = input.mark;

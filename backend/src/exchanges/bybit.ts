@@ -1,7 +1,7 @@
 import { log } from '../lib/logger.js';
 import { isBybitTradingStopNoopError } from '../lib/bybitNoopErrors.js';
 import { sanitizeHttpErrorDetail } from '../lib/httpErrorDetail.js';
-import { getJson, signHmacSha256 } from './http.js';
+import { exchangeSignal, getJson, signHmacSha256 } from './http.js';
 import type {
   AccountBucketKind,
   AccountBucketSnapshot,
@@ -105,7 +105,16 @@ async function privatePost<TResult>(path: string, body: Record<string, unknown>,
     'Content-Type': 'application/json',
   };
   const url = `${BASE_URL}${path}`;
-  const res = await fetch(url, { method: 'POST', headers, body: bodyStr });
+  const { signal, clear } = exchangeSignal();
+  let res: Response;
+  try {
+    res = await fetch(url, { method: 'POST', headers, body: bodyStr, signal });
+  } catch (e) {
+    clear();
+    if (e instanceof Error && e.name === 'AbortError') throw new Error(`Bybit request timed out: ${path}`);
+    throw e;
+  }
+  clear();
   const text = await res.text();
   if (!res.ok) {
     let detail = text.trim().slice(0, 400);
@@ -134,7 +143,16 @@ async function privatePost<TResult>(path: string, body: Record<string, unknown>,
 async function publicMarketGet<TResult>(path: string, params: Record<string, string>): Promise<TResult> {
   const qs = new URLSearchParams(params).toString();
   const url = `${BASE_URL}${path}?${qs}`;
-  const res = await fetch(url);
+  const { signal, clear } = exchangeSignal();
+  let res: Response;
+  try {
+    res = await fetch(url, { signal });
+  } catch (e) {
+    clear();
+    if (e instanceof Error && e.name === 'AbortError') throw new Error(`Bybit public request timed out: ${path}`);
+    throw e;
+  }
+  clear();
   if (!res.ok) {
     throw new Error(`Bybit public HTTP ${res.status}`);
   }

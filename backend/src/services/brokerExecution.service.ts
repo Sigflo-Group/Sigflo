@@ -19,10 +19,17 @@ export async function executeBrokerOrder(input: {
     apiKey: decryptBrokerCredential(input.account.apiKeyEncrypted),
     apiSecret: decryptBrokerCredential(input.account.apiSecretEncrypted),
   };
+  if (!Number.isFinite(input.entryPrice) || input.entryPrice <= 0) {
+    throw new Error(`Invalid entry price for order calculation: ${input.entryPrice}`);
+  }
+  if (!Number.isFinite(input.positionSizeUsd) || input.positionSizeUsd <= 0) {
+    throw new Error(`Invalid position size for order calculation: ${input.positionSizeUsd}`);
+  }
   await bybitAdapter.ensureTradeEnabled(creds);
   const side = input.direction === 'long' ? 'Buy' : 'Sell';
   // qty must be in base-coin units (e.g. BTC for BTCUSDT), not USD
-  const qty = (input.positionSizeUsd / input.entryPrice).toString();
+  const rawQty = input.positionSizeUsd / input.entryPrice;
+  const qty = rawQty.toFixed(8).replace(/\.?0+$/, '') || '0';
   const result = await bybitAdapter.placeLinearOrder(creds, {
     symbol: input.symbol,
     side,

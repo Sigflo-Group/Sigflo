@@ -139,7 +139,8 @@ function loadMarketMemoryStore(): Record<string, MarketMemorySnapshot> {
     const raw = globalThis.localStorage?.getItem(MARKET_MEMORY_STORE_KEY);
     if (!raw) return {};
     const parsed = JSON.parse(raw) as Record<string, MarketMemorySnapshot>;
-    return parsed && typeof parsed === 'object' ? parsed : {};
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+    return parsed;
   } catch {
     return {};
   }
@@ -518,12 +519,20 @@ function useSignalEngineValue(): SignalEngineState {
       };
     }
 
+    function clearStaleSignalsForSymbol(symbol: string) {
+      const prefix = `${symbol}:`;
+      for (const key of Object.keys(signalBookRef.current)) {
+        if (key.startsWith(prefix)) delete signalBookRef.current[key];
+      }
+    }
+
     function recomputeForSymbol(symbol: string, mode: SignalEngineState['mode']) {
       const connection = wsConnectedRef.current ? 'connected' : 'disconnected';
       const healthCtx = () => pipelineHealthCtx(mode, connection);
       const symbolCandles = candlesRef.current[symbol];
       const ticker = tickersRef.current[symbol];
       if (!symbolCandles || !ticker) {
+        clearStaleSignalsForSymbol(symbol);
         recordScannerPipelineReport(
           { symbol, stage: 'skip_no_ticker', ts: Date.now() },
           healthCtx(),
@@ -536,6 +545,7 @@ function useSignalEngineValue(): SignalEngineState {
       const openCandleStripped = raw15m.at(-1)?.isClosed === false;
       const candles15m = openCandleStripped ? raw15m.slice(0, -1) : raw15m;
       if (candles15m.length < 60) {
+        clearStaleSignalsForSymbol(symbol);
         recordScannerPipelineReport(
           { symbol, stage: 'skip_insufficient_candles', ts: Date.now() },
           healthCtx(),
@@ -550,6 +560,7 @@ function useSignalEngineValue(): SignalEngineState {
       const btc15 = btc15raw.at(-1)?.isClosed === false ? btc15raw.slice(0, -1) : btc15raw;
       const eth15 = eth15raw.at(-1)?.isClosed === false ? eth15raw.slice(0, -1) : eth15raw;
       if (btc15.length < 60 || eth15.length < 60) {
+        clearStaleSignalsForSymbol(symbol);
         recordScannerPipelineReport({ symbol, stage: 'skip_btc_eth_warmup', ts: Date.now() }, healthCtx());
         return;
       }
@@ -658,6 +669,7 @@ function useSignalEngineValue(): SignalEngineState {
       );
 
       if (!signal) {
+        clearStaleSignalsForSymbol(symbol);
         recordScannerPipelineReport({ symbol, stage: 'skip_no_detector', ts: Date.now() }, healthCtx());
         return;
       }

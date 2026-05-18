@@ -1,5 +1,5 @@
 import { BybitAdapter } from '../exchanges/bybit.js';
-import { decryptBrokerCredential } from './exchangeKey.service.js';
+import { decryptBrokerCredential, getSecretFromVault } from './exchangeKey.service.js';
 import type { BrokerAccountRow } from '../db/queries/brokerAccounts.js';
 
 const bybitAdapter = new BybitAdapter();
@@ -15,21 +15,34 @@ export async function executeBrokerOrder(input: {
   if (input.account.broker !== 'bybit') {
     throw new Error('Broker not supported');
   }
-  const creds = {
-    apiKey: decryptBrokerCredential(input.account.apiKeyEncrypted),
-    apiSecret: decryptBrokerCredential(input.account.apiSecretEncrypted),
-  };
+
+  const apiKey = input.account.apiKeyVaultId
+    ? await getSecretFromVault(input.account.apiKeyVaultId)
+    : decryptBrokerCredential(input.account.apiKeyEncrypted);
+  const apiSecret = input.account.apiSecretVaultId
+    ? await getSecretFromVault(input.account.apiSecretVaultId)
+    : decryptBrokerCredential(input.account.apiSecretEncrypted);
+
+  if (!apiKey || !apiSecret) {
+    throw new Error('Failed to retrieve credentials from Vault.');
+  }
+
+  const creds = { apiKey, apiSecret };
+
   if (!Number.isFinite(input.entryPrice) || input.entryPrice <= 0) {
     throw new Error(`Invalid entry price for order calculation: ${input.entryPrice}`);
   }
   if (!Number.isFinite(input.positionSizeUsd) || input.positionSizeUsd <= 0) {
     throw new Error(`Invalid position size for order calculation: ${input.positionSizeUsd}`);
   }
+
   await bybitAdapter.ensureTradeEnabled(creds);
+
   const side = input.direction === 'long' ? 'Buy' : 'Sell';
   // qty must be in base-coin units (e.g. BTC for BTCUSDT), not USD
   const rawQty = input.positionSizeUsd / input.entryPrice;
   const qty = rawQty.toFixed(8).replace(/\.?0+$/, '') || '0';
+
   const result = await bybitAdapter.placeLinearOrder(creds, {
     symbol: input.symbol,
     side,
@@ -37,6 +50,7 @@ export async function executeBrokerOrder(input: {
     qty,
     positionIdx: 0,
   });
+
   return {
     brokerOrderId: result.orderId,
     brokerResponse: { orderId: result.orderId, orderLinkId: result.orderLinkId ?? null },

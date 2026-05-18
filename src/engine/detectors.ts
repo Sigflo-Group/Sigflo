@@ -29,6 +29,9 @@ export function detectBreakoutPressure(input: DetectorInput): SignalCandidate | 
   const last = input.candles.at(-1);
   if (!last) return null;
   const { indicators } = input;
+  // Hard guard matching production breakoutPressureDetector — prevents co-activation
+  // with overextendedDetector (which fires above RSI 74). Must stay in sync.
+  if (indicators.rsi14 > 76) return null;
   const volRatio = volumeRatio(last.volume, indicators.avgVolume20);
   const bullishTrend = indicators.ema20 > indicators.ema50 && indicators.ema20Slope > 0;
   const nearBreakout = indicators.breakoutDistanceAtr <= 0.45;
@@ -158,6 +161,9 @@ export function detectBreakdownPressure(input: DetectorInput): SignalCandidate |
   const last = input.candles.at(-1);
   if (!last) return null;
   const { indicators } = input;
+  // Hard guard matching production breakdownPressureDetector — prevents co-activation
+  // with overextendedShort (which fires below RSI 26). Must stay in sync.
+  if (indicators.rsi14 < 24) return null;
   const volRatio = volumeRatio(last.volume, indicators.avgVolume20);
   const bearishTrend = indicators.ema20 < indicators.ema50 && indicators.ema20Slope < 0;
   const nearBreakdown =

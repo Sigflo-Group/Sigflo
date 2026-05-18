@@ -11,7 +11,5 @@ export type ChartSetupFocusDetail = {
 export function requestChartSetupFocus(detail: ChartSetupFocusDetail = {}): void {
   try {
     window.dispatchEvent(new CustomEvent<ChartSetupFocusDetail>(CHART_SETUP_FOCUS_EVENT, { detail }));
-  } catch {
-    /* ignore */
-  }
+  } catch (e) { console.error("[Caught Error]", e); }
 }

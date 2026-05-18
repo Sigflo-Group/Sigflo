@@ -1,3 +1,4 @@
+import { secureStorage } from '@/lib/storage';
 import { useEffect, useRef } from 'react';
 import { isActionableExitAiPopupMessage } from '@/lib/exitAiPopupGate';
 import { isActionableExitAiPopupActivity } from '@/lib/aiExitAutomation';
@@ -15,7 +16,7 @@ const POPUP_KINDS: ReadonlySet<ExitAutomationActivityKind> = new Set([
 
 function readActivityLog(): ExitAutomationActivityEntry[] {
   try {
-    const raw = window.localStorage.getItem(TRADE_ACTIVITY_KEY);
+    const raw = secureStorage.getItem(TRADE_ACTIVITY_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw) as unknown;
     if (!Array.isArray(parsed)) return [];
@@ -51,9 +52,7 @@ function persistSeenSet(ids: Set<string>) {
     const arr = [...ids];
     const trimmed = arr.slice(-300);
     window.sessionStorage.setItem(SEEN_CACHE_KEY, JSON.stringify(trimmed));
-  } catch {
-    /* ignore */
-  }
+  } catch (e) { console.error("[Caught Error]", e); }
 }
 
 export function ExitAiDecisionBridge() {

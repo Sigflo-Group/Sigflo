@@ -1,3 +1,4 @@
+import { secureStorage } from '@/lib/storage';
 import { useMemo } from 'react';
 import type { DailyRiskGuardModel, DailyRiskGuardStatus } from '@/types/riskGuard';
 import { useRiskSettings } from '@/services/risk/riskSettings';
@@ -12,9 +13,9 @@ const DEMO_OVERRIDE_STORAGE_KEY = 'sigflo_demo_daily_loss_pct';
 const DEMO_DEFAULT_LOSS_FRACTION_OF_LIMIT = 0.42;
 
 function readDemoLossPctOverride(): number | null {
-  if (typeof window === 'undefined' || !window.localStorage) return null;
+  if (typeof window === 'undefined' || false) return null;
   try {
-    const raw = window.localStorage.getItem(DEMO_OVERRIDE_STORAGE_KEY);
+    const raw = secureStorage.getItem(DEMO_OVERRIDE_STORAGE_KEY);
     if (raw == null || raw === '') return null;
     const n = Number(raw);
     if (!Number.isFinite(n)) return null;

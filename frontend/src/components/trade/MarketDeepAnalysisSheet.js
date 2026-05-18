@@ -1,0 +1,201 @@
+"use strict";
+var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
+    function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
+    return new (P || (P = Promise))(function (resolve, reject) {
+        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
+        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
+        function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
+        step((generator = generator.apply(thisArg, _arguments || [])).next());
+    });
+};
+var __generator = (this && this.__generator) || function (thisArg, body) {
+    var _ = { label: 0, sent: function() { if (t[0] & 1) throw t[1]; return t[1]; }, trys: [], ops: [] }, f, y, t, g = Object.create((typeof Iterator === "function" ? Iterator : Object).prototype);
+    return g.next = verb(0), g["throw"] = verb(1), g["return"] = verb(2), typeof Symbol === "function" && (g[Symbol.iterator] = function() { return this; }), g;
+    function verb(n) { return function (v) { return step([n, v]); }; }
+    function step(op) {
+        if (f) throw new TypeError("Generator is already executing.");
+        while (g && (g = 0, op[0] && (_ = 0)), _) try {
+            if (f = 1, y && (t = op[0] & 2 ? y["return"] : op[0] ? y["throw"] || ((t = y["return"]) && t.call(y), 0) : y.next) && !(t = t.call(y, op[1])).done) return t;
+            if (y = 0, t) op = [op[0] & 2, t.value];
+            switch (op[0]) {
+                case 0: case 1: t = op; break;
+                case 4: _.label++; return { value: op[1], done: false };
+                case 5: _.label++; y = op[1]; op = [0]; continue;
+                case 7: op = _.ops.pop(); _.trys.pop(); continue;
+                default:
+                    if (!(t = _.trys, t = t.length > 0 && t[t.length - 1]) && (op[0] === 6 || op[0] === 2)) { _ = 0; continue; }
+                    if (op[0] === 3 && (!t || (op[1] > t[0] && op[1] < t[3]))) { _.label = op[1]; break; }
+                    if (op[0] === 6 && _.label < t[1]) { _.label = t[1]; t = op; break; }
+                    if (t && _.label < t[2]) { _.label = t[2]; _.ops.push(op); break; }
+                    if (t[2]) _.ops.pop();
+                    _.trys.pop(); continue;
+            }
+            op = body.call(thisArg, _);
+        } catch (e) { op = [6, e]; y = 0; } finally { f = t = 0; }
+        if (op[0] & 5) throw op[1]; return { value: op[0] ? op[1] : void 0, done: true };
+    }
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.MarketDeepAnalysisSheet = MarketDeepAnalysisSheet;
+var react_1 = require("react");
+var parseDeepAnalysisMarkdown_1 = require("@/lib/parseDeepAnalysisMarkdown");
+var client_1 = require("@/services/ai/client");
+function MarketDeepAnalysisSheet(_a) {
+    var _this = this;
+    var open = _a.open, onClose = _a.onClose, signal = _a.signal, status = _a.status, tradeScore = _a.tradeScore, groundedContext = _a.groundedContext, quickRead = _a.quickRead;
+    var _b = (0, react_1.useState)('thesis'), tab = _b[0], setTab = _b[1];
+    var _c = (0, react_1.useState)(null), deep = _c[0], setDeep = _c[1];
+    var _d = (0, react_1.useState)(false), loading = _d[0], setLoading = _d[1];
+    var _e = (0, react_1.useState)(null), error = _e[0], setError = _e[1];
+    /** Avoid refetching deep analysis on every live trade-score tick while the sheet is open. */
+    var tradeScoreRef = (0, react_1.useRef)(tradeScore);
+    tradeScoreRef.current = tradeScore;
+    var contextRef = (0, react_1.useRef)(groundedContext);
+    contextRef.current = groundedContext;
+    /**
+     * `signal` from Trade/Markets is often a new object each render (live model, same id) — do not put it in
+     * `loadDeep` deps or the open-sheet effect will clear + refetch constantly ("Full thesis" keeps refreshing).
+     */
+    var signalRef = (0, react_1.useRef)(signal);
+    signalRef.current = signal;
+    var loadDeep = (0, react_1.useCallback)(function () { return __awaiter(_this, void 0, void 0, function () {
+        var r, e_1;
+        return __generator(this, function (_a) {
+            switch (_a.label) {
+                case 0:
+                    setLoading(true);
+                    setError(null);
+                    _a.label = 1;
+                case 1:
+                    _a.trys.push([1, 3, 4, 5]);
+                    return [4 /*yield*/, (0, client_1.requestDeepMarketAnalysis)({
+                            signal: signalRef.current,
+                            status: status,
+                            tradeScore: tradeScoreRef.current,
+                            context: contextRef.current,
+                        })];
+                case 2:
+                    r = _a.sent();
+                    setDeep(r);
+                    return [3 /*break*/, 5];
+                case 3:
+                    e_1 = _a.sent();
+                    setError(e_1 instanceof Error ? e_1.message : 'Could not load analysis');
+                    return [3 /*break*/, 5];
+                case 4:
+                    setLoading(false);
+                    return [7 /*endfinally*/];
+                case 5: return [2 /*return*/];
+            }
+        });
+    }); }, [status]);
+    (0, react_1.useEffect)(function () {
+        if (!open)
+            return;
+        document.body.style.overflow = 'hidden';
+        var onKey = function (e) {
+            if (e.key === 'Escape')
+                onClose();
+        };
+        window.addEventListener('keydown', onKey);
+        return function () {
+            document.body.style.overflow = '';
+            window.removeEventListener('keydown', onKey);
+        };
+    }, [open, onClose]);
+    (0, react_1.useEffect)(function () {
+        if (!open)
+            return;
+        setTab('thesis');
+        setDeep(null);
+        setError(null);
+        void loadDeep();
+    }, [open, signal.id, status, loadDeep]);
+    if (!open)
+        return null;
+    var sections = deep ? (0, parseDeepAnalysisMarkdown_1.parseDeepAnalysisSections)(deep.body) : [];
+    return (<div className="fixed inset-0 z-[120] flex items-end justify-center bg-black/75 p-0 backdrop-blur-[2px] sm:items-center sm:p-4" role="dialog" aria-modal="true" aria-labelledby="deep-analysis-title">
+      <button type="button" className="absolute inset-0 cursor-default" aria-label="Close analysis" onClick={onClose}/>
+      <div className="relative z-10 flex max-h-[min(92dvh,880px)] w-full max-w-lg flex-col rounded-t-2xl border border-white/[0.12] bg-gradient-to-b from-[#0c1210] to-[#060808] shadow-[0_-20px_60px_-20px_rgba(0,0,0,0.85)] sm:max-h-[min(88vh,880px)] sm:rounded-2xl sm:shadow-2xl" onClick={function (e) { return e.stopPropagation(); }}>
+        <header className="flex shrink-0 items-start justify-between gap-3 border-b border-white/[0.08] px-4 pb-3 pt-4">
+          <div className="min-w-0">
+            <p id="deep-analysis-title" className="text-[10px] font-bold uppercase tracking-[0.2em] text-cyan-200/80">
+              AI market read
+            </p>
+            <p className="mt-1 truncate text-[15px] font-semibold text-white">{signal.pair}</p>
+            <p className="mt-0.5 text-[11px] text-sigflo-muted">Separate from Exit AI — broader context only.</p>
+          </div>
+          <button type="button" onClick={onClose} className="shrink-0 rounded-lg border border-white/[0.1] bg-white/[0.04] px-2.5 py-1.5 text-[11px] font-semibold text-sigflo-muted transition hover:bg-white/[0.08] hover:text-white">
+            Close
+          </button>
+        </header>
+
+        <div className="flex shrink-0 gap-1 border-b border-white/[0.06] px-3 pt-2">
+          <button type="button" onClick={function () { return setTab('quick'); }} className={"min-h-[40px] flex-1 rounded-t-lg px-2 py-2 text-center text-[11px] font-bold uppercase tracking-[0.12em] transition ".concat(tab === 'quick'
+            ? 'bg-white/[0.08] text-cyan-100'
+            : 'text-sigflo-muted hover:bg-white/[0.04] hover:text-white/85')}>
+            Quick read
+          </button>
+          <button type="button" onClick={function () { return setTab('thesis'); }} className={"min-h-[40px] flex-1 rounded-t-lg px-2 py-2 text-center text-[11px] font-bold uppercase tracking-[0.12em] transition ".concat(tab === 'thesis'
+            ? 'bg-white/[0.08] text-cyan-100'
+            : 'text-sigflo-muted hover:bg-white/[0.04] hover:text-white/85')}>
+            Full thesis
+          </button>
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4">
+          {tab === 'quick' ? (<div className="space-y-3">
+              {quickRead ? (<>
+                  <p className="text-[13px] font-semibold leading-snug text-white/95">{quickRead.headline}</p>
+                  <p className="whitespace-pre-line text-[13px] leading-relaxed text-sigflo-muted">{quickRead.body}</p>
+                </>) : (<p className="text-[13px] leading-relaxed text-sigflo-muted">
+                  Run <span className="font-semibold text-white/80">Explain setup</span>,{' '}
+                  <span className="font-semibold text-white/80">What to watch</span>, or{' '}
+                  <span className="font-semibold text-white/80">Improve entry</span> on the card below for a concise,
+                  execution-focused take. <span className="text-white/70">Full thesis</span> works on its own for the
+                  long-form narrative.
+                </p>)}
+            </div>) : (<div className="space-y-4">
+              <div className="flex flex-wrap items-center gap-2">
+                <button type="button" onClick={function () { return void loadDeep(); }} disabled={loading} className="rounded-lg border border-cyan-400/25 bg-cyan-500/10 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide text-cyan-100 transition enabled:hover:bg-cyan-500/18 disabled:opacity-50">
+                  {loading ? 'Generating…' : 'Refresh thesis'}
+                </button>
+                {deep ? (<span className={"rounded-full border px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wide ".concat(deep.source === 'remote'
+                    ? 'border-emerald-400/35 bg-emerald-500/12 text-emerald-200'
+                    : 'border-amber-400/35 bg-amber-500/12 text-amber-200')}>
+                    {deep.source === 'remote' ? 'AI live' : 'Offline draft'}
+                  </span>) : null}
+              </div>
+
+              {error ? (<div className="rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-[12px] text-rose-100/95">
+                  {error}
+                  <button type="button" onClick={function () { return void loadDeep(); }} className="ml-2 font-semibold underline decoration-rose-300/60">
+                    Retry
+                  </button>
+                </div>) : null}
+
+              {loading && !deep ? (<div className="space-y-3 py-6">
+                  <div className="h-3 w-3/4 animate-pulse rounded bg-white/[0.08]"/>
+                  <div className="h-3 w-full animate-pulse rounded bg-white/[0.06]"/>
+                  <div className="h-3 w-5/6 animate-pulse rounded bg-white/[0.06]"/>
+                  <p className="pt-2 text-center text-[11px] text-sigflo-muted">Composing full thesis…</p>
+                </div>) : null}
+
+              {deep ? (<article className="space-y-6 border-t border-white/[0.06] pt-4">
+                  <h2 className="text-[15px] font-semibold leading-snug text-white/95">{deep.headline}</h2>
+                  {sections.length > 0 ? (sections.map(function (sec, idx) { return (<section key={"".concat(idx, "-").concat(sec.heading)} className="space-y-2">
+                        <h3 className="text-[10px] font-bold uppercase tracking-[0.18em] text-cyan-200/75">
+                          {sec.heading}
+                        </h3>
+                        <div className="text-[13px] leading-[1.65] text-white/[0.82] [&_strong]:font-semibold [&_strong]:text-white/92">
+                          {sec.text.split(/\n\n+/).map(function (para, i) { return (<p key={"".concat(sec.heading, "-").concat(i)} className="mb-3 last:mb-0">
+                              {para}
+                            </p>); })}
+                        </div>
+                      </section>); })) : (<p className="whitespace-pre-wrap text-[13px] leading-[1.65] text-white/[0.82]">{deep.body}</p>)}
+                </article>) : null}
+            </div>)}
+        </div>
+      </div>
+    </div>);
+}

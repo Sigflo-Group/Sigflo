@@ -1,0 +1,53 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.mockEngines = void 0;
+exports.mockEngines = [
+    {
+        engineId: 'eng-nova',
+        engineName: 'Nova',
+        strategyType: 'Breakout Engine',
+        mode: 'Balanced',
+        pairsWatched: 24,
+        state: 'Enabled',
+        liveCandidates: 2,
+        activePositions: 0,
+        latestOutput: 'LINK upgraded to Ready',
+        health: 'Healthy',
+    },
+    {
+        engineId: 'eng-rio',
+        engineName: 'Rio',
+        strategyType: 'Reversal Engine',
+        mode: 'Defensive',
+        pairsWatched: 18,
+        state: 'Enabled',
+        liveCandidates: 0,
+        activePositions: 0,
+        latestOutput: 'SOL failed confirmation threshold',
+        health: 'Healthy',
+    },
+    {
+        engineId: 'eng-pulse',
+        engineName: 'Pulse',
+        strategyType: 'Momentum Engine',
+        mode: 'Aggressive',
+        pairsWatched: 32,
+        state: 'ManagingTrade',
+        liveCandidates: 1,
+        activePositions: 1,
+        latestOutput: 'BTC stop tightened',
+        health: 'Degraded',
+    },
+    {
+        engineId: 'eng-guard',
+        engineName: 'Guard',
+        strategyType: 'Risk Engine',
+        mode: 'Defensive',
+        pairsWatched: 40,
+        state: 'Enabled',
+        liveCandidates: 0,
+        activePositions: 0,
+        latestOutput: 'Risk within limits',
+        health: 'Healthy',
+    },
+];

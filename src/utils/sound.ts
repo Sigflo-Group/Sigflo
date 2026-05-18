@@ -74,17 +74,13 @@ function silenceSignificantOutputs(): void {
     try {
       activeSignificantAudio.pause();
       activeSignificantAudio.currentTime = 0;
-    } catch {
-      /* ignore */
-    }
+    } catch (e) { console.error("[Caught Error]", e); }
     activeSignificantAudio = null;
   }
   if (stopGeneratedSignificant) {
     try {
       stopGeneratedSignificant();
-    } catch {
-      /* ignore */
-    }
+    } catch (e) { console.error("[Caught Error]", e); }
     stopGeneratedSignificant = null;
   }
 }
@@ -107,7 +103,7 @@ function getCtx(): AudioContext | null {
 function playSetupReadyGenerated(): void {
   const ctx = getCtx();
   if (!ctx) return;
-  void ctx.resume().catch(() => {});
+  void ctx.resume().catch((e) => { console.error("[Caught Promise Error]", e); });
   const now = ctx.currentTime;
   try {
     const gOut = ctx.createGain();
@@ -137,9 +133,7 @@ function playSetupReadyGenerated(): void {
     stopGeneratedSignificant = () => {
       try {
         gOut.disconnect();
-      } catch {
-        /* ignore */
-      }
+      } catch (e) { console.error("[Caught Error]", e); }
     };
     window.setTimeout(() => {
       if (stopGeneratedSignificant) {
@@ -147,9 +141,7 @@ function playSetupReadyGenerated(): void {
         stopGeneratedSignificant = null;
       }
     }, Math.ceil((stopAt - now) * 1000) + 40);
-  } catch {
-    /* ignore */
-  }
+  } catch (e) { console.error("[Caught Error]", e); }
 }
 
 function tryPlaySignificantWav(
@@ -195,10 +187,8 @@ export function playSideEntryClickSound(): void {
   try {
     const audio = new Audio(SIDE_ENTRY_MP3);
     audio.volume = Math.min(1, Math.max(0, SIDE_ENTRY_VOLUME));
-    void audio.play().catch(() => {});
-  } catch {
-    /* ignore */
-  }
+    void audio.play().catch((e) => { console.error("[Caught Promise Error]", e); });
+  } catch (e) { console.error("[Caught Error]", e); }
 }
 
 export function playTapSound(): void {

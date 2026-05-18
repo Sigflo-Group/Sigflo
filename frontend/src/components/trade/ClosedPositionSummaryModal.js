@@ -1,0 +1,79 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.ClosedPositionSummaryModal = ClosedPositionSummaryModal;
+var framer_motion_1 = require("framer-motion");
+var formatQuote_1 = require("@/lib/formatQuote");
+function fmtUsd(n) {
+    var sign = n >= 0 ? '+' : '−';
+    var abs = Math.abs(n);
+    return "".concat(sign, "$").concat(abs.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+}
+function ClosedPositionSummaryModal(_a) {
+    var summary = _a.summary, onDismiss = _a.onDismiss;
+    var open = summary != null;
+    var fullClose = summary != null && summary.fraction >= 0.999;
+    return (<>
+      <framer_motion_1.AnimatePresence>
+        {open ? (<framer_motion_1.motion.div key="closed-sum-backdrop" role="presentation" className="fixed inset-0 z-[72] bg-black/80 backdrop-blur-sm" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onDismiss}/>) : null}
+      </framer_motion_1.AnimatePresence>
+
+      <framer_motion_1.AnimatePresence>
+        {open && summary ? (<framer_motion_1.motion.div key="closed-sum-dialog" role="dialog" aria-modal="true" aria-labelledby="closed-sum-title" className="fixed left-1/2 top-1/2 z-[73] w-[min(22rem,calc(100vw-1.5rem))] rounded-2xl border border-[#00ffc8]/30 bg-[#0a0a0c] p-4 shadow-[0_24px_80px_-20px_rgba(0,255,200,0.12)] ring-1 ring-white/[0.06]" initial={{ opacity: 0, scale: 0.94, x: '-50%', y: 'calc(-50% + 10px)' }} animate={{ opacity: 1, scale: 1, x: '-50%', y: '-50%' }} exit={{ opacity: 0, scale: 0.96, x: '-50%', y: 'calc(-50% + 8px)' }}>
+            <p className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-cyan-200/80">
+              Order sent
+            </p>
+            <h2 id="closed-sum-title" className="mt-1 text-lg font-bold text-white">
+              {fullClose ? 'Position closed' : 'Partial close'}
+            </h2>
+            <p className="mt-0.5 text-[11px] text-sigflo-muted">
+              {!fullClose ? "".concat(Math.round(summary.fraction * 100), "% of size \u00B7 ") : null}
+              {summary.pairLabel}{' '}
+              <span className={"font-bold ".concat(summary.side === 'long' ? 'text-emerald-300' : 'text-rose-300')}>
+                {summary.side.toUpperCase()}
+              </span>
+              {summary.market === 'spot' ? (<span className="text-sigflo-muted"> · Spot</span>) : summary.leverage != null ? (<span className="text-sigflo-muted"> · {summary.leverage}×</span>) : null}
+            </p>
+
+            <dl className="mt-4 rounded-xl border border-white/[0.06] bg-black/40 px-3 py-2.5">
+              <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-2 text-[12px]">
+                <dt className="min-w-0 text-sigflo-muted">Entry</dt>
+                <dd className="text-right font-mono font-semibold tabular-nums text-white">
+                  ${(0, formatQuote_1.formatQuoteNumber)(summary.entryPrice)}
+                </dd>
+                <dt className="min-w-0 text-sigflo-muted">Mark (ref.)</dt>
+                <dd className="text-right font-mono font-semibold tabular-nums text-white">
+                  ${(0, formatQuote_1.formatQuoteNumber)(summary.markPrice)}
+                </dd>
+                <dt className="min-w-0 text-sigflo-muted">Closed notional</dt>
+                <dd className="text-right font-mono font-semibold tabular-nums text-white">
+                  $
+                  {summary.closedNotionalUsd.toLocaleString('en-US', {
+                maximumFractionDigits: 0,
+            })}
+                </dd>
+              </div>
+              <div className="mt-2 grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-0.5 border-t border-white/[0.06] pt-2 text-[12px]">
+                <dt className="min-w-0 font-semibold text-sigflo-muted">Est. P&amp;L (closed leg)</dt>
+                <dd className={"text-right font-mono text-base font-bold tabular-nums ".concat(summary.pnlUsd >= 0 ? 'text-emerald-300' : 'text-rose-300')}>
+                  {fmtUsd(summary.pnlUsd)}
+                </dd>
+                <span className="min-w-0" aria-hidden/>
+                <p className="text-right text-[10px] font-semibold tabular-nums text-sigflo-muted">
+                  {summary.movePct >= 0 ? '+' : ''}
+                  {summary.movePct.toFixed(2)}% on entry
+                </p>
+              </div>
+            </dl>
+
+            <p className="mt-3 text-[11px] leading-relaxed text-sigflo-muted">
+              Fills and fees are set by the exchange. This summary uses the last mark before your close was sent — check
+              Bybit for realized P&amp;L.
+            </p>
+
+            <button type="button" onClick={onDismiss} className="mt-4 w-full min-h-[44px] rounded-xl bg-gradient-to-b from-[#00ffc8]/90 to-[#00c9a0]/90 py-2.5 text-sm font-bold text-black shadow-[0_0_20px_-8px_rgba(0,255,200,0.45)] transition hover:brightness-110">
+              Done
+            </button>
+          </framer_motion_1.motion.div>) : null}
+      </framer_motion_1.AnimatePresence>
+    </>);
+}

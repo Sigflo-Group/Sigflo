@@ -1,3 +1,4 @@
+import { secureStorage } from '@/lib/storage';
 import { useSyncExternalStore } from 'react';
 import { getPositionRepository } from '@/services/positions';
 import type { SigfloRiskMode, SigfloRiskSettings } from '@/types/risk';
@@ -52,11 +53,11 @@ let riskSettingsSnapshot: SigfloRiskSettings | null = null;
 let riskSettingsSnapshotKey = '';
 
 function readRiskSettingsFromStorage(): SigfloRiskSettings {
-  if (typeof window === 'undefined' || !window.localStorage) {
+  if (typeof window === 'undefined' || false) {
     return { ...DEFAULT_RISK_SETTINGS };
   }
   try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
+    const raw = secureStorage.getItem(STORAGE_KEY);
     if (!raw) return { ...DEFAULT_RISK_SETTINGS };
     return coerceRiskSettings(JSON.parse(raw) as unknown);
   } catch {
@@ -83,34 +84,26 @@ export function getRiskSettings(): SigfloRiskSettings {
 export function saveRiskSettings(next: SigfloRiskSettings): SigfloRiskSettings {
   const normalized = coerceRiskSettings(next);
   invalidateRiskSettingsSnapshotCache();
-  if (typeof window !== 'undefined' && window.localStorage) {
+  if (typeof window !== 'undefined') {
     try {
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(normalized));
-    } catch {
-      /* ignore */
-    }
+      secureStorage.setItem(STORAGE_KEY, JSON.stringify(normalized));
+    } catch (e) { console.error("[Caught Error]", e); }
     try {
       window.dispatchEvent(new CustomEvent(RISK_SETTINGS_CHANGED_EVENT));
-    } catch {
-      /* ignore */
-    }
+    } catch (e) { console.error("[Caught Error]", e); }
   }
   return normalized;
 }
 
 export function resetRiskSettings(): SigfloRiskSettings {
   invalidateRiskSettingsSnapshotCache();
-  if (typeof window !== 'undefined' && window.localStorage) {
+  if (typeof window !== 'undefined') {
     try {
-      window.localStorage.removeItem(STORAGE_KEY);
-    } catch {
-      /* ignore */
-    }
+      secureStorage.removeItem(STORAGE_KEY);
+    } catch (e) { console.error("[Caught Error]", e); }
     try {
       window.dispatchEvent(new CustomEvent(RISK_SETTINGS_CHANGED_EVENT));
-    } catch {
-      /* ignore */
-    }
+    } catch (e) { console.error("[Caught Error]", e); }
   }
   return { ...DEFAULT_RISK_SETTINGS };
 }

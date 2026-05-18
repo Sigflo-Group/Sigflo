@@ -136,8 +136,6 @@ export async function postTradeExecute(req: AuthedRequest, res: Response) {
       brokerResponse: broker.brokerResponse,
     });
   } catch (dbErr) {
-    // The order is live on the broker. Persist what we can via audit log and
-    // still return success so the user knows the trade went through.
     await writeAuditLog({
       userId: req.user.userId,
       requestId: req.requestId,
@@ -154,7 +152,7 @@ export async function postTradeExecute(req: AuthedRequest, res: Response) {
       ipAddress: req.auditContext?.ipAddress,
       userAgent: req.auditContext?.userAgent,
     });
-    return res.json({ ok: true, trade: null, brokerOrderId: broker.brokerOrderId, warning: 'Order placed but local record failed to save. Contact support with your brokerOrderId.' });
+    return res.status(500).json({ error: 'Order placed but local record failed. Contact support with brokerOrderId: ' + broker.brokerOrderId });
   }
 
   await writeAuditLog({

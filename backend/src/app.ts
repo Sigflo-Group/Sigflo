@@ -17,6 +17,7 @@ import { secureTradeRouter } from './routes/trade.routes.js';
 import { signalRouter } from './routes/signal.routes.js';
 import { listTrades } from './controllers/trade.controller.js';
 import { authRouter } from './routes/auth.routes.js';
+import { db } from './db/index.js';
 
 export function createApp() {
   const isProd = process.env.NODE_ENV === 'production';
@@ -70,7 +71,14 @@ export function createApp() {
     }),
   );
 
-  app.get('/health', (_req, res) => res.json({ ok: true }));
+  app.get('/health', async (_req, res) => {
+  try {
+    await db.query('SELECT 1');
+    res.json({ ok: true, db: 'connected' });
+  } catch {
+    res.status(503).json({ ok: false, db: 'disconnected' });
+  }
+});
 
   app.use('/api/auth', authRouteLimiter, authRouter);
   app.use('/api/portfolio', requireAuth, portfolioRouter);

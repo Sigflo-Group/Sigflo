@@ -324,7 +324,9 @@ function scoreMomentumTrend(params: {
   const bodyStrength = last5.reduce((sum, c) => sum + Math.abs(c.close - c.open), 0);
   const wickNoise = last5.reduce((sum, c) => sum + (c.high - c.low), 0);
   const candleStrengthRatio = wickNoise > 0 ? bodyStrength / wickNoise : 0;
-  const distanceBreakoutAtr = (side === 'long' ? m15.swingHigh - m15.close : m15.close - m15.swingLow) / Math.max(m15.atrNow, 0.000001);
+  const distanceBreakoutAtrRaw =
+    (side === 'long' ? m15.swingHigh - m15.close : m15.close - m15.swingLow) / Math.max(m15.atrNow, 0.000001);
+  const distanceBreakoutAtr = Math.max(0, distanceBreakoutAtrRaw);
   const fakeBreakoutRisk = distanceBreakoutAtr < 0.2 && volRatio < 1;
   const breakout = breakoutQuality(candles15m, side, m15);
   const conflictingMomentum =
@@ -421,8 +423,10 @@ function scoreContextLocation(params: {
   const warnings: string[] = [];
   let score = 52;
   const atrNow = Math.max(m15.atrNow, 0.000001);
-  const distToResistanceAtr = (m15.swingHigh - m15.close) / atrNow;
-  const distToSupportAtr = (m15.close - m15.swingLow) / atrNow;
+  const distToResistanceAtrRaw = (m15.swingHigh - m15.close) / atrNow;
+  const distToSupportAtrRaw = (m15.close - m15.swingLow) / atrNow;
+  const distToResistanceAtr = Math.max(0, distToResistanceAtrRaw);
+  const distToSupportAtr = Math.max(0, distToSupportAtrRaw);
   const extensionAtr = Math.abs(m15.close - m15.ema20) / atrNow;
   const compression = rangeCompressionScore(candles15m, m15.atrNow);
   const avgRange = candles15m.slice(-20).reduce((sum, c) => sum + (c.high - c.low), 0) / Math.max(1, Math.min(20, candles15m.length));
@@ -800,7 +804,7 @@ function assessDirectionalBias(params: {
       (higher.structure === 'bullish' ? 'bullish' : higher.structure === 'bearish' ? 'bearish' : 'neutral'),
     momentumState: params.marketMemory?.momentumState ?? (momentum.momentumStall ? 'weakening' : 'flat'),
     volatilityState: params.marketMemory?.volatilityState ?? (volatilitySpike ? 'expanding' : 'contracting'),
-    breakoutStatus: params.marketMemory?.breakoutStatus ?? (params.setupType === 'breakout' ? 'building' : 'failed'),
+    breakoutStatus: params.marketMemory?.breakoutStatus ?? 'building',
   };
 
   return {
@@ -1389,8 +1393,8 @@ export function buildSignalFromMarket(input: {
     biasLabel: bias.biasLabel,
     directionalBias: bias.directionalBias,
     setupType: out.setupType,
-    setupScore: bias.confidence,
-    setupScoreLabel: getSetupScoreLabel(bias.confidence),
+    setupScore,
+    setupScoreLabel: getSetupScoreLabel(setupScore),
     confidence: bias.confidence,
     setupQuality: bias.setupQuality,
     riskLevel: bias.riskLevel,

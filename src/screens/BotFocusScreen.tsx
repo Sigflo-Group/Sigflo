@@ -1,3 +1,4 @@
+import { secureStorage } from '@/lib/storage';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { TRADING_AUTO_EXECUTION_ACTIVE } from '@/lib/tradingControlMode';
@@ -854,9 +855,7 @@ export default function BotFocusScreen() {
                   tpTriggerBy: DEFAULT_BYBIT_TPSL_TRIGGER,
                   slTriggerBy: DEFAULT_BYBIT_TPSL_TRIGGER,
                 });
-              } catch {
-                /* order live; TP/SL sync best-effort */
-              }
+              } catch (e) { console.error("[Caught Error]", e); }
             }
           }
         }
@@ -1017,11 +1016,9 @@ export default function BotFocusScreen() {
 
   const onIntervalChange = (v: TradeChartInterval) => {
     try {
-      window.localStorage.setItem(TRADE_CHART_INTERVAL_STORAGE_KEY, v);
+      secureStorage.setItem(TRADE_CHART_INTERVAL_STORAGE_KEY, v);
       window.dispatchEvent(new CustomEvent(SIGFLO_CHART_INTERVAL_EVENT, { detail: v }));
-    } catch {
-      /* ignore */
-    }
+    } catch (e) { console.error("[Caught Error]", e); }
   };
 
   const tapFlashTimerRef = useRef<number | null>(null);

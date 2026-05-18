@@ -48,9 +48,7 @@ export function PositionSwipeCard({ children, onOpen, onSwipeClose, onSwipeAdd }
         setDragging(false);
         try {
           e.currentTarget.releasePointerCapture(e.pointerId);
-        } catch {
-          /* ok */
-        }
+        } catch (e) { console.error("[Caught Error]", e); }
         return;
       }
       mode.current = 'horiz';
@@ -65,9 +63,7 @@ export function PositionSwipeCard({ children, onOpen, onSwipeClose, onSwipeAdd }
   const onPointerEnd = (e: React.PointerEvent<HTMLDivElement>) => {
     try {
       e.currentTarget.releasePointerCapture(e.pointerId);
-    } catch {
-      /* released */
-    }
+    } catch (e) { console.error("[Caught Error]", e); }
 
     if (mode.current === 'pending') {
       onOpen();

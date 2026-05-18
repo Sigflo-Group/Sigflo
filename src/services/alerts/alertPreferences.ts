@@ -1,3 +1,4 @@
+import { secureStorage } from '@/lib/storage';
 import type { AlertChannel, AlertPreference } from '@/types/alerts';
 
 const STORAGE_KEY = 'sigflo_alert_preferences';
@@ -38,11 +39,11 @@ function coercePreference(raw: Partial<AlertPreference> | null | undefined): Ale
 }
 
 export function getAlertPreferences(): AlertPreference {
-  if (typeof window === 'undefined' || !window.localStorage) {
+  if (typeof window === 'undefined' || false) {
     return { ...DEFAULT_ALERT_PREFERENCES };
   }
   try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
+    const raw = secureStorage.getItem(STORAGE_KEY);
     if (!raw) return { ...DEFAULT_ALERT_PREFERENCES };
     const parsed = JSON.parse(raw) as Partial<AlertPreference>;
     return coercePreference(parsed);
@@ -53,21 +54,17 @@ export function getAlertPreferences(): AlertPreference {
 
 export function saveAlertPreferences(preferences: AlertPreference): void {
   const normalized = coercePreference(preferences);
-  if (typeof window === 'undefined' || !window.localStorage) return;
+  if (typeof window === 'undefined' || false) return;
   try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(normalized));
-  } catch {
-    /* ignore quota / private mode */
-  }
+    secureStorage.setItem(STORAGE_KEY, JSON.stringify(normalized));
+  } catch (e) { console.error("[Caught Error]", e); }
 }
 
 export function resetAlertPreferences(): AlertPreference {
-  if (typeof window !== 'undefined' && window.localStorage) {
+  if (typeof window !== 'undefined') {
     try {
-      window.localStorage.removeItem(STORAGE_KEY);
-    } catch {
-      /* ignore */
-    }
+      secureStorage.removeItem(STORAGE_KEY);
+    } catch (e) { console.error("[Caught Error]", e); }
   }
   return { ...DEFAULT_ALERT_PREFERENCES };
 }

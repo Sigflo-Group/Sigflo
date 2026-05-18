@@ -1,3 +1,4 @@
+import { secureStorage } from '@/lib/storage';
 import { ariaExpanded, ariaPressed, ariaSelected } from '@/a11y/ariaBoolean';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
@@ -529,12 +530,7 @@ export function TradeScreen() {
     }
     setBotsPlannedStop(botsEnginePlanLevels.stopPrice);
     setBotsPlannedTargets([...botsEnginePlanLevels.targets]);
-  }, [
-    botsReviewContext?.opportunityId,
-    botsEnginePlanLevels?.entryPrice,
-    botsEnginePlanLevels?.stopPrice,
-    botsEnginePlanLevels?.targets.join(','),
-  ]);
+  }, [botsEnginePlanLevels]);
 
   const botsPaperPreviewModel = useMemo(() => {
     if (!isBotsReviewCockpit || !botsReviewCockpitModel || !botsEnginePlanLevels) return null;
@@ -2127,7 +2123,7 @@ export function TradeScreen() {
       symbol: orderSymbol,
       side: exchangePositionForSymbol.side,
       positionIdx: exchangePositionForSymbol.positionIdx ?? 0,
-    }).catch(() => {});
+    }).catch((e) => { console.error("[Caught Promise Error]", e); });
     setServerExitOvernightEnabled(false);
   }, [serverExitEligible, serverExitOvernightEnabled, exchangePositionForSymbol, market, orderSymbol]);
 
@@ -2532,9 +2528,7 @@ export function TradeScreen() {
       if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
         try {
           new Notification('Sigflo', { body: 'Alerts are back on.' });
-        } catch {
-          /* ignore */
-        }
+        } catch (e) { console.error("[Caught Error]", e); }
       }
       return;
     }
@@ -2566,9 +2560,7 @@ export function TradeScreen() {
           new Notification('Sigflo', {
             body: 'Only your Trade chart pair (this tab). ~$5+ notionals. Switch pair on Trade to change which one alerts.',
           });
-        } catch {
-          /* ignore */
-        }
+        } catch (e) { console.error("[Caught Error]", e); }
       } else {
         flashTradeToast('OS notifications declined — you can mute in-app alerts with the bell.');
       }
@@ -3812,17 +3804,13 @@ export function TradeScreen() {
   const dismissPaperRealAccountNudge = useCallback(() => {
     try {
       sessionStorage.setItem(PAPER_REAL_ACCOUNT_NUDGE_DISMISS_KEY, '1');
-    } catch {
-      /* ignore */
-    }
+    } catch (e) { console.error("[Caught Error]", e); }
     setPaperRealAccountNudgeVisible(false);
   }, []);
   const onPaperPreviewInteraction = useCallback(() => {
     try {
       if (sessionStorage.getItem(PAPER_REAL_ACCOUNT_NUDGE_DISMISS_KEY) === '1') return;
-    } catch {
-      /* ignore */
-    }
+    } catch (e) { console.error("[Caught Error]", e); }
     setPaperRealAccountNudgeVisible(true);
   }, []);
   const [setupFocusBanner, setSetupFocusBanner] = useState<string | null>(null);
@@ -4248,7 +4236,7 @@ export function TradeScreen() {
                 chartInterval={chartInterval}
                 onChartIntervalChange={(v) => {
                   setChartInterval(v);
-                  window.localStorage.setItem(TRADE_CHART_INTERVAL_STORAGE_KEY, v);
+                  secureStorage.setItem(TRADE_CHART_INTERVAL_STORAGE_KEY, v);
                   window.dispatchEvent(new CustomEvent(SIGFLO_CHART_INTERVAL_EVENT, { detail: v }));
                 }}
                 exchangeStyleHero={false}
@@ -4484,7 +4472,7 @@ export function TradeScreen() {
                                           symbol: orderSymbol,
                                           side: exchangePositionForSymbol.side,
                                           positionIdx: exchangePositionForSymbol.positionIdx ?? 0,
-                                        }).catch(() => {});
+                                        }).catch((e) => { console.error("[Caught Promise Error]", e); });
                                       }
                                       setServerExitOvernightEnabled(on);
                                     }}
@@ -4729,7 +4717,7 @@ export function TradeScreen() {
                                 symbol: orderSymbol,
                                 side: exchangePositionForSymbol.side,
                                 positionIdx: exchangePositionForSymbol.positionIdx ?? 0,
-                              }).catch(() => {});
+                              }).catch((e) => { console.error("[Caught Promise Error]", e); });
                             }
                             setServerExitOvernightEnabled(on);
                           }}
@@ -5096,7 +5084,7 @@ export function TradeScreen() {
                   chartInterval={chartInterval}
                   onChartIntervalChange={(v) => {
                     setChartInterval(v);
-                    window.localStorage.setItem(TRADE_CHART_INTERVAL_STORAGE_KEY, v);
+                    secureStorage.setItem(TRADE_CHART_INTERVAL_STORAGE_KEY, v);
                     window.dispatchEvent(new CustomEvent(SIGFLO_CHART_INTERVAL_EVENT, { detail: v }));
                   }}
                   exchangeStyleHero

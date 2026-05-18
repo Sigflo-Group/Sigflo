@@ -1,3 +1,4 @@
+import { secureStorage } from '@/lib/storage';
 const STORAGE_KEY = 'sigflo-app-announcements-enabled';
 
 /** Same-tab listeners (storage event only fires across tabs). */
@@ -10,7 +11,7 @@ export const APP_ANNOUNCEMENTS_PREF_EVENT = 'sigflo-app-announcements-pref';
 export function readAppAnnouncementsEnabled(): boolean {
   if (typeof window === 'undefined') return true;
   try {
-    return window.localStorage.getItem(STORAGE_KEY) !== 'false';
+    return secureStorage.getItem(STORAGE_KEY) !== 'false';
   } catch {
     return true;
   }
@@ -19,11 +20,9 @@ export function readAppAnnouncementsEnabled(): boolean {
 export function setAppAnnouncementsEnabled(enabled: boolean): void {
   if (typeof window === 'undefined') return;
   try {
-    if (enabled) window.localStorage.removeItem(STORAGE_KEY);
-    else window.localStorage.setItem(STORAGE_KEY, 'false');
-  } catch {
-    /* private mode */
-  }
+    if (enabled) secureStorage.removeItem(STORAGE_KEY);
+    else secureStorage.setItem(STORAGE_KEY, 'false');
+  } catch (e) { console.error("[Caught Error]", e); }
   window.dispatchEvent(new Event(APP_ANNOUNCEMENTS_PREF_EVENT));
 }
 

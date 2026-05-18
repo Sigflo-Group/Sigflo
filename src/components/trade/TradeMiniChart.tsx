@@ -114,9 +114,7 @@ export function TradeMiniChart({
     for (const fn of lineDisposersRef.current) {
       try {
         fn();
-      } catch {
-        /* ignore */
-      }
+      } catch (e) { console.error("[Caught Error]", e); }
     }
     lineDisposersRef.current = [];
     void series;
@@ -131,9 +129,7 @@ export function TradeMiniChart({
       lineDisposersRef.current.push(() => {
         try {
           series.removePriceLine(ln);
-        } catch {
-          /* ignore */
-        }
+        } catch (e) { console.error("[Caught Error]", e); }
       });
     };
 
@@ -384,9 +380,7 @@ export function TradeMiniChart({
     setFloatLabel(null);
     try {
       e.currentTarget.releasePointerCapture(e.pointerId);
-    } catch {
-      /* ignore */
-    }
+    } catch (e) { console.error("[Caught Error]", e); }
     onLevelsDragEnd?.();
   };
 

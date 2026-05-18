@@ -24,9 +24,7 @@ function mergeDotenvFile(filePath: string, into: Record<string, string>) {
       }
       if (key && into[key] === undefined) into[key] = val;
     }
-  } catch {
-    /* ignore */
-  }
+  } catch (e) { console.error("[Caught Error]", e); }
 }
 
 /**
@@ -61,9 +59,7 @@ function mergeDotenvWhitelistOverwrite(filePath: string, into: Record<string, st
       }
       into[key] = val;
     }
-  } catch {
-    /* ignore */
-  }
+  } catch (e) { console.error("[Caught Error]", e); }
 }
 
 function loadAiSecretsFromDisk(mode: string, rootDir: string): Record<string, string> {

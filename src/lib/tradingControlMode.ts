@@ -1,3 +1,4 @@
+import { secureStorage } from '@/lib/storage';
 export type TradingControlMode = 'suggestion' | 'assisted' | 'auto';
 
 export const TRADING_CONTROL_MODE_STORAGE_KEY = 'sigflo.tradingControlMode';
@@ -14,7 +15,7 @@ export function parseTradingControlMode(raw: string | null): TradingControlMode 
 
 export function loadTradingControlMode(): TradingControlMode {
   if (typeof window === 'undefined') return DEFAULT_TRADING_CONTROL_MODE;
-  return parseTradingControlMode(window.localStorage.getItem(TRADING_CONTROL_MODE_STORAGE_KEY));
+  return parseTradingControlMode(secureStorage.getItem(TRADING_CONTROL_MODE_STORAGE_KEY));
 }
 
 export type TradingControlModeMeta = {

@@ -29,9 +29,7 @@ function persistBiasNotifyFocusToStorage(linearSymbol: string | null): void {
   try {
     if (linearSymbol) sessionStorage.setItem(BIAS_NOTIFY_FOCUS_STORAGE_KEY, linearSymbol);
     else sessionStorage.removeItem(BIAS_NOTIFY_FOCUS_STORAGE_KEY);
-  } catch {
-    /* private mode / SSR */
-  }
+  } catch (e) { console.error("[Caught Error]", e); }
 }
 
 try {
@@ -39,9 +37,7 @@ try {
     const v = sessionStorage.getItem(BIAS_NOTIFY_FOCUS_STORAGE_KEY)?.trim().toUpperCase();
     if (v) biasFlipNotifyTradeFocusLinearSymbolRef.current = v;
   }
-} catch {
-  /* ignore */
-}
+} catch (e) { console.error("[Caught Error]", e); }
 
 export function setBiasFlipNotifyTradeFocusLinearSymbol(linearSymbol: string | null): void {
   const s = linearSymbol?.trim().toUpperCase() ?? '';

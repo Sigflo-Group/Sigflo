@@ -567,9 +567,7 @@ export function PriceChartCard({
       runProgrammaticViewport(() => {
         try {
           chart.priceScale('right').setAutoScale(true);
-        } catch {
-          /* ignore */
-        }
+        } catch (e) { console.error("[Caught Error]", e); }
       });
 
       requestAnimationFrame(() => {
@@ -596,9 +594,7 @@ export function PriceChartCard({
             runProgrammaticViewport(() => {
               tss.setVisibleLogicalRange({ from: lLo, to: lHi });
             });
-          } catch {
-            /* LC may reject degenerate ranges */
-          }
+          } catch (e) { console.error("[Caught Error]", e); }
           if (u < 1) requestAnimationFrame(tick);
           else skipScrollToRealTimeRef.current = true;
         };

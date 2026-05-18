@@ -7,7 +7,7 @@ import {
   updateExitWatchRuntime,
   type ExitAutomationWatchRow,
 } from '../repositories/exitWatchRepo.js';
-import { decryptBrokerCredential } from '../services/exchangeKey.service.js';
+import { decryptBrokerCredential, getSecretFromVault } from '../services/exchangeKey.service.js';
 import { log } from '../lib/logger.js';
 import { retryTransientNetwork } from '../lib/transientNetworkRetry.js';
 import { linearQtyFromBaseAmount } from '../lib/linearOrderQty.js';
@@ -72,10 +72,24 @@ async function processOneWatch(w: ExitAutomationWatchRow): Promise<void> {
     return;
   }
 
-  const creds = {
-    apiKey: decryptBrokerCredential(account.apiKeyEncrypted),
-    apiSecret: decryptBrokerCredential(account.apiSecretEncrypted),
-  };
+  const apiKey = account.apiKeyVaultId
+    ? await getSecretFromVault(account.apiKeyVaultId)
+    : decryptBrokerCredential(account.apiKeyEncrypted);
+  const apiSecret = account.apiSecretVaultId
+    ? await getSecretFromVault(account.apiSecretVaultId)
+    : decryptBrokerCredential(account.apiSecretEncrypted);
+  // broker_accounts schema has no passphrase column — use undefined.
+  const passphrase: string | undefined = undefined;
+
+  if (!apiKey || !apiSecret) {
+    await updateExitWatchRuntime(w.id, {
+      lastCheckedAt: new Date(),
+      lastError: 'Failed to retrieve credentials from Vault.',
+    });
+    return;
+  }
+
+  const creds = { apiKey, apiSecret, passphrase };
 
   let positions: Awaited<ReturnType<BybitAdapter['fetchPositions']>>;
   try {

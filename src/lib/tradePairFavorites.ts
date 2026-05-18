@@ -1,3 +1,4 @@
+import { secureStorage } from '@/lib/storage';
 export const TRADE_PAIR_FAVORITES_STORAGE_KEY = 'sigflo.tradePairFavorites.v1';
 export const TRADE_FAVORITES_CHANGED_EVENT = 'sigflo-trade-favorites-changed';
 
@@ -26,7 +27,7 @@ export function readTradePairFavorites(): string[] {
   if (typeof window === 'undefined') return [];
   const seen = new Set<string>();
   const out: string[] = [];
-  for (const s of parseList(window.localStorage.getItem(TRADE_PAIR_FAVORITES_STORAGE_KEY))) {
+  for (const s of parseList(secureStorage.getItem(TRADE_PAIR_FAVORITES_STORAGE_KEY))) {
     const b = normalizeTradePairBase(s);
     if (seen.has(b)) continue;
     seen.add(b);
@@ -55,7 +56,7 @@ export function toggleTradePairFavorite(pair: string): boolean {
     next = [...list, b].slice(0, MAX_FAVORITES);
     nowFavorited = true;
   }
-  window.localStorage.setItem(TRADE_PAIR_FAVORITES_STORAGE_KEY, JSON.stringify(next));
+  secureStorage.setItem(TRADE_PAIR_FAVORITES_STORAGE_KEY, JSON.stringify(next));
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent(TRADE_FAVORITES_CHANGED_EVENT));
   }

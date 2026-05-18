@@ -1,3 +1,4 @@
+import { secureStorage } from '@/lib/storage';
 import { useCallback, useState } from 'react';
 import { Link, Navigate } from 'react-router-dom';
 import { SigfloLogo } from '@/components/branding/SigfloLogo';
@@ -90,7 +91,7 @@ export default function LoginScreen() {
   const [googleError, setGoogleError] = useState<string | null>(null);
   const [betaNoticeOpen, setBetaNoticeOpen] = useState(() => {
     try {
-      return window.localStorage.getItem(BETA_NOTICE_DISMISSED_KEY) !== '1';
+      return secureStorage.getItem(BETA_NOTICE_DISMISSED_KEY) !== '1';
     } catch {
       return true;
     }
@@ -582,7 +583,7 @@ export default function LoginScreen() {
               onClick={() => {
                 setBetaNoticeOpen(false);
                 try {
-                  window.localStorage.setItem(BETA_NOTICE_DISMISSED_KEY, '1');
+                  secureStorage.setItem(BETA_NOTICE_DISMISSED_KEY, '1');
                 } catch {
                   // Ignore storage failures (private mode / blocked storage).
                 }

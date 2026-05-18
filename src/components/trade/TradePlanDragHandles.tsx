@@ -151,9 +151,7 @@ export function TradePlanDragHandles({
     }
     try {
       e.currentTarget.releasePointerCapture(e.pointerId);
-    } catch {
-      /* ignore */
-    }
+    } catch (e) { console.error("[Caught Error]", e); }
   };
 
   const stripWrapClass = 'pointer-events-auto absolute left-0 z-[40] cursor-ns-resize touch-none';

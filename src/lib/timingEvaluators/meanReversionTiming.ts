@@ -49,8 +49,8 @@ export function evaluateMeanReversionTiming(args: {
   const heldReversion =
     args.hasPreviousTrigger &&
     (args.side === 'long'
-      ? args.rsiNow < 74 && args.close < args.prevClose
-      : args.rsiNow > 26 && args.close > args.prevClose);
+      ? args.rsiNow < 72 && args.close < args.prevClose
+      : args.rsiNow > 28 && args.close > args.prevClose);
 
   const triggerHit = rsiCooling || revertingTowardEma || heldReversion;
   const triggerType: ScannerTriggerType = triggerHit ? 'mean_reversion_cooling' : 'unknown';

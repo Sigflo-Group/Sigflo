@@ -1,3 +1,4 @@
+import { env } from '../config/env.js';
 import { BybitAdapter } from '../exchanges/bybit.js';
 import { listBrokerAccountsForUser } from '../db/queries/brokerAccounts.js';
 import {
@@ -15,13 +16,11 @@ import { resolveExitWatchGuidance, type ExitStrategyPreset } from '../lib/exitGu
 const bybit = new BybitAdapter();
 
 function workerEnabled(): boolean {
-  const v = process.env.EXIT_AUTOMATION_WORKER_ENABLED?.trim().toLowerCase();
-  return v === '1' || v === 'true' || v === 'yes';
+  return env.EXIT_AUTOMATION_WORKER_ENABLED === 'true';
 }
 
 function workerIntervalMs(): number {
-  const n = Number(process.env.EXIT_AUTOMATION_WORKER_INTERVAL_MS ?? '45000');
-  return Number.isFinite(n) && n >= 5000 ? n : 45000;
+  return env.EXIT_AUTOMATION_WORKER_INTERVAL_MS;
 }
 
 function matchPosition(watch: ExitAutomationWatchRow, positions: Awaited<ReturnType<BybitAdapter['fetchPositions']>>) {
@@ -79,11 +78,8 @@ async function processOneWatch(w: ExitAutomationWatchRow): Promise<void> {
   const apiSecret = account.apiSecretVaultId
     ? await getSecretFromVault(account.apiSecretVaultId)
     : decryptBrokerCredential(account.apiSecretEncrypted);
-  const passphrase = account.apiPassphraseVaultId
-    ? await getSecretFromVault(account.apiPassphraseVaultId)
-    : account.apiSecretEncrypted // This was a typo in my previous edit, should be account.apiPassphraseEncrypted if it existed, but broker_accounts only has key/secret.
-      ? undefined // broker_accounts doesn't have passphrase in the current schema.
-      : undefined;
+  // broker_accounts schema has no passphrase column — use undefined.
+  const passphrase: string | undefined = undefined;
 
   if (!apiKey || !apiSecret) {
     await updateExitWatchRuntime(w.id, {

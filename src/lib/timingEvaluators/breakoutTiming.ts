@@ -45,11 +45,11 @@ export function evaluateBreakoutTiming(args: {
     (args.side === 'long'
       ? args.close > args.prevClose &&
         args.close > args.triggerLevel &&
-        args.rsiNow >= 52 && args.rsiNow <= 70 &&
+        args.rsiNow >= 50 && args.rsiNow <= 70 &&
         args.rsiSlope > 0
       : args.close < args.prevClose &&
         args.close < args.triggerLevel &&
-        args.rsiNow <= 48 && args.rsiNow >= 30 &&
+        args.rsiNow <= 50 && args.rsiNow >= 30 &&
         args.rsiSlope < 0);
 
   const triggerHit = crossedNow || retestHold || continuationMomentum;

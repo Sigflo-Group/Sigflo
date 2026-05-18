@@ -379,7 +379,6 @@ export default function BotsScreen() {
     if (!opp) return;
     navigateToTradeReview(opp);
   };
-  const onExplain = (id: string) => console.log('Why this setup', id);
   const onToggleOpportunityExpand = (id: string) => {
     playUiTapSound();
     setExpandedOpportunityId((prev) => (prev === id ? null : id));
@@ -506,7 +505,6 @@ export default function BotsScreen() {
             <PriorityOpportunityCard
               opportunity={hero}
               onReview={onReview}
-              onExplain={onExplain}
               alertHighlight={highlightIds.has(hero.id)}
               reviewLocked={reviewLocked}
             />

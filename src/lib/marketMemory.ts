@@ -21,7 +21,7 @@ export type MarketMemorySnapshot = {
   dominantBias: 'bullish' | 'bearish' | 'neutral';
   momentumState: 'strengthening' | 'weakening' | 'flat';
   volatilityState: 'expanding' | 'contracting';
-  breakoutStatus: 'building' | 'confirmed' | 'failed';
+  breakoutStatus: 'building' | 'confirmed' | 'failed' | 'none';
   breakoutAttempts: number;
   failedBreakoutsRecent: number;
   failedContinuationAttempts: number;

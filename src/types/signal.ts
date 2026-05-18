@@ -80,7 +80,7 @@ export interface CryptoSignal {
     dominantBias: 'bullish' | 'bearish' | 'neutral';
     momentumState: 'strengthening' | 'weakening' | 'flat';
     volatilityState: 'expanding' | 'contracting';
-    breakoutStatus: 'building' | 'confirmed' | 'failed';
+    breakoutStatus: 'building' | 'confirmed' | 'failed' | 'none';
   };
   signalLifecycleStage?: SignalLifecycleStage;
   setupType: SignalSetupType;

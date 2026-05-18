@@ -85,7 +85,6 @@ function derivePosture(signal: CryptoSignal, status: MarketRowStatus): SignalPos
   if (signal.setupType === 'breakout') {
     if (status === 'triggered') return rsiOverheated ? 'trend_stretched' : 'breakout_active';
     if (status === 'extended') return 'momentum_fading';
-    if (status === 'overextended') return 'trend_stretched';
     if (rsiOverheated) return 'trend_stretched';
     if (signal.setupScore >= 45) return 'breakout_building';
     return 'unclear';

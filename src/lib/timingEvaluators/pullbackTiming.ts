@@ -37,7 +37,7 @@ export function evaluatePullbackTiming(args: {
     : 'Pullback still forming; bounce confirmation not complete.';
 
   const room = clamp(args.roomToTargetAtr / 2.0, 0, 1);
-  const rsiFitMid = args.side === 'long' ? 50 : 50;
+  const rsiFitMid = 50;
   const rsiFit = clamp(1 - Math.abs(args.rsiNow - rsiFitMid) / 20, 0, 1);
   const slopeFit = clamp((args.side === 'long' ? args.rsiSlope : -args.rsiSlope) / 6 + 0.5, 0, 1);
   const base = triggerHit ? 66 : 50;

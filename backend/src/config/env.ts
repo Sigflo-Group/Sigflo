@@ -39,6 +39,17 @@ const envSchema = z.object({
   /** Supabase project JWT secret (Settings → API → JWT Secret). Used to verify access tokens. */
   SUPABASE_JWT_SECRET: z.string().min(1).optional(),
   CREDENTIAL_ENCRYPTION_KEY: z.string().regex(/^[a-fA-F0-9]{64}$/),
+
+  // Worker configuration — consumed by background job loops.
+  EXIT_AUTOMATION_WORKER_ENABLED: z
+    .string()
+    .optional()
+    .transform((v) => (v === '1' || v === 'true' || v === 'yes' ? 'true' : 'false')),
+  EXIT_AUTOMATION_WORKER_INTERVAL_MS: z.coerce.number().min(5000).default(45000),
+  OPPORTUNITY_SYNC_INSECURE_TLS: z
+    .string()
+    .optional()
+    .transform((v) => (v === '1' || v === 'true' || v === 'yes' ? 'true' : 'false')),
 });
 
 const parsed = envSchema.safeParse(process.env);

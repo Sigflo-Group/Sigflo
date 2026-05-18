@@ -325,7 +325,8 @@ function scoreMomentumTrend(params: {
   const wickNoise = last5.reduce((sum, c) => sum + (c.high - c.low), 0);
   const candleStrengthRatio = wickNoise > 0 ? bodyStrength / wickNoise : 0;
   const distanceBreakoutAtr = (side === 'long' ? m15.swingHigh - m15.close : m15.close - m15.swingLow) / Math.max(m15.atrNow, 0.000001);
-  const fakeBreakoutRisk = distanceBreakoutAtr < 0.2 && volRatio < 1;
+  const distBreakoutAtrNonNeg = Math.max(0, distanceBreakoutAtr);
+  const fakeBreakoutRisk = distBreakoutAtrNonNeg < 0.2 && volRatio < 1;
   const breakout = breakoutQuality(candles15m, side, m15);
   const conflictingMomentum =
     m5 != null &&
@@ -333,8 +334,8 @@ function scoreMomentumTrend(params: {
       (side === 'short' && m5.rsiNow > 55 && momentumRising === true));
   const momentumStall =
     side === 'long'
-      ? m15.rsiNow > 58 && m15.rsiNow <= m15.rsiPrev && distanceBreakoutAtr < 0.45
-      : m15.rsiNow < 42 && m15.rsiNow >= m15.rsiPrev && distanceBreakoutAtr < 0.45;
+      ? m15.rsiNow > 58 && m15.rsiNow <= m15.rsiPrev && distBreakoutAtrNonNeg < 0.45
+      : m15.rsiNow < 42 && m15.rsiNow >= m15.rsiPrev && distBreakoutAtrNonNeg < 0.45;
 
   if (side === 'long') {
     if (m15.ema20 > m15.ema50) {
@@ -346,7 +347,7 @@ function scoreMomentumTrend(params: {
       score += 8;
       reasons.push('Recent candles show directional body strength.');
     }
-    if (distanceBreakoutAtr <= 0.45 && volRatio >= 0.98) {
+    if (distBreakoutAtrNonNeg <= 0.45 && volRatio >= 0.98) {
       score += 8;
       reasons.push('Breakout pressure is building with participation.');
     }
@@ -362,7 +363,7 @@ function scoreMomentumTrend(params: {
       score += 8;
       reasons.push('Recent candles show directional body strength.');
     }
-    if (distanceBreakoutAtr <= 0.45 && volRatio >= 0.98) {
+    if (distBreakoutAtrNonNeg <= 0.45 && volRatio >= 0.98) {
       score += 8;
       reasons.push('Breakdown pressure is building with participation.');
     }
@@ -430,13 +431,13 @@ function scoreContextLocation(params: {
   let poorLocation = false;
   let heavyNearbyLevel = false;
 
-  if (side === 'long' && distToResistanceAtr < 0.36) {
+  if (side === 'long' && distToResistanceAtr >= 0 && distToResistanceAtr < 0.36) {
     score -= distToResistanceAtr < 0.24 ? 20 : 14;
     poorLocation = true;
     heavyNearbyLevel = distToResistanceAtr < 0.24;
     warnings.push('Long setup is too close to resistance overhead.');
   }
-  if (side === 'short' && distToSupportAtr < 0.36) {
+  if (side === 'short' && distToSupportAtr >= 0 && distToSupportAtr < 0.36) {
     score -= distToSupportAtr < 0.24 ? 20 : 14;
     poorLocation = true;
     heavyNearbyLevel = distToSupportAtr < 0.24;
@@ -800,7 +801,7 @@ function assessDirectionalBias(params: {
       (higher.structure === 'bullish' ? 'bullish' : higher.structure === 'bearish' ? 'bearish' : 'neutral'),
     momentumState: params.marketMemory?.momentumState ?? (momentum.momentumStall ? 'weakening' : 'flat'),
     volatilityState: params.marketMemory?.volatilityState ?? (volatilitySpike ? 'expanding' : 'contracting'),
-    breakoutStatus: params.marketMemory?.breakoutStatus ?? (params.setupType === 'breakout' ? 'building' : 'failed'),
+    breakoutStatus: params.marketMemory?.breakoutStatus ?? (params.setupType === 'breakout' ? 'building' : 'none'),
   };
 
   return {
@@ -830,7 +831,7 @@ function assessDirectionalBias(params: {
 function rangeCompressionScore(candles: Candle[], atrNow: number): number {
   const recent = candles.slice(-8);
   const sumRange = recent.reduce((s, c) => s + (c.high - c.low), 0);
-  const ratio = atrNow > 0 ? sumRange / atrNow : 99;
+  const ratio = atrNow > 0 ? sumRange / (8 * atrNow) : 99;
   return clamp((2.6 - ratio) / 1.6, 0, 1);
 }
 
@@ -891,8 +892,7 @@ function breakoutPressureDetector(candles: Candle[], thresholds: DetectorThresho
   const passCount = Object.values(conditions).filter(Boolean).length;
 
   // ── FORENSIC DEBUG BLOCK ─────────────────────────────────────────────────────
-  // Always-on (not DEBUG-gated) so the execution path is visible in every environment.
-  console.log('[BREAKOUT DEBUG]', {
+  if (DEBUG) console.log('[BREAKOUT DEBUG]', {
     candleTime: last?.ts ?? null,
     rsiNow: m.rsiNow,
     atrNow: m.atrNow,
@@ -1027,7 +1027,7 @@ function overextendedDetector(candles: Candle[], thresholds: DetectorThresholds)
   const gain3 = c3.length > 0 ? c3[c3.length - 1].close - c3[0].open : 0;
   const expansion = m.atrNow > 0 ? gain3 / m.atrNow : 0;
   const expansionOk = expansion > 1.5;
-  const nearResistance = m.atrNow > 0 && m.swingHigh - m.close < 0.4 * m.atrNow;
+  const nearResistance = m.atrNow > 0 && m.close < m.swingHigh && m.swingHigh - m.close < 0.4 * m.atrNow;
   const conditions = { stretchOk, rsiHot, expansionOk, nearResistance };
   const passCount = Object.values(conditions).filter(Boolean).length;
   if (passCount < 3) {
@@ -1091,22 +1091,24 @@ function breakdownPressureDetector(candles: Candle[], thresholds: DetectorThresh
   const passCount = Object.values(conditions).filter(Boolean).length;
 
   // ── FORENSIC DEBUG BLOCK ─────────────────────────────────────────────────────
-  console.log('[BREAKDOWN DEBUG]', {
-    candleTime: last?.ts ?? null,
-    rsiNow: m.rsiNow,
-    atrNow: m.atrNow,
-    passCount,
-    trendOk: trend,
-    nearBreakdown,
-    breakoutValid,
-    compression: Number(compression.toFixed(4)),
-    rsiOk,
-    earlyReturnTriggered: m.rsiNow < 24,
-  });
+  if (DEBUG) {
+    console.log('[BREAKDOWN DEBUG]', {
+      candleTime: last?.ts ?? null,
+      rsiNow: m.rsiNow,
+      atrNow: m.atrNow,
+      passCount,
+      trendOk: trend,
+      nearBreakdown,
+      breakoutValid,
+      compression: Number(compression.toFixed(4)),
+      rsiOk,
+      earlyReturnTriggered: m.rsiNow < 24,
+    });
+  }
 
   // ── RSI OVERSOLD HARD GUARD ──────────────────────────────────────────────────
   if (m.rsiNow < 24) {
-    console.warn('[BREAKDOWN BLOCKED] RSI overextended short', {
+    if (DEBUG) console.warn('[BREAKDOWN BLOCKED] RSI overextended short', {
       rsiNow: m.rsiNow,
       candleTime: last?.ts ?? null,
     });
@@ -1226,7 +1228,7 @@ function overextendedShortDetector(candles: Candle[], thresholds: DetectorThresh
   const drop3 = c3.length > 0 ? c3[0].open - c3[c3.length - 1].close : 0;
   const expansion = m.atrNow > 0 ? drop3 / m.atrNow : 0;
   const expansionOk = expansion > 1.5;
-  const nearSupport = m.atrNow > 0 && m.close - m.swingLow < 0.4 * m.atrNow;
+  const nearSupport = m.atrNow > 0 && m.close > m.swingLow && m.close - m.swingLow < 0.4 * m.atrNow;
   const conditions = { stretchOk, rsiCold, expansionOk, nearSupport };
   const passCount = Object.values(conditions).filter(Boolean).length;
   if (passCount < 3) {
@@ -1389,8 +1391,8 @@ export function buildSignalFromMarket(input: {
     biasLabel: bias.biasLabel,
     directionalBias: bias.directionalBias,
     setupType: out.setupType,
-    setupScore: bias.confidence,
-    setupScoreLabel: getSetupScoreLabel(bias.confidence),
+    setupScore: out.breakdown ? calculateSetupScore(out.breakdown) : bias.confidence,
+    setupScoreLabel: getSetupScoreLabel(out.breakdown ? calculateSetupScore(out.breakdown) : bias.confidence),
     confidence: bias.confidence,
     setupQuality: bias.setupQuality,
     riskLevel: bias.riskLevel,

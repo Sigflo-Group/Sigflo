@@ -51,6 +51,7 @@ import {
   parseSourceEngineFromOpportunityId,
 } from '@/lib/tradeReviewCockpit';
 import { formatQuoteNumber } from '@/lib/formatQuote';
+import { roundUsdAmount, coerceUsdField } from '@/lib/tradeMath';
 import { useCanGoBack } from '@/hooks/useCanGoBack';
 import { useExitAutomation } from '@/hooks/useExitAutomation';
 import { useAppAnnouncementsEnabled } from '@/hooks/useAppAnnouncementsEnabled';
@@ -182,9 +183,7 @@ function recentExitAiAutoCloseSubmit(
   return false;
 }
 
-function roundUsdAmount(n: number): number {
-  return Math.round(n * 100) / 100;
-}
+
 
 /** Fresh snapshot after an order — pick the open leg for TP/SL sync (hedge-safe `positionIdx`). */
 function findBybitLinearOpenLeg(
@@ -300,13 +299,7 @@ function utaBalanceDisplayUsd(o: TradeBalanceOverview): number {
   return 0;
 }
 
-/** API JSON sometimes returns numeric strings; `Number.isFinite("16.91")` is false and breaks sizing. */
-function coerceUsdField(value: unknown): number | null {
-  if (value == null) return null;
-  if (typeof value === 'string' && value.trim() === '') return null;
-  const n = Number(value);
-  return Number.isFinite(n) ? n : null;
-}
+
 
 /** Display label for signal `pair` in the live strip ticker (matches chart pair style when possible). */
 function formatSignalPairForTicker(pair: string): string {

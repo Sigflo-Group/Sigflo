@@ -152,7 +152,7 @@ export async function postTradeExecute(req: AuthedRequest, res: Response) {
       ipAddress: req.auditContext?.ipAddress,
       userAgent: req.auditContext?.userAgent,
     });
-    return res.status(500).json({ error: 'Order placed but local record failed. Contact support with brokerOrderId: ' + broker.brokerOrderId });
+    return res.status(500).json({ error: 'Order placed but local record failed. Contact support.' });
   }
 
   await writeAuditLog({

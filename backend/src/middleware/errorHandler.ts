@@ -13,8 +13,9 @@ export function errorHandler(err: unknown, req: Request & { requestId?: string }
       : String(err),
   });
 
+  const safeMessage = 'An internal error occurred';
   res.status(500).json({
-    error: msg,
+    error: safeMessage,
     requestId: req.requestId,
   });
 }

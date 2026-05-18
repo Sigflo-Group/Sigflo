@@ -67,6 +67,8 @@ import type { RegimePredictorOutput, RegimePredictorState } from '@/types/regime
 import { shouldAnnounceScannerBiasFlip } from '@/lib/biasFlipNotifyGate';
 import { emitGlobalAnnouncement } from '@/lib/globalAnnouncements';
 
+const DEBUG = import.meta.env.DEV || !!(globalThis as Record<string, unknown>).__SIGFLO_DEBUG__;
+
 export type SignalEngineState = {
   signals: CryptoSignal[];
   loading: boolean;
@@ -287,7 +289,13 @@ function upsertCandle(store: Candle[], next: Candle): Candle[] {
   const last = out.at(-1);
   if (!last || next.ts > last.ts) out.push(next);
   else if (next.ts === last.ts) out[out.length - 1] = next;
-  return out.slice(-240);
+  else {
+    // Out-of-order candle (e.g., after WS reconnect): binary-search insert in correct position.
+    let lo = 0; let hi = out.length;
+    while (lo < hi) { const mid = (lo + hi) >> 1; if (out[mid].ts < next.ts) lo = mid + 1; else hi = mid; }
+    if (lo < out.length && out[lo].ts === next.ts) out[lo] = next; else out.splice(lo, 0, next);
+  }
+  return out.length <= 240 ? out : out.slice(-240);
 }
 
 function useSignalEngineValue(): SignalEngineState {
@@ -463,7 +471,7 @@ function useSignalEngineValue(): SignalEngineState {
         }
         biasSideBySymbolRef.current[sym] = next;
       }
-      setState({
+      setState((prev) => ({ ...prev,
         signals: ranked,
         loading: false,
         // Reflect transport/data source truth even when no setups are currently emitted.
@@ -476,24 +484,29 @@ function useSignalEngineValue(): SignalEngineState {
           Object.entries(regimePredictorStoreRef.current).map(([sym, row]) => [sym, row.output]),
         ),
         aiSnapshotLog: aiSnapshotStoreRef.current,
-      });
+      }));
+
     }
 
     // REST bootstrap / reconnect catch-up:
     // - backfill candles and tickers
     // - refresh in-memory stores
     // - run detector pipeline against fresh snapshots
+    let backfillGen = 0;
     async function backfillFromRest(reason: 'startup' | 'reconnect') {
-      console.log(`[Sigflo][Engine] REST bootstrap (${reason})`);
+      const gen = ++backfillGen;
+      if (DEBUG) console.log(`[Sigflo][Engine] REST bootstrap (${reason})`);
       streamReadyRef.current = false;
       try {
         const tickers = await fetchTickers(STREAM_SYMBOLS);
+        if (gen !== backfillGen || cancelled) return;
         for (const ticker of tickers) tickersRef.current[ticker.symbol] = ticker;
         for (const symbol of STREAM_SYMBOLS) {
           const [candles5m, candles15m] = await Promise.all([
             fetchKlines(symbol, '5', 240),
             fetchKlines(symbol, '15', 240),
           ]);
+          if (gen !== backfillGen || cancelled) return;
           candlesRef.current[symbol] = {
             ...emptyIntervalCandles(),
             ...candlesRef.current[symbol],
@@ -502,12 +515,12 @@ function useSignalEngineValue(): SignalEngineState {
           };
         }
         recomputeAllFromStore('REST');
-        if (cancelled) return;
+        if (gen !== backfillGen || cancelled) return;
         streamReadyRef.current = true;
         setLiveTickersBySymbol({ ...tickersRef.current });
         pushState('REST', wsConnectedRef.current ? 'connected' : 'disconnected');
       } catch (err) {
-        if (cancelled) return;
+        if (gen !== backfillGen || cancelled) return;
         pushState('OFFLINE', wsConnectedRef.current ? 'reconnecting' : 'disconnected', err instanceof Error ? err.message : 'Signal engine failed');
       }
     }
@@ -538,7 +551,6 @@ function useSignalEngineValue(): SignalEngineState {
       const symbolCandles = candlesRef.current[symbol];
       const ticker = tickersRef.current[symbol];
       if (!symbolCandles || !ticker) {
-        clearStaleSignalsForSymbol(symbol);
         recordScannerPipelineReport(
           { symbol, stage: 'skip_no_ticker', ts: Date.now() },
           healthCtx(),
@@ -551,7 +563,6 @@ function useSignalEngineValue(): SignalEngineState {
       const openCandleStripped = raw15m.at(-1)?.isClosed === false;
       const candles15m = openCandleStripped ? raw15m.slice(0, -1) : raw15m;
       if (candles15m.length < 60) {
-        clearStaleSignalsForSymbol(symbol);
         recordScannerPipelineReport(
           { symbol, stage: 'skip_insufficient_candles', ts: Date.now() },
           healthCtx(),
@@ -566,7 +577,6 @@ function useSignalEngineValue(): SignalEngineState {
       const btc15 = btc15raw.at(-1)?.isClosed === false ? btc15raw.slice(0, -1) : btc15raw;
       const eth15 = eth15raw.at(-1)?.isClosed === false ? eth15raw.slice(0, -1) : eth15raw;
       if (btc15.length < 60 || eth15.length < 60) {
-        clearStaleSignalsForSymbol(symbol);
         recordScannerPipelineReport({ symbol, stage: 'skip_btc_eth_warmup', ts: Date.now() }, healthCtx());
         return;
       }
@@ -583,8 +593,7 @@ function useSignalEngineValue(): SignalEngineState {
         candles5m: symbolCandles['5'],
         regime,
         previousLifecycleForSetupSide: (setupType, side) =>
-          lifecycleRef.current[signalEmitKey(symbol, setupType, side)] ??
-          lifecycleRef.current[`${symbol}:${setupType}`],
+          lifecycleRef.current[signalEmitKey(symbol, setupType, side)],
         previousMarketMemory: marketMemoryRef.current[symbol],
         strategyPersonalityMode: strategyPersonalityModeRef.current,
         strategyPersonalityProfile: STRATEGY_PERSONALITY_PROFILES[strategyPersonalityModeRef.current],
@@ -685,7 +694,7 @@ function useSignalEngineValue(): SignalEngineState {
       const atrNow = Math.max(0.000001, atr(candles15m, 14).at(-1) ?? 1);
       const priceNow = ticker.lastPrice;
       const scoreImproved = prev ? signal.signal.setupScore - prev.setupScore >= SCORE_IMPROVE_BYPASS : false;
-      const priceMoved = prev ? Math.abs(priceNow - prev.refPrice) / Math.max(prev.atr, 0.000001) >= ATR_MOVE_BYPASS : false;
+      const priceMoved = prev ? Math.abs(priceNow - prev.refPrice) / Math.max(atrNow, 0.000001) >= ATR_MOVE_BYPASS : false;
       const cooldownPassed =
         !prev ||
         now - prev.emittedAt >= COOLDOWN_MS * (STRATEGY_PERSONALITY_PROFILES[strategyPersonalityModeRef.current]?.cooldownMultiplier ?? 1);
@@ -717,7 +726,7 @@ function useSignalEngineValue(): SignalEngineState {
               : prevLifecycleState !== nextLifecycleState
                 ? `${prevLifecycleState}→${nextLifecycleState}`
                 : 'cached';
-        console.log('[DETECTOR LIFECYCLE]', {
+        if (DEBUG) console.log('[DETECTOR LIFECYCLE]', {
           symbol,
           key,
           transition: lifecycleTransition,
@@ -762,10 +771,10 @@ function useSignalEngineValue(): SignalEngineState {
           },
           healthCtx(),
         );
-        pushState(mode, wsConnectedRef.current ? 'connected' : 'disconnected');
-        return;
-      }
-      userAdaptationRef.current = registerSignalImpression(userAdaptationRef.current, {
+      if (mode !== 'WS') pushState(mode, wsConnectedRef.current ? 'connected' : 'disconnected');
+      return;
+    }
+    userAdaptationRef.current = registerSignalImpression(userAdaptationRef.current, {
         setupType: signal.signal.setupType,
         riskLevel: signal.signal.riskLevel ?? 'moderate',
         confidence: signal.signal.confidence ?? signal.signal.setupScore,
@@ -782,7 +791,7 @@ function useSignalEngineValue(): SignalEngineState {
             : prevLifecycleStateOnEmit !== nextLifecycleStateOnEmit
               ? `${prevLifecycleStateOnEmit}→${nextLifecycleStateOnEmit}`
               : 'updated';
-      console.log('[DETECTOR LIFECYCLE]', {
+      if (DEBUG) console.log('[DETECTOR LIFECYCLE]', {
         symbol,
         key,
         transition: lifecycleTransitionOnEmit,
@@ -841,7 +850,7 @@ function useSignalEngineValue(): SignalEngineState {
         },
         ts: now,
       });
-      console.log(
+      if (DEBUG) console.log(
         `[Sigflo][Engine] detector triggered ${symbol} ${signal.signal.setupType} ${signal.signal.setupScore} state=${signal.signal.timingState ?? 'n/a'}`
       );
       recordScannerPipelineReport(
@@ -882,16 +891,20 @@ function useSignalEngineValue(): SignalEngineState {
     // - keep tickers fresh
     // - process closed candles only
     // - feed 15m closed bars through detector pipeline
+    let startupDone = false;
     const ws = new BybitWsClient({
       klineSymbols: STREAM_SYMBOLS,
       tickerSymbols: STREAM_SYMBOLS,
       includeTickers: true,
-      onLog: (msg) => console.log(`[Sigflo][Engine] ${msg}`),
+      onLog: DEBUG ? (msg: string) => console.log(`[Sigflo][Engine] ${msg}`) : undefined,
       onConnectionChange: (connection) => {
         wsConnectedRef.current = connection === 'connected';
         if (connection === 'connected') {
-          void backfillFromRest('reconnect');
-          pushState('WS', 'connected');
+          if (startupDone) {
+            void backfillFromRest('reconnect').then(() => {
+              pushState('WS', 'connected');
+            });
+          }
           return;
         }
         pushState(streamReadyRef.current ? 'REST' : 'OFFLINE', connection);
@@ -920,7 +933,7 @@ function useSignalEngineValue(): SignalEngineState {
         });
         // Closed-candle event is the only trigger input for signal generation.
         if (!kline.confirm) return;
-        console.log(`[Sigflo][Engine] closed candle received ${symbol} ${interval}`);
+        if (DEBUG) console.log(`[Sigflo][Engine] closed candle received ${symbol} ${interval}`);
         if (!streamReadyRef.current) return;
         if (interval === '15') recomputeForSymbol(symbol, 'WS');
       },
@@ -928,6 +941,7 @@ function useSignalEngineValue(): SignalEngineState {
     wsClientRef.current = ws;
 
     void backfillFromRest('startup').then(() => {
+      startupDone = true;
       ws.connect();
     });
 
@@ -935,9 +949,15 @@ function useSignalEngineValue(): SignalEngineState {
       import.meta.env.DEV
         ? window.setInterval(() => logScannerHealthSummary(), 60_000)
         : undefined;
+    // REST polling fallback when WS stays disconnected
+    const restPollTimer = window.setInterval(() => {
+      if (wsConnectedRef.current) return;
+      if (streamReadyRef.current) recomputeAllFromStore('REST');
+    }, 60_000);
 
     return () => {
       if (healthSummaryTimer != null) window.clearInterval(healthSummaryTimer);
+      window.clearInterval(restPollTimer);
       cancelled = true;
       if (tickerFlushRafRef.current != null) {
         window.cancelAnimationFrame(tickerFlushRafRef.current);

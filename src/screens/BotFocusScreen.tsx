@@ -26,6 +26,7 @@ import type { TradeChartInterval } from '@/hooks/useLiveTradeMarket';
 import { useLiveTradeMarket } from '@/hooks/useLiveTradeMarket';
 import { useSyncedTradeChartInterval } from '@/hooks/useSyncedTradeChartInterval';
 import { ExitAiCoPilotBlock } from '@/components/trade/exit/ExitAiCoPilotBlock';
+import { roundUsdAmount, coerceUsdField } from '@/lib/tradeMath';
 import { useAccountSnapshot } from '@/hooks/useAccountSnapshot';
 import { useExitAutomation } from '@/hooks/useExitAutomation';
 import { useBotStatuses } from '@/hooks/useBotStatuses';
@@ -87,16 +88,7 @@ function resolveMinOrderUsd(symbol: string): number {
   return SYMBOL_MIN_NOTIONAL_USD[s] ?? BETA_FALLBACK_MIN_ORDER_USD;
 }
 
-function roundUsdAmount(n: number): number {
-  return Math.round(n * 100) / 100;
-}
 
-function coerceUsdField(value: unknown): number | null {
-  if (value == null) return null;
-  if (typeof value === 'string' && value.trim() === '') return null;
-  const num = Number(value);
-  return Number.isFinite(num) ? num : null;
-}
 
 type TradeBalanceOverview = {
   availableToTrade: number | null;

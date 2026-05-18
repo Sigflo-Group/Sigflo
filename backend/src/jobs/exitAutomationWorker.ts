@@ -1,3 +1,4 @@
+import { env } from '../config/env.js';
 import { BybitAdapter } from '../exchanges/bybit.js';
 import { listBrokerAccountsForUser } from '../db/queries/brokerAccounts.js';
 import {
@@ -15,13 +16,11 @@ import { resolveExitWatchGuidance, type ExitStrategyPreset } from '../lib/exitGu
 const bybit = new BybitAdapter();
 
 function workerEnabled(): boolean {
-  const v = process.env.EXIT_AUTOMATION_WORKER_ENABLED?.trim().toLowerCase();
-  return v === '1' || v === 'true' || v === 'yes';
+  return env.EXIT_AUTOMATION_WORKER_ENABLED === 'true';
 }
 
 function workerIntervalMs(): number {
-  const n = Number(process.env.EXIT_AUTOMATION_WORKER_INTERVAL_MS ?? '45000');
-  return Number.isFinite(n) && n >= 5000 ? n : 45000;
+  return env.EXIT_AUTOMATION_WORKER_INTERVAL_MS;
 }
 
 function matchPosition(watch: ExitAutomationWatchRow, positions: Awaited<ReturnType<BybitAdapter['fetchPositions']>>) {

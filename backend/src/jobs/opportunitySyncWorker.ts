@@ -1,3 +1,4 @@
+import { env } from '../config/env.js';
 import { log } from '../lib/logger.js';
 import { upsertOpportunities, type UpsertOpportunityInput } from '../repositories/opportunitiesRepo.js';
 import { createHash } from 'node:crypto';
@@ -20,8 +21,7 @@ function stableUuidFromKey(key: string): string {
 }
 
 function insecureTlsEnabled(): boolean {
-  const v = process.env.OPPORTUNITY_SYNC_INSECURE_TLS?.trim().toLowerCase();
-  return v === '1' || v === 'true' || v === 'yes';
+  return env.OPPORTUNITY_SYNC_INSECURE_TLS === 'true';
 }
 
 function errorWithCause(error: unknown): string {

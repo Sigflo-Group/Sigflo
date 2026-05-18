@@ -69,7 +69,8 @@ tradeRouter.post('/bybit/linear-order', async (req: AuthedRequest, res) => {
     await bybitAdapter.ensureTradeEnabled(creds);
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Trade not allowed for this key.';
-    res.status(403).json({ error: msg });
+    log('warn', 'Bybit trade permission check failed.', { error: msg });
+    res.status(403).json({ error: 'API key does not have trading permission' });
     return;
   }
 
@@ -114,7 +115,7 @@ tradeRouter.post('/bybit/linear-order', async (req: AuthedRequest, res) => {
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Order failed';
     log('warn', 'Bybit order failed.', { error: msg });
-    res.status(400).json({ error: msg });
+    res.status(400).json({ error: 'Order failed' });
   }
 });
 
@@ -158,7 +159,8 @@ tradeRouter.post('/bybit/linear-trading-stop', async (req: AuthedRequest, res) =
     await bybitAdapter.ensureTradeEnabled(creds);
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Trade not allowed for this key.';
-    res.status(403).json({ error: msg });
+    log('warn', 'Bybit trade permission check failed.', { error: msg });
+    res.status(403).json({ error: 'API key does not have trading permission' });
     return;
   }
 
@@ -188,7 +190,7 @@ tradeRouter.post('/bybit/linear-trading-stop', async (req: AuthedRequest, res) =
       return;
     }
     log('warn', 'Bybit trading-stop failed.', { error: msg });
-    res.status(400).json({ error: msg });
+    res.status(400).json({ error: 'Trading stop failed' });
   }
 });
 
@@ -227,7 +229,8 @@ tradeRouter.post('/bybit/set-leverage', async (req: AuthedRequest, res) => {
     await bybitAdapter.ensureTradeEnabled(creds);
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Trade not allowed for this key.';
-    res.status(403).json({ error: msg });
+    log('warn', 'Bybit trade permission check failed.', { error: msg });
+    res.status(403).json({ error: 'API key does not have trading permission' });
     return;
   }
 
@@ -242,7 +245,7 @@ tradeRouter.post('/bybit/set-leverage', async (req: AuthedRequest, res) => {
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Set leverage failed';
     log('warn', 'Bybit set-leverage failed.', { symbol: p.symbol, error: msg });
-    res.status(400).json({ error: msg });
+    res.status(400).json({ error: 'Set leverage failed' });
   }
 });
 
@@ -275,7 +278,8 @@ tradeRouter.post('/bybit/spot-order', async (req: AuthedRequest, res) => {
     await bybitAdapter.ensureTradeEnabled(creds);
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Trade not allowed for this key.';
-    res.status(403).json({ error: msg });
+    log('warn', 'Bybit trade permission check failed.', { error: msg });
+    res.status(403).json({ error: 'API key does not have trading permission' });
     return;
   }
 
@@ -300,6 +304,6 @@ tradeRouter.post('/bybit/spot-order', async (req: AuthedRequest, res) => {
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Order failed';
     log('warn', 'Bybit spot order failed.', { error: msg });
-    res.status(400).json({ error: msg });
+    res.status(400).json({ error: 'Order failed' });
   }
 });

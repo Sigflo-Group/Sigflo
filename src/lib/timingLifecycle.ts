@@ -393,7 +393,9 @@ export function evaluateTimingLifecycle(args: {
     history: provisionalHistory,
   });
 
-  const timingHistory = [...historyWithoutNewest, { ...provisionalHistory.at(-1)!, state }];
+  const timingHistory = provisionalHistory.length > 0
+    ? [...historyWithoutNewest, { ...provisionalHistory.at(-1)!, state }]
+    : [...historyWithoutNewest];
   const lifecycle: CandidateLifecycle = {
     state,
     trigger: {

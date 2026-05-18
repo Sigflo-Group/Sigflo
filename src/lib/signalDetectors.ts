@@ -666,7 +666,7 @@ function assessDirectionalBias(params: {
   }
 
   if (DEBUG) {
-    console.log(`[Sigflo][Bias] ${params.setupType}/${params.side} confidence`, {
+    console.log(`[Sigflo][Detector][Bias] ${params.setupType}/${params.side} confidence`, {
       raw: rawConfidence,
       final: confidence,
       cappedBy: antiSpamReasons,
@@ -911,7 +911,7 @@ function breakoutPressureDetector(candles: Candle[], thresholds: DetectorThresho
   // ── RSI OVEREXTENDED HARD GUARD ──────────────────────────────────────────────
   // Separated from the passCount gate so the console.warn is unambiguously reachable.
   if (m.rsiNow > 76) {
-    console.warn('[BREAKOUT BLOCKED] RSI overextended', {
+    if (DEBUG) console.warn('[BREAKOUT BLOCKED] RSI overextended', {
       rsiNow: m.rsiNow,
       candleTime: last?.ts ?? null,
     });
@@ -940,18 +940,20 @@ function breakoutPressureDetector(candles: Candle[], thresholds: DetectorThresho
 
   // ── PRE-RETURN FORENSIC WARN ─────────────────────────────────────────────────
   // Confirms this path is actually reached and not short-circuited upstream.
-  const debugSetupScore =
-    (trend ? 22 : 14) +
-    clamp(Math.round(((m.rsiNow - 50) / 22) * 20), 8, 18) +
-    clamp(Math.round((compression * 0.6 + (nearBreakout ? 0.4 : 0.2)) * 25), 10, 22) +
-    clamp(Math.round(Math.min(volBoost, 2) / 2 * 15), 6, 14) +
-    8;
-  console.warn('[BREAKOUT RETURNING DETECTOR]', {
-    rsiNow: m.rsiNow,
-    score: debugSetupScore,
-    confidence: 'computed downstream by assessDirectionalBias',
-    candleTime: last?.ts ?? null,
-  });
+  if (DEBUG) {
+    const debugSetupScore =
+      (trend ? 22 : 14) +
+      clamp(Math.round(((m.rsiNow - 50) / 22) * 20), 8, 18) +
+      clamp(Math.round((compression * 0.6 + (nearBreakout ? 0.4 : 0.2)) * 25), 10, 22) +
+      clamp(Math.round(Math.min(volBoost, 2) / 2 * 15), 6, 14) +
+      8;
+    console.warn('[BREAKOUT RETURNING DETECTOR]', {
+      rsiNow: m.rsiNow,
+      score: debugSetupScore,
+      confidence: 'computed downstream by assessDirectionalBias',
+      candleTime: last?.ts ?? null,
+    });
+  }
 
   return {
     setupType: 'breakout',
@@ -1139,18 +1141,20 @@ function breakdownPressureDetector(candles: Candle[], thresholds: DetectorThresh
   }
 
   // ── PRE-RETURN FORENSIC WARN ─────────────────────────────────────────────────
-  const debugSetupScore =
-    (trend ? 22 : 14) +
-    clamp(Math.round(((50 - m.rsiNow) / 22) * 20), 8, 18) +
-    clamp(Math.round((compression * 0.6 + (nearBreakdown ? 0.4 : 0.2)) * 25), 10, 22) +
-    clamp(Math.round(Math.min(volBoost, 2) / 2 * 15), 6, 14) +
-    8;
-  console.warn('[BREAKDOWN RETURNING DETECTOR]', {
-    rsiNow: m.rsiNow,
-    score: debugSetupScore,
-    confidence: 'computed downstream by assessDirectionalBias',
-    candleTime: last?.ts ?? null,
-  });
+  if (DEBUG) {
+    const debugSetupScore =
+      (trend ? 22 : 14) +
+      clamp(Math.round(((50 - m.rsiNow) / 22) * 20), 8, 18) +
+      clamp(Math.round((compression * 0.6 + (nearBreakdown ? 0.4 : 0.2)) * 25), 10, 22) +
+      clamp(Math.round(Math.min(volBoost, 2) / 2 * 15), 6, 14) +
+      8;
+    console.warn('[BREAKDOWN RETURNING DETECTOR]', {
+      rsiNow: m.rsiNow,
+      score: debugSetupScore,
+      confidence: 'computed downstream by assessDirectionalBias',
+      candleTime: last?.ts ?? null,
+    });
+  }
 
   return {
     setupType: 'breakout',

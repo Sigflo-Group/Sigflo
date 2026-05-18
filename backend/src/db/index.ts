@@ -75,3 +75,9 @@ db.on('error', (err) => {
     err instanceof Error ? err.message : err,
   );
 });
+
+// Kill any query that takes longer than 12s so the HTTP handler fails fast
+// instead of blocking the event loop and leaving the client stuck loading.
+db.on('connect', (client) => {
+  client.query('SET statement_timeout = 12000').catch(() => {});
+});

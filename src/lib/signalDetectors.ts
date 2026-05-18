@@ -1432,6 +1432,39 @@ export function buildSignalFromMarket(input: {
   return { signal, lifecycle };
 }
 
+// ---------------------------------------------------------------------------
+// Lab parity export
+// Runs all six production detectors with neutral-regime thresholds and returns
+// their raw outputs so the Scanner Lab can show exact production detector state
+// per bar without maintaining a separate (and inevitably drifting) stub file.
+// ---------------------------------------------------------------------------
+
+export type { DetectorOutput };
+
+export type LabDetectorResults = {
+  breakoutLong: DetectorOutput | null;
+  breakdownShort: DetectorOutput | null;
+  pullbackLong: DetectorOutput | null;
+  pullbackShort: DetectorOutput | null;
+  overextendedLong: DetectorOutput | null;
+  overextendedShort: DetectorOutput | null;
+};
+
+export function runAllDetectorsForLab(
+  candles15m: Candle[],
+  regime: MarketRegime = 'neutral',
+): LabDetectorResults {
+  const t = thresholdsForRegime(regime);
+  return {
+    breakoutLong: breakoutPressureDetector(candles15m, t),
+    breakdownShort: breakdownPressureDetector(candles15m, t),
+    pullbackLong: pullbackContinuationDetector(candles15m, t),
+    pullbackShort: pullbackContinuationShortDetector(candles15m, t),
+    overextendedLong: overextendedDetector(candles15m, t),
+    overextendedShort: overextendedShortDetector(candles15m, t),
+  };
+}
+
 export function inferMarketRegime(input: { btc15m: Candle[]; eth15m: Candle[] }): MarketRegime {
   function score(candles: Candle[]): number {
     const m = coreMetrics(candles);

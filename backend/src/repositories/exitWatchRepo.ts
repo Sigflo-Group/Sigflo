@@ -80,7 +80,7 @@ function rowFromDb(r: Record<string, unknown>): ExitAutomationWatchRow {
 
 export async function listEnabledExitWatches(): Promise<ExitAutomationWatchRow[]> {
   const res = await db.query(
-    `select * from exit_automation_watches where enabled = true order by created_at asc`,
+    `select * from exit_automation_watches where enabled = true order by created_at asc limit 500`,
   );
   return res.rows.map((x) => rowFromDb(x as Record<string, unknown>));
 }

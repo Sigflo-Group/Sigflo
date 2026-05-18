@@ -129,7 +129,7 @@ function buildOpportunity(symbol: string, ticker: BybitTicker, closes: number[])
   const scoreBase = Math.min(100, Math.round(Math.abs(move24h) * 1.6 + Math.abs(r - 50) * 1.1 + (trendUp || trendDown ? 18 : 10)));
   const score = Math.max(35, scoreBase);
 
-  const setupType = score >= 78 ? 'breakout' : score >= 62 ? 'pullback' : 'breakout';
+  const setupType = score >= 78 ? 'breakout' : score >= 62 ? 'pullback' : 'watching';
   const status: UpsertOpportunityInput['status'] =
     score >= 92 ? 'triggered' : score >= 82 ? 'ready' : score >= 62 ? 'building' : 'watching';
   const direction: 'long' | 'short' = trendDown || move24h < -1 ? 'short' : 'long';

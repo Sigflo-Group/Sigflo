@@ -728,7 +728,7 @@ export class BybitAdapter implements ExchangeAdapter {
           leverage: Number(p.leverage ?? 0) || undefined,
           positionIM: Number(p.positionIM ?? 0) || undefined,
           liqPrice: Number.isFinite(liq) && liq > 0 ? liq : undefined,
-          positionIdx: typeof p.positionIdx === 'number' ? p.positionIdx : Number(p.positionIdx ?? 0),
+          positionIdx: typeof p.positionIdx === 'number' && Number.isFinite(p.positionIdx) ? p.positionIdx : 0,
           takeProfitPrice: tp,
           stopLossPrice: sl,
           openedAtMs: Number.isFinite(createdMs) && createdMs > 0 ? createdMs : undefined,

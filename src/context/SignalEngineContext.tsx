@@ -323,6 +323,12 @@ function useSignalEngineValue(): SignalEngineState {
   const [advancedPanelsExpanded, setAdvancedPanelsExpanded] = useState<Record<string, boolean>>(
     initialProPrefs.panelExpanded,
   );
+  const proIntelligenceModeRef = useRef(proIntelligenceMode);
+  const advancedLayoutRef = useRef(advancedLayout);
+  const advancedPanelsExpandedRef = useRef(advancedPanelsExpanded);
+  proIntelligenceModeRef.current = proIntelligenceMode;
+  advancedLayoutRef.current = advancedLayout;
+  advancedPanelsExpandedRef.current = advancedPanelsExpanded;
   const [strategyPersonalityMode, setStrategyPersonalityModeState] = useState<StrategyPersonalityMode>(() =>
     typeof window !== 'undefined' ? loadStrategyPersonalityMode() : DEFAULT_STRATEGY_PERSONALITY_MODE,
   );
@@ -346,36 +352,36 @@ function useSignalEngineValue(): SignalEngineState {
       setProIntelligenceModeState(enabled);
       persistProIntelligencePrefs({
         enabled,
-        layout: advancedLayout,
-        panelExpanded: advancedPanelsExpanded,
+        layout: advancedLayoutRef.current,
+        panelExpanded: advancedPanelsExpandedRef.current,
       });
     },
-    [advancedLayout, advancedPanelsExpanded],
+    [],
   );
   const setAdvancedLayout = useCallback(
     (layout: 'compact' | 'expanded') => {
       setAdvancedLayoutState(layout);
       persistProIntelligencePrefs({
-        enabled: proIntelligenceMode,
+        enabled: proIntelligenceModeRef.current,
         layout,
-        panelExpanded: advancedPanelsExpanded,
+        panelExpanded: advancedPanelsExpandedRef.current,
       });
     },
-    [advancedPanelsExpanded, proIntelligenceMode],
+    [],
   );
   const setAdvancedPanelExpanded = useCallback(
     (panelId: string, expanded: boolean) => {
       setAdvancedPanelsExpanded((prev) => {
         const next = { ...prev, [panelId]: expanded };
         persistProIntelligencePrefs({
-          enabled: proIntelligenceMode,
-          layout: advancedLayout,
+          enabled: proIntelligenceModeRef.current,
+          layout: advancedLayoutRef.current,
           panelExpanded: next,
         });
         return next;
       });
     },
-    [advancedLayout, proIntelligenceMode],
+    [],
   );
   const isAdvancedPanelExpanded = useCallback((panelId: string) => {
     const v = advancedPanelsExpanded[panelId];

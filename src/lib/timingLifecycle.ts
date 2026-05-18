@@ -195,6 +195,7 @@ export function evaluateTimingLifecycle(args: {
     rsiNow,
     rsiSlope,
     hasPreviousTrigger: existingTrigger,
+    previousState: args.previous?.state ?? null,
   });
   const pullback = evaluatePullbackTiming({
     side: args.side,
@@ -242,6 +243,7 @@ export function evaluateTimingLifecycle(args: {
 
   const candleIndex = Math.max(0, candles.length - 1);
   const lastCandleTs = candles.at(-1)?.ts ?? null;
+  const oldestCandleTs = candles.at(0)?.ts ?? null;
   const previousTrigger = args.previous?.trigger;
   const previousTriggerIndex = previousTrigger?.firstValidEntryCandleIndex ?? null;
   // Use timestamp-based elapsed-candle counting: the ring-buffered array is capped at 240
@@ -282,8 +284,15 @@ export function evaluateTimingLifecycle(args: {
       ? null
       : (previousTrigger?.idealEntryPrice ?? null);
 
+  // If triggerCandleTs predates the oldest buffered candle the filter would
+  // return all 240 entries, inflating candlesSinceTrigger to the full ring
+  // size and causing a premature extended/expired transition. Cap it instead.
   const candlesSinceTrigger =
-    triggerCandleTs != null ? candles.filter((c) => c.ts > triggerCandleTs).length : null;
+    triggerCandleTs != null
+      ? oldestCandleTs != null && triggerCandleTs < oldestCandleTs
+        ? candles.length          // treat as fully elapsed — stale trigger
+        : candles.filter((c) => c.ts > triggerCandleTs).length
+      : null;
   const atrExtensionFromIdeal =
     idealEntryPrice != null ? Math.abs(close - idealEntryPrice) / Math.max(atrNow, 1e-8) : 0;
   const pctExtensionFromIdeal =
@@ -342,9 +351,17 @@ export function evaluateTimingLifecycle(args: {
   const peakActionabilityCandleTs = isNewActionabilityPeak ? lastCandleTs : (args.previous?.peakActionabilityCandleTs ?? lastCandleTs);
 
   const candlesSincePeakTiming =
-    peakTimingCandleTs != null ? candles.filter((c) => c.ts > peakTimingCandleTs).length : null;
+    peakTimingCandleTs != null
+      ? oldestCandleTs != null && peakTimingCandleTs < oldestCandleTs
+        ? candles.length
+        : candles.filter((c) => c.ts > peakTimingCandleTs).length
+      : null;
   const candlesSincePeakActionability =
-    peakActionabilityCandleTs != null ? candles.filter((c) => c.ts > peakActionabilityCandleTs).length : null;
+    peakActionabilityCandleTs != null
+      ? oldestCandleTs != null && peakActionabilityCandleTs < oldestCandleTs
+        ? candles.length
+        : candles.filter((c) => c.ts > peakActionabilityCandleTs).length
+      : null;
 
   const provisionalHistory = [
     ...historyWithoutNewest,

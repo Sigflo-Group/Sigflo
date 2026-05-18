@@ -16,6 +16,8 @@ export function evaluateBreakoutTiming(args: {
   rsiNow: number;
   rsiSlope: number;
   hasPreviousTrigger: boolean;
+  /** Previous lifecycle state — continuation must not re-arm a fully expired signal. */
+  previousState: string | null;
 }): {
   timingScore: number;
   triggerHit: boolean;
@@ -35,8 +37,10 @@ export function evaluateBreakoutTiming(args: {
   // advance (hasPreviousTrigger implies state >= triggered), allow a re-trigger when
   // price is making continued directional progress with healthy but non-overbought RSI.
   // This prevents a one-shot trigger from decaying without re-arming in trending markets.
+  // Guard: never re-arm a fully expired signal — that requires a fresh breakout.
   const continuationMomentum =
     args.hasPreviousTrigger &&
+    args.previousState !== 'expired' &&
     !nearRetest &&
     (args.side === 'long'
       ? args.close > args.prevClose &&

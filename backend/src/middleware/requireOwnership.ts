@@ -1,6 +1,10 @@
 import type { NextFunction, Response } from 'express';
 import type { AuthedRequest } from './auth.js';
-import { getTradeByIdForUser } from '../db/queries/trades.js';
+import { getTradeByIdForUser, type TradeRow } from '../db/queries/trades.js';
+
+// Extend AuthedRequest so downstream handlers can read the verified trade
+// without re-fetching, which would be an unguarded second DB hit.
+export type TradeOwnershipRequest = AuthedRequest & { verifiedTrade: TradeRow };
 
 export async function requireTradeOwnership(req: AuthedRequest, res: Response, next: NextFunction) {
   if (!req.user) {
@@ -17,5 +21,6 @@ export async function requireTradeOwnership(req: AuthedRequest, res: Response, n
     res.status(404).json({ error: 'Trade not found' });
     return;
   }
+  (req as TradeOwnershipRequest).verifiedTrade = trade;
   next();
 }

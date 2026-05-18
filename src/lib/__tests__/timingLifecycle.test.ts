@@ -198,22 +198,20 @@ describe('evaluateTimingLifecycle — breakout', () => {
   it('continuation trigger fires when prior trigger exists and RSI is in healthy range', () => {
     // Build a breakout, fire the trigger, then feed a candle with the right RSI / direction
     // properties for the continuation condition to fire.
-    let candles = buildBreakoutCandles(80, 109.5, 111);
-    let lifecycle: CandidateLifecycle | undefined;
+    const candles = buildBreakoutCandles(80, 109.5, 111);
 
-    ({ lifecycle } = evaluateTimingLifecycle({
+    const { lifecycle } = evaluateTimingLifecycle({
       setupType: 'breakout',
       side: 'long',
       setupScore: 75,
       candles,
-    }));
+    });
 
     // Tick 1: candle where price is rising and RSI is estimated in 52–70 range.
     // In a 80-candle run to 111, RSI starts high (>72 possibly), but if we add a continuation
     // candle it may or may not hit the continuation window. What we CAN assert is that if
     // hasPreviousTrigger is true and the continuation fires, triggerType is correct.
-    let t1: ReturnType<typeof tick>;
-    t1 = tick(candles, lifecycle, { close: 112, open: 111, high: 112.5, low: 110.9 });
+    const t1 = tick(candles, lifecycle, { close: 112, open: 111, high: 112.5, low: 110.9 });
     const l1 = t1.result.lifecycle;
 
     if (l1.trigger.triggerType === 'trend_continuation_resume') {

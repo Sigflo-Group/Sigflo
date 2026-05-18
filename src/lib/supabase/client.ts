@@ -6,7 +6,7 @@ const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY?.trim();
 if (!supabaseUrl || !supabaseAnonKey) {
   // Keep runtime throw explicit for misconfigured deployments.
   // This file intentionally never accepts a service role key.
-  // eslint-disable-next-line no-console
+   
   console.warn('[auth] Supabase browser client is not configured.');
 }
 

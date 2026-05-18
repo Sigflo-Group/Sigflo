@@ -10,7 +10,7 @@ export class AppErrorBoundary extends React.Component<React.PropsWithChildren, S
   }
 
   componentDidCatch(error: unknown) {
-    // eslint-disable-next-line no-console
+     
     console.error('[app-error-boundary]', error);
   }
 

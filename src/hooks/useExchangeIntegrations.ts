@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useAuth } from '@/context/AuthContext';
 import { connectExchange, disconnectExchange, listIntegrations } from '@/services/api/integrationClient';
 import type { ExchangeId, IntegrationStatus } from '@/types/integrations';
 
 export function useExchangeIntegrations() {
+  const { loading: authLoading, user } = useAuth();
   const [items, setItems] = useState<IntegrationStatus[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -42,9 +44,13 @@ export function useExchangeIntegrations() {
     await refresh();
   }, [refresh]);
 
+  // Wait for auth to resolve before firing — avoids a guaranteed 401 on mount
+  // when the Supabase session hasn't been read from storage yet.
+  const userId = user?.id ?? null;
   useEffect(() => {
+    if (authLoading) return;
     void refresh();
-  }, [refresh]);
+  }, [authLoading, userId, refresh]);
 
   return { items, loading, error, refresh, connect, disconnect };
 }

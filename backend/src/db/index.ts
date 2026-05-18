@@ -56,6 +56,7 @@ const looksLocal = /(^|@)(localhost|127\.0\.0\.1)(:|\/)/.test(env.DATABASE_URL);
 export const db = new Pool({
   connectionString,
   ...(ssl ? { ssl } : {}),
+  max: 20,
   // Surface DB connection failures quickly instead of hanging forever.
   connectionTimeoutMillis: 12_000,
   // Reduce surprise pooler disconnects; still handle `pool.on('error')` below.

@@ -3,6 +3,20 @@ import { z } from 'zod';
 import type { AuthedRequest } from '../middleware/auth.js';
 import { formatZodIssuesForApi } from '../lib/formatZodError.js';
 import { deleteExitWatchByLeg, listExitWatchesForUser, upsertExitWatch } from '../repositories/exitWatchRepo.js';
+import { listBrokerAccountsForUser } from '../db/queries/brokerAccounts.js';
+
+const VALID_SYMBOLS = new Set([
+  'BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'XRPUSDT', 'ADAUSDT', 'DOGEUSDT', 'AVAXUSDT',
+  'LINKUSDT', 'DOTUSDT', 'MATICUSDT', 'LTCUSDT', 'UNIUSDT', 'ATOMUSDT', 'XLMUSDT',
+  'NEARUSDT', 'APTUSDT', 'ARBUSDT', 'OPUSDT', 'FILUSDT', 'LDOUSDT', 'SUIUSDT',
+  'SEIUMD', 'PEPEUSDT', 'WLDUSDT', 'BLURUSDT', 'PAXGUSDT', 'XAGUSDT', 'ENSUSDT',
+  'RAREUSDT', 'RARIUSDT', 'LOKAUSDT', 'IMXUSDT', 'RNDRUSDT', 'GRTUSDT', 'STXUSDT',
+]);
+
+function isValidSymbol(symbol: string): boolean {
+  const normalized = symbol.toUpperCase().replace(/[-_]/g, '');
+  return VALID_SYMBOLS.has(normalized);
+}
 
 export const exitWatchRouter = Router();
 
@@ -91,6 +105,19 @@ exitWatchRouter.put('/', async (req: AuthedRequest, res) => {
   }
 
   const p = parsed.data;
+
+  if (!isValidSymbol(p.symbol)) {
+    res.status(400).json({ error: 'Invalid or unsupported symbol.' });
+    return;
+  }
+
+  const accounts = await listBrokerAccountsForUser(req.user.userId);
+  const hasConnectedAccount = accounts.some((a) => a.broker === (p.exchange ?? 'bybit') && a.status === 'connected');
+  if (!hasConnectedAccount) {
+    res.status(400).json({ error: `No connected ${p.exchange ?? 'bybit'} account.` });
+    return;
+  }
+
   const row = await upsertExitWatch(req.user.userId, {
     exchange: p.exchange,
     market: p.market,

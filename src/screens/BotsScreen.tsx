@@ -457,7 +457,7 @@ export default function BotsScreen() {
   };
 
   return (
-    <div className="min-h-[100dvh] bg-[#050505] pb-24 pt-4">
+    <div className="min-h-[100dvh] bg-[#050505] pb-[max(6rem,env(safe-area-inset-bottom))] pt-4">
       <div className="mx-auto w-full max-w-lg space-y-4 px-4">
         <motion.div custom={0} initial="hidden" animate="visible" variants={sectionVariants}>
           <div className="flex items-center justify-between gap-2 rounded-2xl border border-white/[0.06] bg-sigflo-surface sigflo-panel-texture px-3 py-2.5">

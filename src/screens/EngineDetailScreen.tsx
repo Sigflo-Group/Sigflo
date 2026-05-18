@@ -138,7 +138,7 @@ export default function EngineDetailScreen() {
 
   if (!engineId || !engine) {
     return (
-      <div className="min-h-[100dvh] bg-[#050505] pb-24 pt-3">
+      <div className="min-h-[100dvh] bg-[#050505] pb-[max(6rem,env(safe-area-inset-bottom))] pt-3">
         <div className="mx-auto w-full max-w-md space-y-3 px-3">
           <p className="text-[13px] text-zinc-400">Engine not found.</p>
           <Link to="/bots" className="inline-flex text-[13px] font-semibold text-[#9fe8d6]">
@@ -150,7 +150,7 @@ export default function EngineDetailScreen() {
   }
 
   return (
-    <div className="min-h-[100dvh] bg-[#050505] pb-28 pt-3">
+    <div className="min-h-[100dvh] bg-[#050505] pb-[max(7rem,env(safe-area-inset-bottom))] pt-3">
       <div className="mx-auto w-full max-w-md space-y-3 px-3">
         <div className="flex items-center justify-between gap-2">
           <p className="text-[10px] font-medium text-zinc-600">Engine intelligence · demo</p>

@@ -178,7 +178,7 @@ export default function BotSettingsScreen() {
 
   if (!bot || !defaults || !effective) {
     return (
-      <div className="min-h-[100dvh] bg-sigflo-bg px-4 pb-24 pt-4">
+      <div className="min-h-[100dvh] bg-sigflo-bg px-4 pb-[max(6rem,env(safe-area-inset-bottom))] pt-4">
         <div className="mx-auto max-w-lg rounded-2xl border border-white/[0.06] bg-sigflo-surface sigflo-panel-texture p-4">
           <div className="relative z-[1]">
             <p className="text-sm text-sigflo-muted">Bot not found.</p>
@@ -208,7 +208,7 @@ export default function BotSettingsScreen() {
   const exitAiOn = exitAuto.mode !== 'manual';
 
   return (
-    <div className="min-h-[100dvh] bg-sigflo-bg pb-28 pt-4">
+    <div className="min-h-[100dvh] bg-sigflo-bg pb-[max(7rem,env(safe-area-inset-bottom))] pt-4">
       <div className="mx-auto w-full max-w-lg space-y-4 px-4">
         <header className="flex items-start justify-between gap-3">
           <div>

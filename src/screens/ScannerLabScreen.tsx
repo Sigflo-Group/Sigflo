@@ -346,7 +346,7 @@ export function ScannerLabScreen() {
         <h2 className="text-sm font-semibold text-white">How to use this lab</h2>
         <p className="text-xs text-sigflo-muted">1) Pick a scenario. 2) Press Step or Play. 3) Watch detector status, setup score, and signal history.</p>
         <p className="text-xs text-sigflo-muted">
-          Rules match the production engine (`@/engine/detectors`): long/short pairs and fixed thresholds. Window needs at least {MIN_ENGINE_BARS} bars before setups can fire.
+          Rules match the production engine (`src/lib/signalDetectors.ts`): long/short pairs and fixed thresholds. Window needs at least {MIN_ENGINE_BARS} bars before setups can fire.
         </p>
       </Card>
 

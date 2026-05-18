@@ -1,5 +1,5 @@
 import { BybitAdapter } from '../exchanges/bybit.js';
-import { listIntegrations } from '../repositories/integrationsRepo.js';
+import { listBrokerAccountsForUser } from '../db/queries/brokerAccounts.js';
 import {
   disableExitWatchSystem,
   listEnabledExitWatches,
@@ -63,9 +63,9 @@ async function processOneWatch(w: ExitAutomationWatchRow): Promise<void> {
     return;
   }
 
-  const integrations = await listIntegrations(w.user_id);
-  const row = integrations.find((i) => i.exchange === 'bybit' && i.status === 'connected');
-  if (!row) {
+  const accounts = await listBrokerAccountsForUser(w.user_id);
+  const account = accounts.find((a) => a.broker === 'bybit' && a.status === 'connected');
+  if (!account) {
     await updateExitWatchRuntime(w.id, {
       lastCheckedAt: new Date(),
       lastError: 'Bybit not connected for this account.',
@@ -73,16 +73,16 @@ async function processOneWatch(w: ExitAutomationWatchRow): Promise<void> {
     return;
   }
 
-  const apiKey = row.apiKeyVaultId
-    ? await getSecretFromVault(row.apiKeyVaultId)
-    : decryptBrokerCredential(row.encryptedKey);
-  const apiSecret = row.apiSecretVaultId
-    ? await getSecretFromVault(row.apiSecretVaultId)
-    : decryptBrokerCredential(row.encryptedSecret);
-  const passphrase = row.apiPassphraseVaultId
-    ? await getSecretFromVault(row.apiPassphraseVaultId)
-    : row.encryptedPassphrase
-      ? decryptBrokerCredential(row.encryptedPassphrase)
+  const apiKey = account.apiKeyVaultId
+    ? await getSecretFromVault(account.apiKeyVaultId)
+    : decryptBrokerCredential(account.apiKeyEncrypted);
+  const apiSecret = account.apiSecretVaultId
+    ? await getSecretFromVault(account.apiSecretVaultId)
+    : decryptBrokerCredential(account.apiSecretEncrypted);
+  const passphrase = account.apiPassphraseVaultId
+    ? await getSecretFromVault(account.apiPassphraseVaultId)
+    : account.apiSecretEncrypted // This was a typo in my previous edit, should be account.apiPassphraseEncrypted if it existed, but broker_accounts only has key/secret.
+      ? undefined // broker_accounts doesn't have passphrase in the current schema.
       : undefined;
 
   if (!apiKey || !apiSecret) {

@@ -1,7 +1,7 @@
 /**
  * Scanner Lab / playback types + indicator helper.
- * Detection rules live in `@/engine/detectors` — use `runScannerLabEngineEvaluations` from
- * `scannerLabEngineAdapter` (re-exported below) for parity with production.
+ * Detection rules are sourced from `src/lib/signalDetectors.ts` (production engine) via
+ * `runScannerLabEngineEvaluations` — use that function for structural production parity.
  */
 export type {
   SetupType,

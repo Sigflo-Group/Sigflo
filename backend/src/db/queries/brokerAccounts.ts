@@ -7,6 +7,8 @@ export type BrokerAccountRow = {
   accountLabel: string | null;
   apiKeyEncrypted: string;
   apiSecretEncrypted: string;
+  apiKeyVaultId: string | null;
+  apiSecretVaultId: string | null;
   permissions: Record<string, unknown>;
   status: string;
   lastValidatedAt: string | null;
@@ -18,6 +20,7 @@ export async function listBrokerAccountsForUser(userId: string): Promise<BrokerA
   const { rows } = await db.query<BrokerAccountRow>(
     `select id, user_id as "userId", broker, account_label as "accountLabel",
       api_key_encrypted as "apiKeyEncrypted", api_secret_encrypted as "apiSecretEncrypted",
+      api_key_vault_id as "apiKeyVaultId", api_secret_vault_id as "apiSecretVaultId",
       permissions, status, last_validated_at as "lastValidatedAt",
       created_at as "createdAt", updated_at as "updatedAt"
      from broker_accounts where user_id = $1 order by created_at desc`,
@@ -30,6 +33,7 @@ export async function getBrokerAccountForUser(userId: string, accountId: string)
   const { rows } = await db.query<BrokerAccountRow>(
     `select id, user_id as "userId", broker, account_label as "accountLabel",
       api_key_encrypted as "apiKeyEncrypted", api_secret_encrypted as "apiSecretEncrypted",
+      api_key_vault_id as "apiKeyVaultId", api_secret_vault_id as "apiSecretVaultId",
       permissions, status, last_validated_at as "lastValidatedAt",
       created_at as "createdAt", updated_at as "updatedAt"
       from broker_accounts where user_id = $1 and id = $2 limit 1`,
@@ -48,23 +52,28 @@ export async function upsertBrokerAccount(input: {
   accountLabel?: string | null;
   apiKeyEncrypted: string;
   apiSecretEncrypted: string;
+  apiKeyVaultId?: string | null;
+  apiSecretVaultId?: string | null;
   permissions: Record<string, unknown>;
   status: string;
 }): Promise<BrokerAccountRow> {
   const { rows } = await db.query<BrokerAccountRow>(
     `insert into broker_accounts
-      (user_id, broker, account_label, api_key_encrypted, api_secret_encrypted, permissions, status, last_validated_at)
-     values ($1,$2,$3,$4,$5,$6::jsonb,$7, now())
+      (user_id, broker, account_label, api_key_encrypted, api_secret_encrypted, api_key_vault_id, api_secret_vault_id, permissions, status, last_validated_at)
+     values ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9, now())
      on conflict (user_id, broker) do update
        set account_label = excluded.account_label,
            api_key_encrypted = excluded.api_key_encrypted,
            api_secret_encrypted = excluded.api_secret_encrypted,
+           api_key_vault_id = excluded.api_key_vault_id,
+           api_secret_vault_id = excluded.api_secret_vault_id,
            permissions = excluded.permissions,
            status = excluded.status,
            last_validated_at = now(),
            updated_at = now()
      returning id, user_id as "userId", broker, account_label as "accountLabel",
        api_key_encrypted as "apiKeyEncrypted", api_secret_encrypted as "apiSecretEncrypted",
+       api_key_vault_id as "apiKeyVaultId", api_secret_vault_id as "apiSecretVaultId",
        permissions, status, last_validated_at as "lastValidatedAt", created_at as "createdAt", updated_at as "updatedAt"`,
     [
       input.userId,
@@ -72,6 +81,8 @@ export async function upsertBrokerAccount(input: {
       input.accountLabel ?? null,
       input.apiKeyEncrypted,
       input.apiSecretEncrypted,
+      input.apiKeyVaultId ?? null,
+      input.apiSecretVaultId ?? null,
       JSON.stringify(input.permissions ?? {}),
       input.status,
     ],

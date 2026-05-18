@@ -6,7 +6,7 @@ import {
   updateExitWatchRuntime,
   type ExitAutomationWatchRow,
 } from '../repositories/exitWatchRepo.js';
-import { decryptText } from '../security/crypto.js';
+import { decryptBrokerCredential, getSecretFromVault } from '../services/exchangeKey.service.js';
 import { log } from '../lib/logger.js';
 import { retryTransientNetwork } from '../lib/transientNetworkRetry.js';
 import { linearQtyFromBaseAmount } from '../lib/linearOrderQty.js';
@@ -73,11 +73,27 @@ async function processOneWatch(w: ExitAutomationWatchRow): Promise<void> {
     return;
   }
 
-  const creds = {
-    apiKey: decryptText(row.encryptedKey),
-    apiSecret: decryptText(row.encryptedSecret),
-    passphrase: row.encryptedPassphrase ? decryptText(row.encryptedPassphrase) : undefined,
-  };
+  const apiKey = row.apiKeyVaultId
+    ? await getSecretFromVault(row.apiKeyVaultId)
+    : decryptBrokerCredential(row.encryptedKey);
+  const apiSecret = row.apiSecretVaultId
+    ? await getSecretFromVault(row.apiSecretVaultId)
+    : decryptBrokerCredential(row.encryptedSecret);
+  const passphrase = row.apiPassphraseVaultId
+    ? await getSecretFromVault(row.apiPassphraseVaultId)
+    : row.encryptedPassphrase
+      ? decryptBrokerCredential(row.encryptedPassphrase)
+      : undefined;
+
+  if (!apiKey || !apiSecret) {
+    await updateExitWatchRuntime(w.id, {
+      lastCheckedAt: new Date(),
+      lastError: 'Failed to retrieve credentials from Vault.',
+    });
+    return;
+  }
+
+  const creds = { apiKey, apiSecret, passphrase };
 
   let positions: Awaited<ReturnType<BybitAdapter['fetchPositions']>>;
   try {

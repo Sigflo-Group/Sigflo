@@ -7,6 +7,7 @@ import { log } from '../lib/logger.js';
 import { formatZodIssuesForApi } from '../lib/formatZodError.js';
 import { encryptText } from '../security/crypto.js';
 import { deleteIntegration, insertAuditEvent, listIntegrations, upsertIntegration } from '../repositories/integrationsRepo.js';
+import { storeSecretInVault } from '../services/exchangeKey.service.js';
 
 const connectBodySchema = z.object({
   apiKey: z.string().min(1),
@@ -24,11 +25,13 @@ for (const exchange of exchanges) {
       res.status(401).json({ error: 'Unauthorized' });
       return;
     }
+
     const parsed = connectBodySchema.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json({ error: formatZodIssuesForApi(parsed.error.issues) });
       return;
     }
+
     const adapter = getAdapter(exchange);
     try {
       const validation = await adapter.validateReadOnly(parsed.data);
@@ -42,20 +45,46 @@ for (const exchange of exchanges) {
         res.status(400).json({ error: validation.message });
         return;
       }
+
+      // Store in Vault
+      const apiKeyVaultId = await storeSecretInVault(
+        `exchange_key_${req.user.userId}_${exchange}`,
+        `API Key for ${exchange} integration`,
+        parsed.data.apiKey
+      );
+      const apiSecretVaultId = await storeSecretInVault(
+        `exchange_secret_${req.user.userId}_${exchange}`,
+        `API Secret for ${exchange} integration`,
+        parsed.data.apiSecret
+      );
+      let apiPassphraseVaultId: string | null = null;
+      if (parsed.data.passphrase) {
+        apiPassphraseVaultId = await storeSecretInVault(
+          `exchange_passphrase_${req.user.userId}_${exchange}`,
+          `API Passphrase for ${exchange} integration`,
+          parsed.data.passphrase
+        );
+      }
+
       const saved = await upsertIntegration({
         userId: req.user.userId,
         exchange,
-        encryptedKey: encryptText(parsed.data.apiKey),
-        encryptedSecret: encryptText(parsed.data.apiSecret),
-        encryptedPassphrase: parsed.data.passphrase ? encryptText(parsed.data.passphrase) : null,
+        encryptedKey: encryptText(parsed.data.apiKey), // Keep for legacy support
+        encryptedSecret: encryptText(parsed.data.apiSecret), // Keep for legacy support
+        encryptedPassphrase: parsed.data.passphrase ? encryptText(parsed.data.passphrase) : null, // Keep for legacy support
+        apiKeyVaultId,
+        apiSecretVaultId,
+        apiPassphraseVaultId,
         status: 'connected',
       });
+
       await insertAuditEvent({
         userId: req.user.userId,
         exchange,
         eventType: 'connect',
         detail: validation.message,
       });
+
       res.json({
         id: saved.id,
         exchange: saved.exchange,

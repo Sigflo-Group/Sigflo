@@ -8,6 +8,9 @@ export type IntegrationRecord = {
   encryptedKey: string;
   encryptedSecret: string;
   encryptedPassphrase: string | null;
+  apiKeyVaultId: string | null;
+  apiSecretVaultId: string | null;
+  apiPassphraseVaultId: string | null;
   status: 'connected' | 'invalid';
   lastValidatedAt: string | null;
   createdAt: string;
@@ -20,23 +23,41 @@ export async function upsertIntegration(input: {
   encryptedKey: string;
   encryptedSecret: string;
   encryptedPassphrase?: string | null;
+  apiKeyVaultId?: string | null;
+  apiSecretVaultId?: string | null;
+  apiPassphraseVaultId?: string | null;
   status: 'connected' | 'invalid';
 }) {
   const { rows } = await db.query<IntegrationRecord>(
     `insert into exchange_integrations
-      (user_id, exchange, encrypted_key, encrypted_secret, encrypted_passphrase, status, last_validated_at)
-     values ($1, $2, $3, $4, $5, $6, now())
+      (user_id, exchange, encrypted_key, encrypted_secret, encrypted_passphrase, api_key_vault_id, api_secret_vault_id, api_passphrase_vault_id, status, last_validated_at)
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, now())
      on conflict (user_id, exchange) do update
      set encrypted_key = excluded.encrypted_key,
          encrypted_secret = excluded.encrypted_secret,
          encrypted_passphrase = excluded.encrypted_passphrase,
+         api_key_vault_id = excluded.api_key_vault_id,
+         api_secret_vault_id = excluded.api_secret_vault_id,
+         api_passphrase_vault_id = excluded.api_passphrase_vault_id,
          status = excluded.status,
          last_validated_at = now(),
          updated_at = now()
      returning id, user_id as "userId", exchange, encrypted_key as "encryptedKey",
        encrypted_secret as "encryptedSecret", encrypted_passphrase as "encryptedPassphrase",
+       api_key_vault_id as "apiKeyVaultId", api_secret_vault_id as "apiSecretVaultId",
+       api_passphrase_vault_id as "apiPassphraseVaultId",
        status, last_validated_at as "lastValidatedAt", created_at as "createdAt", updated_at as "updatedAt"`,
-    [input.userId, input.exchange, input.encryptedKey, input.encryptedSecret, input.encryptedPassphrase ?? null, input.status],
+    [
+      input.userId,
+      input.exchange,
+      input.encryptedKey,
+      input.encryptedSecret,
+      input.encryptedPassphrase ?? null,
+      input.apiKeyVaultId ?? null,
+      input.apiSecretVaultId ?? null,
+      input.apiPassphraseVaultId ?? null,
+      input.status,
+    ],
   );
   return rows[0];
 }
@@ -45,6 +66,8 @@ export async function listIntegrations(userId: string) {
   const { rows } = await db.query<IntegrationRecord>(
     `select id, user_id as "userId", exchange, encrypted_key as "encryptedKey",
       encrypted_secret as "encryptedSecret", encrypted_passphrase as "encryptedPassphrase",
+      api_key_vault_id as "apiKeyVaultId", api_secret_vault_id as "apiSecretVaultId",
+      api_passphrase_vault_id as "apiPassphraseVaultId",
       status, last_validated_at as "lastValidatedAt", created_at as "createdAt", updated_at as "updatedAt"
      from exchange_integrations where user_id = $1 order by created_at desc`,
     [userId],
@@ -56,6 +79,8 @@ export async function getIntegration(userId: string, exchange: ExchangeId) {
   const { rows } = await db.query<IntegrationRecord>(
     `select id, user_id as "userId", exchange, encrypted_key as "encryptedKey",
       encrypted_secret as "encryptedSecret", encrypted_passphrase as "encryptedPassphrase",
+      api_key_vault_id as "apiKeyVaultId", api_secret_vault_id as "apiSecretVaultId",
+      api_passphrase_vault_id as "apiPassphraseVaultId",
       status, last_validated_at as "lastValidatedAt", created_at as "createdAt", updated_at as "updatedAt"
      from exchange_integrations where user_id = $1 and exchange = $2 limit 1`,
     [userId, exchange],

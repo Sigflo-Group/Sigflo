@@ -19,7 +19,7 @@ function getJwks(): ReturnType<typeof createRemoteJWKSet> | null {
     const base = normalizeUrl(env.SUPABASE_URL);
     cachedJwks = createRemoteJWKSet(
       new URL(`${base}/auth/v1/.well-known/jwks.json`),
-      { timeoutDuration: 5_000, cacheMaxAge: 600_000 }, // re-fetch every 10 min to handle key rotation
+      { timeoutDuration: 5_000, cacheMaxAge: 300_000 }, // re-fetch every 5 min to handle key rotation
     );
   }
   return cachedJwks;

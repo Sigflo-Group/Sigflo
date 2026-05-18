@@ -20,9 +20,7 @@ function stableUuidFromKey(key: string): string {
   return `${p1}-${p2}-${p3}-${p4}-${p5}`;
 }
 
-function insecureTlsEnabled(): boolean {
-  return env.OPPORTUNITY_SYNC_INSECURE_TLS === 'true';
-}
+const INSECURE_TLS_ENABLED = false;
 
 function errorWithCause(error: unknown): string {
   if (!(error instanceof Error)) return String(error);
@@ -38,7 +36,7 @@ async function fetchJson(url: string): Promise<unknown> {
       url,
       {
         method: 'GET',
-        rejectUnauthorized: insecureTlsEnabled() ? false : true,
+        rejectUnauthorized: !INSECURE_TLS_ENABLED,
       },
       (res) => {
         const chunks: Buffer[] = [];

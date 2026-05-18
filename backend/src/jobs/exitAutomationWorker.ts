@@ -1,12 +1,12 @@
 import { BybitAdapter } from '../exchanges/bybit.js';
-import { listIntegrations } from '../repositories/integrationsRepo.js';
+import { listBrokerAccountsForUser } from '../db/queries/brokerAccounts.js';
 import {
   disableExitWatchSystem,
   listEnabledExitWatches,
   updateExitWatchRuntime,
   type ExitAutomationWatchRow,
 } from '../repositories/exitWatchRepo.js';
-import { decryptText } from '../security/crypto.js';
+import { decryptBrokerCredential } from '../services/exchangeKey.service.js';
 import { log } from '../lib/logger.js';
 import { retryTransientNetwork } from '../lib/transientNetworkRetry.js';
 import { linearQtyFromBaseAmount } from '../lib/linearOrderQty.js';
@@ -63,9 +63,9 @@ async function processOneWatch(w: ExitAutomationWatchRow): Promise<void> {
     return;
   }
 
-  const integrations = await listIntegrations(w.user_id);
-  const row = integrations.find((i) => i.exchange === 'bybit' && i.status === 'connected');
-  if (!row) {
+  const accounts = await listBrokerAccountsForUser(w.user_id);
+  const account = accounts.find((a) => a.broker === 'bybit' && a.status === 'connected');
+  if (!account) {
     await updateExitWatchRuntime(w.id, {
       lastCheckedAt: new Date(),
       lastError: 'Bybit not connected for this account.',
@@ -74,9 +74,8 @@ async function processOneWatch(w: ExitAutomationWatchRow): Promise<void> {
   }
 
   const creds = {
-    apiKey: decryptText(row.encryptedKey),
-    apiSecret: decryptText(row.encryptedSecret),
-    passphrase: row.encryptedPassphrase ? decryptText(row.encryptedPassphrase) : undefined,
+    apiKey: decryptBrokerCredential(account.apiKeyEncrypted),
+    apiSecret: decryptBrokerCredential(account.apiSecretEncrypted),
   };
 
   let positions: Awaited<ReturnType<BybitAdapter['fetchPositions']>>;

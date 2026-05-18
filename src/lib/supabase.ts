@@ -1,20 +1,13 @@
-import { createClient, type SupabaseClient } from '@supabase/supabase-js';
-
-const url = import.meta.env.VITE_SUPABASE_URL?.trim();
-const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY?.trim();
+/**
+ * Single Supabase browser client for the whole app.
+ * All imports should use this file (`@/lib/supabase`) — the underlying
+ * singleton lives in `@/lib/supabase/client.ts` and is shared with the
+ * AuthProvider so there is exactly one SupabaseClient instance.
+ */
+export { supabaseClient as supabase, requireSupabaseClient } from '@/lib/supabase/client';
 
 export function isSupabaseConfigured(): boolean {
-  return Boolean(url && anonKey);
+  const url = import.meta.env.VITE_SUPABASE_URL?.trim();
+  const key = import.meta.env.VITE_SUPABASE_ANON_KEY?.trim();
+  return Boolean(url && key);
 }
-
-export const supabase: SupabaseClient | null =
-  url && anonKey
-    ? createClient(url, anonKey, {
-        auth: {
-          persistSession: true,
-          autoRefreshToken: true,
-          /** Query `code=` survives apex↔www redirects; implicit `#access_token` often does not. */
-          flowType: 'pkce',
-        },
-      })
-    : null;

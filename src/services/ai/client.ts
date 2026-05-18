@@ -126,9 +126,7 @@ function announceAssistantResult(req: AssistantRequest, out: AssistantResponseGr
       title: 'AI insight',
       subtitle: `${req.signal.pair.trim()} · ${req.action} · ${bias} (${out.source})`,
     });
-  } catch {
-    /* ignore */
-  }
+  } catch (e) { console.error("[Caught Error]", e); }
 }
 
 export async function requestAssistantSuggestion(req: AssistantRequest): Promise<AssistantResponseGrounded> {
@@ -441,8 +439,6 @@ export async function requestDeepMarketAnalysis(req: DeepAnalysisRequest): Promi
       title: 'Deep analysis',
       subtitle: `${req.signal.pair.trim()} · ${out.headline.slice(0, 140)}`,
     });
-  } catch {
-    /* ignore */
-  }
+  } catch (e) { console.error("[Caught Error]", e); }
   return out;
 }

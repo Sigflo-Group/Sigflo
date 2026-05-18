@@ -22,9 +22,7 @@ export function emitGlobalAnnouncement(
   for (const fn of listeners) {
     try {
       fn(announcement);
-    } catch {
-      /* ignore listener errors */
-    }
+    } catch (e) { console.error("[Caught Error]", e); }
   }
 }
 

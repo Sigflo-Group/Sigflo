@@ -337,9 +337,7 @@ function ExecutionSlider({
     const target = e.currentTarget;
     try {
       target.setPointerCapture(pointerId);
-    } catch {
-      /* ignore */
-    }
+    } catch (e) { console.error("[Caught Error]", e); }
     draggingRef.current = true;
     setDragging(true);
     startX.current = e.clientX;
@@ -369,9 +367,7 @@ function ExecutionSlider({
       setDragging(false);
       try {
         target.releasePointerCapture(pointerId);
-      } catch {
-        /* ignore */
-      }
+      } catch (e) { console.error("[Caught Error]", e); }
       const mx = maxXRef.current;
       const x = clamp(startDragX.current + (ev.clientX - startX.current), 0, mx);
       if (mx > 0 && x >= mx * COMMIT_THRESHOLD && !commitScheduledRef.current) {
@@ -532,9 +528,7 @@ export function BotExecutionSheet({
       if (res.ok) {
         try {
           navigator.vibrate?.(12);
-        } catch {
-          /* ignore */
-        }
+        } catch (e) { console.error("[Caught Error]", e); }
         setPhase('success');
       } else {
         setPhase('error');

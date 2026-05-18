@@ -16,9 +16,7 @@ function tryOsNotification(a: GlobalAnnouncement) {
       body: a.subtitle ?? '',
       tag: a.id,
     });
-  } catch {
-    /* ignore */
-  }
+  } catch (e) { console.error("[Caught Error]", e); }
 }
 
 function tryHaptic(kind: GlobalAnnouncement['kind']) {
@@ -26,9 +24,7 @@ function tryHaptic(kind: GlobalAnnouncement['kind']) {
     if (!readAppAnnouncementsEnabled()) return;
     if (kind === 'bias_flip') navigator.vibrate?.([12, 36, 12]);
     else navigator.vibrate?.([10, 28, 10]);
-  } catch {
-    /* ignore */
-  }
+  } catch (e) { console.error("[Caught Error]", e); }
 }
 
 export function GlobalAnnouncementHost() {

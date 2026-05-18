@@ -1,3 +1,4 @@
+import { secureStorage } from '@/lib/storage';
 import type { SignalSetupType } from '@/types/signal';
 
 export type StrategyPersonalityMode =
@@ -100,7 +101,7 @@ export function parseStrategyPersonalityMode(raw: string | null): StrategyPerson
 
 export function loadStrategyPersonalityMode(): StrategyPersonalityMode {
   if (typeof window === 'undefined') return DEFAULT_STRATEGY_PERSONALITY_MODE;
-  return parseStrategyPersonalityMode(window.localStorage.getItem(STRATEGY_PERSONALITY_STORAGE_KEY));
+  return parseStrategyPersonalityMode(secureStorage.getItem(STRATEGY_PERSONALITY_STORAGE_KEY));
 }
 
 export function setupTypeBias(setupType: SignalSetupType, profile: StrategyPersonalityProfile): number {

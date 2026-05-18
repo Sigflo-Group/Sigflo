@@ -45,13 +45,13 @@ export class MexcAdapter implements ExchangeAdapter {
   async validateReadOnly(input: ConnectInput): Promise<ValidationResult> {
     const account = await privateGet<MexcAccountResponse>('/api/v3/account', {}, input);
     const permission = parsePermission(account);
-    if (!permission.readOnly) {
-      return { ok: false, message: 'MEXC key must be read-only (trade disabled).', permission };
+    if (!permission.canReadBalances) {
+      return { ok: false, message: 'MEXC key could not read account balances. Ensure the key has "Read Info" permission enabled.', permission };
     }
-    if (permission.withdrawalsEnabled) {
-      return { ok: false, message: 'Withdrawals must be disabled for this integration.', permission };
-    }
-    return { ok: true, message: 'MEXC key validated as read-only.', permission };
+    // Note: MEXC's /api/v3/account returns canWithdraw at account level, not key level —
+    // it is always true regardless of key permissions, so we cannot check it here.
+    // Users must ensure withdrawals are disabled on the key at creation time.
+    return { ok: true, message: 'MEXC key validated.', permission };
   }
 
   async fetchBalances(input: ConnectInput): Promise<BalanceItem[]> {

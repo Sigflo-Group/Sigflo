@@ -89,7 +89,10 @@ async function processOneWatch(w: ExitAutomationWatchRow): Promise<void> {
 
   const pos = matchPosition(w, positions);
   if (!pos) {
-    await disableExitWatchSystem(w.id, 'Open position not found on Bybit — watch disabled.');
+    await updateExitWatchRuntime(w.id, {
+      lastCheckedAt: new Date(),
+      lastError: 'Open position not found on Bybit — will retry next tick.',
+    });
     return;
   }
 

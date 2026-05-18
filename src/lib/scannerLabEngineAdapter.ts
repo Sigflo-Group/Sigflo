@@ -163,7 +163,7 @@ function evaluationFromOutput(
  * match live scanner sensitivity exactly.
  */
 export function runScannerLabEngineEvaluations(
-  symbol: string,
+  _symbol: string,
   visible: PlaybackCandle[],
   regime: MarketRegime = 'neutral',
 ): {

@@ -1,50 +1,59 @@
 # Sigflo – Agent Instructions
 
-## Cursor Cloud specific instructions
+## Overview
 
-### Overview
+React 19 + TypeScript + Vite + Tailwind SPA for crypto trading signals. Core market data from Bybit public API (REST + WebSocket) directly from browser. Optional Express backend in `backend/` for exchange integrations (needs PostgreSQL). Hosted on Netlify with serverless functions for AI; backend deployed separately (Railway).
 
-Sigflo is a React + TypeScript + Vite SPA for crypto trading signals. Core market data comes from Bybit public API (REST + WebSocket) directly from the browser. An optional Express backend in `backend/` handles exchange integrations (requires PostgreSQL). No API keys or secrets are required for the core frontend.
+## Project structure
 
-### Services
+- **Root** — the actual frontend SPA (source of truth)
+- **`frontend/`** — self-contained copy of the SPA used only by Docker (`docker-compose.yml` mounts `./frontend:/app`). Edit root files, not `frontend/` files.
+- **`backend/`** — Express API, separate deploy, not wired through root `npm install` (has own `package.json`)
+- **`netlify/functions/`** — Netlify serverless functions for AI suggest, news scan, admin beta
 
-| Service | How to run | Default URL | Required? |
-|---|---|---|---|
-| Vite Dev Server | `npm run dev:vite` | `http://localhost:5173` | **Yes** |
-| Express Backend | `npm run dev:backend` | `http://127.0.0.1:8787` | No (exchange integrations only) |
-| Netlify Dev | `npm run dev` (needs `netlify-cli`) | `http://localhost:3999` | No (wraps Vite + serverless functions) |
-| Netlify Dev (alt port) | `npm run dev:netlify-alt-port` | `http://localhost:4000` | Use if **3999** is already in use (`Could not acquire required 'port': '3999'`) |
-| Netlify production | Git-linked site; build `npm run build`, publish `dist` | **https://sigflo.group** | Hosting + `/api/ai/*` functions; see `docs/NETLIFY.md` |
+## Key commands
 
-### Key commands
+| Command | What it does |
+|---|---|
+| `npm run dev` | Vite dev server on `:5173` (AI routes handled by Vite middleware instead of Netlify functions) |
+| `npm run dev:backend` | Express backend via `tsx watch` on `:8787` |
+| `npm run build` | `tsc -b && vite build` — required order |
+| `npm test` | `vitest run` (single test file: `src/lib/__tests__/timingLifecycle.test.ts`) |
+| `npm run lint` | ESLint 9 flat config; expects ~30 warnings (react-hooks/exhaustive-deps, react-refresh), 0 errors |
 
-See `package.json` scripts:
+## Testing
 
-- **Dev server (Vite only):** `npm run dev:vite`
-- **Dev server (Netlify Dev, needs global `netlify-cli`):** `npm run dev`
-- **Build (tsc + vite):** `npm run build`
-- **Lint:** `npm run lint`
-- **Preview prod build:** `npm run preview`
+- **Framework:** Vitest (configured in `vitest.config.ts`)
+- **Run:** `npm test` or `npx vitest run`
+- **Location:** `src/lib/__tests__/*.test.ts` (currently 1 file: `timingLifecycle.test.ts`)
+- **Environment:** `node` (not jsdom)
+- **No component/e2e tests exist** — validate UI changes via `npm run build` + manual browser testing
 
-### Caveats
+## Env & config quirks
 
-- **ESLint:** `npm run lint` works (ESLint 9 flat config in `eslint.config.js`). Expect ~30 warnings (react-hooks/exhaustive-deps, react-refresh); 0 errors.
-- **No automated tests:** The project has no test framework or test files. Validate changes via `npm run build` (TypeScript type-checking + production build) and manual browser testing.
-- Optional env vars are documented in `.env.example` (`VITE_SUPABASE_*`, `VITE_BACKEND_API_BASE`, etc.).
-- **Vite `allowedHosts`:** `vite.config.ts` sets `server.allowedHosts: 'all'` so the dev server works behind the Cursor Cloud VM proxy. Without this, Vite blocks the proxied hostname with a "Blocked request" error.
-- **CORS errors in console:** The app tries to call the Bybit REST API directly from the browser, which is blocked by CORS in some environments. Feeds may show offline / degraded until a reachable path exists — this is expected in some dev setups.
+- **`Vite allowedHosts`:** `vite.config.ts` sets `server.allowedHosts: true` for Cursor/proxy compat
+- **Vite strictPort:** `true` — if port 5173 is taken, Vite errors rather than picking next port (Netlify Dev proxy would break)
+- **Vite merges `backend/.env`** into dev middleware for AI env vars (see `vite.config.ts` `loadAiSecretsFromDisk`)
+- **`OPENAI_API_KEY`** must not be an empty string in OS env — Vite prefers `process.env` over `.env.local` (workaround in `vite.config.ts`)
+- **Subpath deploy:** set `VITE_BASE=/your/path/` (trailing `/` required); root `/` or unset for normal deploy
+- **`FRONTEND_ORIGIN`** on backend controls CORS; comma-separated origins including all frontend hostnames
 
-### Netlify production deploy
+## Architecture notes
 
-- **Auto-deploy:** pushing to `main` triggers a build on Netlify automatically (see `docs/NETLIFY.md`).
-- **CLI deploy (requires secrets `NETLIFY_AUTH_TOKEN` + `NETLIFY_SITE_ID`):**
-  ```bash
-  npm run build
-  npx netlify-cli deploy --prod --dir=dist --functions=netlify/functions
-  ```
-  The CLI picks up `NETLIFY_AUTH_TOKEN` and `NETLIFY_SITE_ID` from the environment. Production URL: **https://www.sigflo.group**.
-- Full env-var reference and one-time setup: see `docs/NETLIFY.md`.
+- **Signal engine runs client-side** in `SignalEngineContext.tsx` (no backend calls for core detection)
+- **Bybit CORS:** browser may show feeds as offline — expected in some dev setups (bypass with Netlify Dev or Vite proxy)
+- **Route splitting:** `app.sigflo.group` → feed at `/`; `sigflo.group` → landing at `/`; other hosts → feed at `/feed` (see `src/config/appRoutes.ts`)
+- **AI routes** (`/api/ai/suggest`, `/api/ai/news-scan`, `/api/admin/beta`) are handled by Vite middleware in dev, Netlify functions in prod
+- **Backend auth:** production uses `Authorization: Bearer <supabase_jwt>`; dev fallback with `VITE_DEV_USER_ID` when `SUPABASE_JWT_SECRET` is unset and `NODE_ENV != production`
+- **Backend workers** (`exitAutomationWorker`, `opportunitySyncWorker`) start only after startup schema check passes — run migrations first
 
-### Trade chart plot height (do not duplicate)
+## Chart height rule (do not hardcode)
 
-Trade screen chart **expanded/collapsed** plot heights (px) live in **`src/config/tradeChartHeights.ts`** only. `ChartHeader`, `TradeScreen`, and `PriceChartCard` import those constants — **do not** reintroduce hardcoded `260`/`120`/`116`/`56` etc. in those files (values drifted repeatedly in the past).
+Trade chart plot heights live in `src/config/tradeChartHeights.ts` only. `ChartHeader`, `TradeScreen`, and `PriceChartCard` import those constants — do not reintroduce hardcoded values.
+
+## Netlify deploy
+
+- **Auto-deploy:** push to `main` triggers build
+- **CLI:** `npm run build && npx netlify-cli deploy --prod --dir=dist --functions=netlify/functions`
+- **Key env vars** (set in Netlify UI, never `VITE_*` for secrets): `OPENAI_API_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `SIGFLO_BETA_ADMIN_EMAILS`
+- **SPA catch-all** and API function redirects defined in `netlify.toml`

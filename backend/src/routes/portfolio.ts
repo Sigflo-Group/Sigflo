@@ -88,6 +88,10 @@ portfolioRouter.get('/closed-trades', async (req: AuthedRequest, res) => {
     }
   }
 
-  merged.sort((a, b) => new Date(b.closedAt).getTime() - new Date(a.closedAt).getTime());
+  merged.sort((a, b) => {
+    if (b.closedAt < a.closedAt) return -1;
+    if (b.closedAt > a.closedAt) return 1;
+    return 0;
+  });
   res.json({ trades: merged.slice(0, 100) });
 });

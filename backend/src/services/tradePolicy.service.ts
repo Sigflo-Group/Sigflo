@@ -20,10 +20,9 @@ export function validateTradePolicy(input: TradePolicyInput): { ok: true } | { o
 
 export function computeRiskSummary(input: TradePolicyInput) {
   const estimatedMarginUsd = input.positionSizeUsd / Math.max(1, input.leverage);
-  const riskRewardRatio =
-    input.stopPrice != null && input.targetPrice != null && input.stopPrice !== input.targetPrice
-      ? Math.abs(input.targetPrice - input.stopPrice) / Math.max(1e-9, Math.abs(input.stopPrice))
-      : 0;
+  // R:R uses entryPrice when available, but at intent-creation time entryPrice
+  // is not yet known. Omit the ratio rather than compute a misleading value.
+  const riskRewardRatio = 0;
   return {
     estimatedMarginUsd,
     liquidationBufferPct: 0,

@@ -78,12 +78,12 @@ export async function postTradeIntent(req: AuthedRequest, res: Response) {
 export async function postTradeExecute(req: AuthedRequest, res: Response) {
   if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
   const body = req.body as { executionToken: string; idempotencyKey: string };
-  const idempotent = consumeIdempotencyKey(`${req.user.userId}:${body.idempotencyKey}`, SECURITY.idempotencyTtlSec * 1000);
-  if (!idempotent) return res.status(409).json({ error: 'Duplicate execution request' });
   const intent = await resolveTradeIntentByToken(req.user.userId, body.executionToken);
   if (!intent) return res.status(404).json({ error: 'Execution intent not found' });
   if (intent.usedAt) return res.status(409).json({ error: 'Execution intent already used' });
   if (Date.parse(intent.expiresAt) <= Date.now()) return res.status(410).json({ error: 'Execution intent expired' });
+  const idempotent = consumeIdempotencyKey(`${req.user.userId}:${body.idempotencyKey}`, SECURITY.idempotencyTtlSec * 1000);
+  if (!idempotent) return res.status(409).json({ error: 'Duplicate execution request' });
   const policy = validateTradePolicy({
     symbol: intent.symbol,
     direction: intent.direction,

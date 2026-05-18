@@ -46,18 +46,16 @@ export async function requireAuth(req: AuthedRequest, res: Response, next: NextF
       return;
     }
 
-    // Dev fallback when Supabase JWT secret is not configured (local only).
-    if (!env.SUPABASE_JWT_SECRET && env.NODE_ENV !== 'production') {
+    // Dev fallback only enabled in development mode.
+    if (env.NODE_ENV === 'development' && !env.SUPABASE_JWT_SECRET) {
       const userId = req.header('x-user-id')?.trim();
-      if (!userId) {
-        res.status(401).json({ error: 'Unauthorized' });
+      if (userId) {
+        const email = req.header('x-user-email')?.trim() || `${userId}@dev.local`;
+        await upsertUser(userId, email);
+        req.user = { userId, email: req.header('x-user-email')?.trim() };
+        next();
         return;
       }
-      const email = req.header('x-user-email')?.trim() || `${userId}@dev.local`;
-      await upsertUser(userId, email);
-      req.user = { userId, email: req.header('x-user-email')?.trim() };
-      next();
-      return;
     }
 
     log('warn', 'Auth rejected: missing bearer token.');

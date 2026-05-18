@@ -4,16 +4,14 @@ import { startOpportunitySyncWorker } from './jobs/opportunitySyncWorker.js';
 import { log } from './lib/logger.js';
 import { runStartupSchemaCheck } from './lib/startupSchemaCheck.js';
 import { createApp } from './app.js';
+import { db } from './db/index.js';
 
 const app = createApp();
 
 const host = process.env.HOST ?? '0.0.0.0';
-app.listen(env.PORT, host, () => {
+const server = app.listen(env.PORT, host, () => {
   log('info', `Backend listening on ${host}:${env.PORT}`);
 
-  // Run schema check first and only start background workers when the DB is
-  // confirmed ready. Workers may crash the tick loop if required tables are
-  // absent, so skipping them until migrations are applied keeps startup clean.
   void runStartupSchemaCheck()
     .then(({ ready }) => {
       if (!ready) {
@@ -29,3 +27,24 @@ app.listen(env.PORT, host, () => {
       });
     });
 });
+
+async function gracefulShutdown(signal: string): Promise<void> {
+  log('info', `Received ${signal}, starting graceful shutdown.`);
+  server.close(async () => {
+    log('info', 'HTTP server closed.');
+    try {
+      await db.end();
+      log('info', 'Database pool closed.');
+    } catch (e) {
+      log('error', 'Error closing database pool.', { error: String(e) });
+    }
+    process.exit(0);
+  });
+  setTimeout(() => {
+    log('error', 'Graceful shutdown timed out, forcing exit.');
+    process.exit(1);
+  }, 10_000);
+}
+
+process.on('SIGTERM', () => void gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => void gracefulShutdown('SIGINT'));

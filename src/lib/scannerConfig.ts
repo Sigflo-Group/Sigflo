@@ -6,6 +6,7 @@ export type ScannerTriggerType =
   | 'reclaim_first_close'
   | 'pullback_bounce_confirmed'
   | 'trend_continuation_resume'
+  | 'mean_reversion_cooling'
   | 'unknown';
 
 export interface ScannerPenaltyWeights {

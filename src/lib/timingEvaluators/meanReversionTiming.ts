@@ -53,7 +53,7 @@ export function evaluateMeanReversionTiming(args: {
       : args.rsiNow > 26 && args.close > args.prevClose);
 
   const triggerHit = rsiCooling || revertingTowardEma || heldReversion;
-  const triggerType: ScannerTriggerType = triggerHit ? 'reclaim_first_close' : 'unknown';
+  const triggerType: ScannerTriggerType = triggerHit ? 'mean_reversion_cooling' : 'unknown';
   const triggerReason = rsiCooling
     ? 'RSI cooling from extreme level — momentum exhaustion beginning.'
     : revertingTowardEma

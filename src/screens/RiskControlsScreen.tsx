@@ -47,7 +47,7 @@ export default function RiskControlsScreen() {
   const setMode = useCallback((riskMode: SigfloRiskMode) => persist({ riskMode }), [persist]);
 
   return (
-    <div className="min-h-[100dvh] bg-[#050505] pb-24 pt-4">
+    <div className="min-h-[100dvh] bg-[#050505] pb-[max(6rem,env(safe-area-inset-bottom))] pt-4">
       <div className="mx-auto w-full max-w-lg space-y-4 px-4">
         <Link
           to="/bots"

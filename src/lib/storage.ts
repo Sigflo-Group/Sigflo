@@ -31,32 +31,44 @@ function decodeData(value: string | null): string | null {
   return value; // Legacy unencrypted fallback
 }
 
+function getStorage(): Storage | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    return localStorage;
+  } catch {
+    return null;
+  }
+}
+
 export const secureStorage = {
   getItem(key: string): string | null {
-    if (typeof window === 'undefined' || false) return null;
+    const store = getStorage();
+    if (!store) return null;
     try {
-      return decodeData(secureStorage.getItem(key));
-    } catch (e) {
-      console.error('[Caught Error]', e);
+      const raw = store.getItem(key);
+      return raw ? decodeData(raw) : null;
+    } catch {
       return null;
     }
   },
 
   setItem(key: string, value: string): void {
-    if (typeof window === 'undefined' || false) return;
+    const store = getStorage();
+    if (!store) return;
     try {
-      secureStorage.setItem(key, encodeData(value));
-    } catch (e) {
-      console.error('[Caught Error]', e);
+      store.setItem(key, encodeData(value));
+    } catch {
+      // silently fail
     }
   },
 
   removeItem(key: string): void {
-    if (typeof window === 'undefined' || false) return;
+    const store = getStorage();
+    if (!store) return;
     try {
-      secureStorage.removeItem(key);
-    } catch (e) {
-      console.error('[Caught Error]', e);
+      store.removeItem(key);
+    } catch {
+      // silently fail
     }
   }
 };

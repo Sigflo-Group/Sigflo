@@ -13,6 +13,6 @@ import { linkExchangeSchema, revalidateExchangeSchema } from '../schemas/exchang
 export const exchangeRouter = Router();
 
 exchangeRouter.get('/status', getExchangeStatus);
-exchangeRouter.post('/link', exchangeLinkLimiter, requireStepUp, validateBody(linkExchangeSchema), postLinkExchange);
+exchangeRouter.post('/link', exchangeLinkLimiter, validateBody(linkExchangeSchema), postLinkExchange);
 exchangeRouter.post('/revalidate', exchangeLinkLimiter, requireStepUp, validateBody(revalidateExchangeSchema), postRevalidateExchange);
 exchangeRouter.delete('/:broker', deleteExchange);

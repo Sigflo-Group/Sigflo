@@ -23,7 +23,7 @@ export function useExchangeIntegrations() {
     try {
       const nextItems = await listIntegrations();
       if (!mountedRef.current) return;
-      setItems(nextItems);
+      setItems(Array.isArray(nextItems) ? nextItems : []);
     } catch (e) {
       if (!mountedRef.current) return;
       setError(e instanceof Error ? e.message : 'Failed to load integrations.');

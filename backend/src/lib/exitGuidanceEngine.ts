@@ -103,8 +103,8 @@ function trendMomentum01(trendAlignment: number, momentumQuality: number): numbe
 export const DEFAULT_CUSTOM_STRATEGY_THRESHOLDS: ExitStrategyThresholds = {
   stopMain: 0.74,
   stopMid: 0.48,
-  stopPnl: -0.8,
-  stopPnlSp: 0.38,
+  stopPnl: -2.0,
+  stopPnlSp: 0.55,
   trimMain: 0.7,
   trimMid: 0.42,
   trimMom: 0.44,
@@ -140,8 +140,8 @@ function presetThresholdsNonCustom(preset: ExitStrategyPreset): ExitStrategyThre
     return {
       stopMain: 0.66,
       stopMid: 0.42,
-      stopPnl: -0.65,
-      stopPnlSp: 0.34,
+      stopPnl: -1.5,
+      stopPnlSp: 0.5,
       trimMain: 0.58,
       trimMid: 0.36,
       trimMom: 0.48,
@@ -153,8 +153,8 @@ function presetThresholdsNonCustom(preset: ExitStrategyPreset): ExitStrategyThre
     return {
       stopMain: 0.82,
       stopMid: 0.54,
-      stopPnl: -0.95,
-      stopPnlSp: 0.42,
+      stopPnl: -2.5,
+      stopPnlSp: 0.6,
       trimMain: 0.8,
       trimMid: 0.5,
       trimMom: 0.38,
@@ -166,8 +166,8 @@ function presetThresholdsNonCustom(preset: ExitStrategyPreset): ExitStrategyThre
     return {
       stopMain: 0.62,
       stopMid: 0.4,
-      stopPnl: -0.55,
-      stopPnlSp: 0.32,
+      stopPnl: -1.2,
+      stopPnlSp: 0.45,
       trimMain: 0.64,
       trimMid: 0.38,
       trimMom: 0.48,

@@ -15,6 +15,7 @@ import { sessionRouter } from './routes/session.routes.js';
 import { exchangeRouter } from './routes/exchange.routes.js';
 import { secureTradeRouter } from './routes/trade.routes.js';
 import { signalRouter } from './routes/signal.routes.js';
+import { aiRouter } from './routes/ai.js';
 import { listTrades } from './controllers/trade.controller.js';
 import { authRouter } from './routes/auth.routes.js';
 import { db } from './db/index.js';
@@ -22,6 +23,7 @@ import { db } from './db/index.js';
 export function createApp() {
   const isProd = process.env.NODE_ENV === 'production';
   const app = express();
+  app.disable('etag');
 
   // Build the allowed-origins list from the env var, then add the Vite dev
   // server origins automatically in non-production so local development works
@@ -95,6 +97,7 @@ export function createApp() {
     listTrades(req as Parameters<typeof listTrades>[0], res).catch(next);
   });
   app.use('/api/signals', requireAuth, signalRouter);
+  app.use('/api/ai', aiRouter);
 
   app.use(errorHandler);
   return app;

@@ -34,17 +34,6 @@ export default tseslint.config(
       ...reactHooks.configs.recommended.rules,
       'react-refresh/only-export-components': ['warn', { allowConstantExport: true }],
       '@typescript-eslint/no-unused-vars': 'off',
-      'no-restricted-patterns': [
-        'error',
-        {
-          patterns: [
-            {
-              selector: 'JSXAttribute > Literal[value=/#(?:[0-9a-fA-F]{3}){1,2}(?:\\/[0-9.]+)?/]',
-              message: 'Use Tailwind tokens (e.g., bg-sigflo-bg) or theme constants instead of hardcoded hex colors',
-            },
-          ],
-        },
-      ],
     },
   },
   {

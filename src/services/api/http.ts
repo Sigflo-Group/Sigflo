@@ -40,6 +40,7 @@ const REQUEST_TIMEOUT_MS = 15_000;
 export async function apiJson<T>(path: string, init?: RequestInit): Promise<T> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
+    'Cache-Control': 'no-cache',
     ...(init?.headers as Record<string, string> | undefined),
   };
 
@@ -99,6 +100,6 @@ export async function apiJson<T>(path: string, init?: RequestInit): Promise<T> {
     }
     throw new Error(sanitizeUserFacingHttpErrorMessage(message));
   }
-  if (res.status === 204) return undefined as T;
+  if (res.status === 204 || res.status === 304) return undefined as T;
   return (await res.json()) as T;
 }

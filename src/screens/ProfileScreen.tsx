@@ -351,7 +351,8 @@ export default function ProfileScreen() {
   async function handleManualSync() {
     setSyncBusy(true);
     try {
-      await Promise.all([refreshIntegrations(), refreshSnapshots()]);
+      await refreshIntegrations();
+      await refreshSnapshots();
     } catch {
       // Individual hooks surface their own errors via integrationsError / snapshotError.
       // Swallow here so syncBusy always resets.

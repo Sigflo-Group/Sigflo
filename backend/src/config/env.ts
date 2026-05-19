@@ -50,6 +50,7 @@ const envSchema = z.object({
     .string()
     .optional()
     .transform((v) => (v === '1' || v === 'true' || v === 'yes' ? 'true' : 'false')),
+  OPENAI_API_KEY: z.string().optional(),
 });
 
 const parsed = envSchema.safeParse(process.env);

@@ -127,14 +127,44 @@ export class MexcAdapter implements ExchangeAdapter {
   }
 
   async fetchBalances(input: ConnectInput): Promise<BalanceItem[]> {
-    const account = await spotPrivateGet<MexcAccountResponse>('/api/v3/account', {}, input);
-    return (account.balances ?? [])
-      .map((b) => {
-        const free = Number(b.free ?? 0);
-        const locked = Number(b.locked ?? 0);
-        return { asset: b.asset, free, locked, total: free + locked };
-      })
-      .filter((b) => b.total > 0);
+    const [account, futuresAssets] = await Promise.all([
+      spotPrivateGet<MexcAccountResponse>('/api/v3/account', {}, input),
+      futuresPrivateGet<MexcFuturesResponse<MexcContractAsset[] | MexcContractAsset>>(
+        '/api/v1/private/account/assets', {}, input,
+      ).then((r) => {
+        if (!r.success || r.data == null) return [] as MexcContractAsset[];
+        return Array.isArray(r.data) ? r.data : [r.data];
+      }).catch(() => [] as MexcContractAsset[]),
+    ]);
+
+    const balances = new Map<string, BalanceItem>();
+
+    for (const b of account.balances ?? []) {
+      const free = Number(b.free ?? 0);
+      const locked = Number(b.locked ?? 0);
+      const total = free + locked;
+      if (total > 0) balances.set(b.asset, { asset: b.asset, free, locked, total });
+    }
+
+    // Merge futures wallet assets — add to existing asset or create new entry
+    for (const a of futuresAssets) {
+      const asset = (a.currency ?? '').toUpperCase();
+      if (!asset) continue;
+      const free = Number(a.availableBalance ?? 0);
+      const locked = Number(a.frozenBalance ?? 0) + Number(a.positionMargin ?? 0);
+      const total = Number(a.equity ?? 0) || free + locked;
+      if (total <= 0) continue;
+      const existing = balances.get(asset);
+      if (existing) {
+        existing.free += free;
+        existing.locked += locked;
+        existing.total += total;
+      } else {
+        balances.set(asset, { asset, free, locked, total });
+      }
+    }
+
+    return [...balances.values()];
   }
 
   async fetchPositions(input: ConnectInput): Promise<PositionItem[]> {

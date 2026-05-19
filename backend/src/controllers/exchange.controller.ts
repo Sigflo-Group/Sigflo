@@ -44,6 +44,14 @@ export async function postLinkExchange(req: AuthedRequest, res: Response) {
 
   log('info', 'Exchange link attempt.', { userId: req.user.userId, broker });
 
+  const existingAccounts = await listBrokerAccountsForUser(req.user.userId);
+  const conflict = existingAccounts.find((a) => a.broker !== broker);
+  if (conflict) {
+    return res.status(409).json({
+      error: `You already have ${conflict.broker.toUpperCase()} connected. Disconnect it before linking a different exchange.`,
+    });
+  }
+
   let validation: Awaited<ReturnType<ReturnType<typeof getAdapter>['validateReadOnly']>>;
   try {
     const adapter = getAdapter(broker);

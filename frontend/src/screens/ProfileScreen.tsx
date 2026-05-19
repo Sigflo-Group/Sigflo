@@ -425,6 +425,7 @@ export default function ProfileScreen() {
             const integration = integrations.find((i) => i.exchange === exchange);
             const snapshot = snapshots.find((s) => s.exchange === exchange);
             const connected = Boolean(integration);
+            const otherConnected = integrations.some((i) => i.exchange !== exchange);
             return (
               <div
                 key={exchange}
@@ -447,7 +448,9 @@ export default function ProfileScreen() {
                               ? new Date(integration.lastValidatedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
                               : 'just now'
                           }`
-                        : 'Link API keys — withdrawals must be off'}
+                        : otherConnected
+                          ? 'Disconnect the active exchange first'
+                          : 'Link API keys — withdrawals must be off'}
                     </p>
                   </div>
                   {connected ? (
@@ -509,7 +512,8 @@ export default function ProfileScreen() {
                       </a>
                       <button
                         type="button"
-                        disabled={!canUseExchangeApi}
+                        disabled={!canUseExchangeApi || otherConnected}
+                        title={otherConnected ? 'Disconnect the active exchange first' : undefined}
                         onClick={() => {
                           setConnectError(null);
                           setExchangeForm({ exchange, apiKey: '', apiSecret: '', passphrase: '' });
@@ -953,32 +957,53 @@ function ExchangeBalanceBreakdown({ snapshot }: { snapshot: ExchangeSnapshot }) 
     const noRows = snapshot.balances.length === 0 && snapshot.positions.length === 0;
     if (noRows) {
       return (
-        <div className="mt-2 space-y-2">
-          <p className="rounded-lg border border-amber-300/25 bg-amber-300/10 px-2.5 py-2 text-[11px] leading-snug text-amber-100/95">
-            Connected, but <span className="font-semibold">no wallet summary</span> came back from Bybit. This is not
-            “$0” — the app could not read UTA / Funding / spot wallets. Check: API key has{' '}
-            <span className="font-semibold">Wallet</span> (and Contracts) read access; withdrawals stay off; if the key
-            uses an IP allowlist, add your <span className="font-semibold">backend host</span> (e.g. Railway). Unified
-            Trading accounts work best with our sync.
+        <div className=”mt-2 space-y-2”>
+          <p className=”rounded-lg border border-amber-300/25 bg-amber-300/10 px-2.5 py-2 text-[11px] leading-snug text-amber-100/95”>
+            Connected, but <span className=”font-semibold”>no balance data</span> came back. Check that the API key
+            has read access and is not IP-restricted. Disconnect and reconnect if the issue persists.
           </p>
         </div>
       );
     }
+    const STABLE_ASSETS = new Set(['USDT', 'USDC', 'USD', 'BUSD', 'DAI', 'TUSD', 'FDUSD', 'USDE']);
+    const stableFree = snapshot.balances
+      .filter((b) => STABLE_ASSETS.has(b.asset.toUpperCase()))
+      .reduce((sum, b) => sum + b.free, 0);
+    const stableTotal = snapshot.balances
+      .filter((b) => STABLE_ASSETS.has(b.asset.toUpperCase()))
+      .reduce((sum, b) => sum + b.total, 0);
+    const nonStableBalances = snapshot.balances
+      .filter((b) => !STABLE_ASSETS.has(b.asset.toUpperCase()) && b.total > 0)
+      .sort((a, b) => b.total - a.total)
+      .slice(0, 3);
     return (
-      <div className="mt-2 space-y-1.5">
-        <p className="text-[10px] text-sigflo-muted">
-          USD totals unavailable — showing raw row counts from the last sync.
-        </p>
-        <div className="grid grid-cols-2 gap-2">
-          <div className="rounded-lg border border-white/[0.06] bg-sigflo-elevated p-2">
-            <p className="text-[10px] uppercase tracking-[0.12em] text-sigflo-muted">Balance rows</p>
-            <p className="mt-1 text-sm font-semibold text-white">{snapshot.balances.length}</p>
-          </div>
-          <div className="rounded-lg border border-white/[0.06] bg-sigflo-elevated p-2">
-            <p className="text-[10px] uppercase tracking-[0.12em] text-sigflo-muted">Positions</p>
-            <p className="mt-1 text-sm font-semibold text-white">{snapshot.positions.length}</p>
-          </div>
+      <div className=”mt-2 space-y-1.5”>
+        <div className=”grid grid-cols-2 gap-1.5”>
+          <BalanceMetricCell label=”Available (USDT)” value={stableFree > 0 ? stableFree : null} />
+          <BalanceMetricCell label=”Total Stable” value={stableTotal > 0 ? stableTotal : null} />
         </div>
+        {nonStableBalances.length > 0 ? (
+          <div className=”rounded-lg border border-white/[0.06] bg-sigflo-elevated p-2”>
+            <p className=”mb-1.5 text-[9px] uppercase tracking-[0.12em] text-sigflo-muted”>Other assets</p>
+            <div className=”space-y-1”>
+              {nonStableBalances.map((b) => (
+                <div key={b.asset} className=”flex items-center justify-between”>
+                  <span className=”text-[10px] font-semibold text-white/80”>{b.asset}</span>
+                  <span className=”text-[10px] tabular-nums text-white/60”>
+                    {b.total.toLocaleString('en-US', { maximumFractionDigits: 6 })}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
+        {snapshot.positions.length > 0 ? (
+          <div className=”rounded-lg border border-white/[0.06] bg-sigflo-elevated px-2 py-1.5”>
+            <p className=”text-[10px] text-sigflo-muted”>
+              {snapshot.positions.length} open {snapshot.positions.length === 1 ? 'position' : 'positions'}
+            </p>
+          </div>
+        ) : null}
       </div>
     );
   }

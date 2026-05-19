@@ -749,22 +749,40 @@ export function TradeScreen() {
   const tradeBalance = useMemo(() => {
     const bybit = accountSnapshots.find((s) => s.exchange === 'bybit' && s.status === 'connected');
     const overview = bybit?.accountBreakdown?.overview;
-    if (!overview) return null;
-    const unifiedBucket = bybit.accountBreakdown?.buckets?.find((b) => b.kind === 'unified');
-    const utaUnrealizedPnl = unifiedBucket?.metrics?.unrealizedPnl;
+    if (overview) {
+      const unifiedBucket = bybit?.accountBreakdown?.buckets?.find((b) => b.kind === 'unified');
+      const utaUnrealizedPnl = unifiedBucket?.metrics?.unrealizedPnl;
+      return {
+        exchange: 'bybit' as const,
+        availableToTrade: coerceUsdField(overview.availableToTrade),
+        totalWalletBalance: coerceUsdField(overview.totalWalletBalance),
+        totalEquity: coerceUsdField(overview.totalEquity),
+        marginInUseUsd: coerceUsdField(overview.unifiedMarginInUseUsd ?? null),
+        utaUnrealizedPnl: utaUnrealizedPnl != null ? coerceUsdField(utaUnrealizedPnl) : null,
+        fundingWalletBalance: coerceUsdField(overview.fundingWalletBalance ?? null),
+        fundingPrimaryAsset: overview.fundingPrimaryAsset ?? null,
+      };
+    }
+    const mexc = accountSnapshots.find((s) => s.exchange === 'mexc' && s.status === 'connected');
+    const usdt = mexc?.balances?.find((b) => b.asset.toUpperCase() === 'USDT');
+    if (!usdt) return null;
     return {
-      availableToTrade: coerceUsdField(overview.availableToTrade),
-      totalWalletBalance: coerceUsdField(overview.totalWalletBalance),
-      totalEquity: coerceUsdField(overview.totalEquity),
-      marginInUseUsd: coerceUsdField(overview.unifiedMarginInUseUsd ?? null),
-      utaUnrealizedPnl: utaUnrealizedPnl != null ? coerceUsdField(utaUnrealizedPnl) : null,
-      fundingWalletBalance: coerceUsdField(overview.fundingWalletBalance ?? null),
-      fundingPrimaryAsset: overview.fundingPrimaryAsset ?? null,
+      exchange: 'mexc' as const,
+      availableToTrade: usdt.free,
+      totalWalletBalance: usdt.total,
+      totalEquity: usdt.total,
+      marginInUseUsd: null,
+      utaUnrealizedPnl: null,
+      fundingWalletBalance: null,
+      fundingPrimaryAsset: null,
     };
   }, [accountSnapshots]);
 
   const tradeBalanceHelper = useMemo(() => {
     if (!tradeBalance) return undefined;
+    if (tradeBalance.exchange === 'mexc') {
+      return 'MEXC spot balance (USDT) — shown for reference. Real order execution requires a linked Bybit account.';
+    }
     if (market === 'futures') {
       return 'Bybit UTA metrics above sync from your account. With perps + Bybit connected, Long/Short and Close send real orders; read-only API keys cannot trade.';
     }
@@ -4602,11 +4620,13 @@ export function TradeScreen() {
           metrics={metrics}
           estFeeUsd={estFeeUsd}
           balanceLabel={
-            tradeBalance?.availableToTrade != null
-              ? 'Available (UTA)'
-              : tradeBalance?.totalWalletBalance != null
-                ? 'UTA wallet balance'
-                : 'Wallet Balance'
+            tradeBalance?.exchange === 'mexc'
+              ? 'Available (USDT)'
+              : tradeBalance?.availableToTrade != null
+                ? 'Available (UTA)'
+                : tradeBalance?.totalWalletBalance != null
+                  ? 'UTA wallet balance'
+                  : 'Wallet Balance'
           }
           balanceHelper={tradeBalanceHelper}
           displayBalanceUsd={displayBalanceUsd}

@@ -310,6 +310,11 @@ export function ScannerInsightCard({
         )}
       </div>
 
+      {/* Disclaimer */}
+      <p className="mt-2 text-center text-[9px] leading-tight text-sigflo-muted/40">
+        AI analysis based on on-screen data · Not a trade recommendation
+      </p>
+
       <MarketDeepAnalysisSheet
         open={deepSheetOpen}
         onClose={() => setDeepSheetOpen(false)}

@@ -31,6 +31,7 @@ import PerformanceDashboardScreen from '@/screens/PerformanceDashboardScreen';
 import StrategyAttributionScreen from '@/screens/StrategyAttributionScreen';
 import TradeReplayScreen from '@/screens/TradeReplayScreen';
 import PrivacyPolicyScreen from '@/screens/PrivacyPolicyScreen';
+import LegalScreen from '@/screens/LegalScreen';
 import ProfileScreen from '@/screens/ProfileScreen';
 import { ScannerLabScreen } from '@/screens/ScannerLabScreen';
 import { TradeScreen } from '@/screens/TradeScreen';
@@ -106,6 +107,8 @@ export default function App() {
     isAuthFastEntryPath(location.pathname) ||
     location.pathname === '/privacy' ||
     location.pathname === '/privacy/' ||
+    location.pathname === '/legal' ||
+    location.pathname === '/legal/' ||
     location.pathname === '/admin/beta';
   const showSplash = !skipSplash && (!splashMinElapsed || authLoading);
 
@@ -135,6 +138,7 @@ export default function App() {
         <Routes>
           <Route path="/login" element={<LoginScreen />} />
           <Route path="/privacy" element={<PrivacyPolicyScreen />} />
+          <Route path="/legal" element={<LegalScreen />} />
           <Route path="/auth/callback" element={<AuthCallbackScreen />} />
           <Route path="/auth/reset-password" element={<ResetPasswordScreen />} />
           <Route element={<ProtectedLayout />}>

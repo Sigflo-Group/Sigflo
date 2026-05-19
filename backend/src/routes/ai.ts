@@ -1,7 +1,10 @@
 import { Router } from 'express';
 import { env } from '../config/env.js';
+import { aiLimiter } from '../middleware/rateLimit.js';
 
 export const aiRouter = Router();
+
+aiRouter.post('/news-scan', aiLimiter, async (req, res) => {
 
 const NEWS_SCAN_SYSTEM = `You are a crypto news analyst. Analyze recent news for the given asset or market regime. Return a JSON object with "summary" (string), "sentiment" (bullish|bearish|neutral), and "articles" (array of {id, title, link, source, published, excerpt}).`;
 
@@ -54,7 +57,7 @@ aiRouter.post('/news-scan', async (req, res) => {
   }
 });
 
-aiRouter.post('/suggest', async (req, res) => {
+aiRouter.post('/suggest', aiLimiter, async (req, res) => {
   const apiKey = env.OPENAI_API_KEY;
   if (!apiKey) {
     res.status(500).json({ error: 'OpenAI API key not configured' });

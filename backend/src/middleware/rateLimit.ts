@@ -20,3 +20,4 @@ export const authRouteLimiter = standardLimiter(40);
 export const exchangeLinkLimiter = standardLimiter(SECURITY.exchangeLinkPerMinute);
 export const tradeIntentLimiter = standardLimiter(SECURITY.tradeIntentPerMinute);
 export const tradeExecuteLimiter = standardLimiter(SECURITY.tradeExecutePerMinute);
+export const aiLimiter = standardLimiter(30);

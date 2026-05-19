@@ -45,9 +45,16 @@ type MexcOpenPosition = {
   liquidatePrice: string;
   leverage: number;
   im: string;                  // initial margin (USDT)
-  realised: string;            // realised PnL so far (not unrealised)
+  realised: string;            // realised PnL so far
+  unrealised?: string;         // unrealised (floating) PnL (USDT)
   createTime: number;          // ms
   updateTime: number;
+};
+
+type MexcContractTicker = {
+  symbol: string;
+  lastPrice: string;
+  fairPrice?: string;          // mark price
 };
 
 type MexcHistoryPosition = {
@@ -110,6 +117,34 @@ async function futuresPrivatePost<T>(
     'Signature': signature,
   };
   return postJson<T>(`${FUTURES_BASE}${path}`, body, headers);
+}
+
+// ── Public ticker ───────────────────────────────────────────────────────────
+
+async function fetchContractMarkPrices(mexcSymbols: string[]): Promise<Map<string, number>> {
+  const out = new Map<string, number>();
+  if (mexcSymbols.length === 0) return out;
+  try {
+    const res = await getJson<MexcFuturesResponse<MexcContractTicker[]>>(
+      `${FUTURES_BASE}/api/v1/contract/ticker`,
+      {},
+    );
+    if (!res.success || !Array.isArray(res.data)) return out;
+    const wantSet = new Set(mexcSymbols);
+    for (const t of res.data) {
+      if (!wantSet.has(t.symbol)) continue;
+      const fp = t.fairPrice != null ? Number(t.fairPrice) : NaN;
+      if (Number.isFinite(fp) && fp > 0) {
+        out.set(t.symbol, fp);
+      } else {
+        const lp = Number(t.lastPrice);
+        if (Number.isFinite(lp) && lp > 0) out.set(t.symbol, lp);
+      }
+    }
+  } catch {
+    // best-effort — callers fall back gracefully
+  }
+  return out;
 }
 
 // ── Order types ──────────────────────────────────────────────────────────────
@@ -222,18 +257,52 @@ export class MexcAdapter implements ExchangeAdapter {
       return [];
     }
 
-    return raw
-      .filter((p) => Number(p.holdVol) > 0)
-      .map((p): PositionItem => ({
+    const open = raw.filter((p) => Number(p.holdVol) > 0);
+    if (open.length === 0) return [];
+
+    const markPriceMap = await fetchContractMarkPrices(open.map((p) => p.symbol));
+
+    return open.map((p): PositionItem => {
+      const size = Number(p.holdVol);
+      const entryPrice = Number(p.holdAvgPrice || p.openAvgPrice);
+      const side: 'long' | 'short' = p.positionType === 1 ? 'long' : 'short';
+
+      const tickerMark = markPriceMap.get(p.symbol);
+      let markPrice: number | undefined;
+      if (tickerMark != null && tickerMark > 0) {
+        markPrice = tickerMark;
+      }
+
+      let unrealizedPnl: number | undefined;
+      if (p.unrealised != null) {
+        const u = Number(p.unrealised);
+        if (Number.isFinite(u)) {
+          unrealizedPnl = u;
+          // Derive mark price from unrealised if ticker didn't supply one
+          if (markPrice == null && size > 0 && entryPrice > 0) {
+            const derived = entryPrice + (side === 'long' ? u : -u) / size;
+            if (Number.isFinite(derived) && derived > 0) markPrice = derived;
+          }
+        }
+      } else if (markPrice != null && size > 0 && entryPrice > 0) {
+        unrealizedPnl = side === 'long'
+          ? (markPrice - entryPrice) * size
+          : (entryPrice - markPrice) * size;
+      }
+
+      return {
         symbol: mexcSymbolToStandard(p.symbol),
-        side: p.positionType === 1 ? 'long' : 'short',
-        size: Number(p.holdVol),
-        entryPrice: Number(p.holdAvgPrice || p.openAvgPrice),
+        side,
+        size,
+        entryPrice,
+        ...(markPrice != null ? { markPrice } : {}),
+        ...(unrealizedPnl != null ? { unrealizedPnl } : {}),
         liqPrice: Number(p.liquidatePrice) > 0 ? Number(p.liquidatePrice) : undefined,
         leverage: p.leverage > 0 ? p.leverage : undefined,
         positionIM: Number(p.im) > 0 ? Number(p.im) : undefined,
         openedAtMs: p.createTime > 0 ? p.createTime : undefined,
-      }));
+      };
+    });
   }
 
   async fetchAccountBreakdown(input: ConnectInput): Promise<ExchangeAccountBreakdown | null> {

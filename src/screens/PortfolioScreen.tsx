@@ -291,12 +291,18 @@ export default function PortfolioScreen() {
   );
 
   const overviewSparkSeries = useMemo(() => {
+    // Prefer the first active position's price data — more relevant than a BTC proxy
+    for (const pos of positions) {
+      const key = symbolToPair(pos.symbol).toUpperCase();
+      const closes = candleCloses(miniCandles[key]);
+      if (closes.length >= 2) return closes;
+    }
     const btc = candleCloses(miniCandles['BTC']);
     if (btc.length >= 2) return btc;
     const nw = connected ? netWorth : 2500;
     const up = connected ? todayPnl >= 0 : true;
     return buildSparklineSeries(Math.max(nw, 0.01), up);
-  }, [miniCandles, connected, netWorth, todayPnl]);
+  }, [miniCandles, positions, connected, netWorth, todayPnl]);
   const { line: sparkPath, area: sparkArea } = useMemo(
     () => sparklinePath(overviewSparkSeries, 320, 72),
     [overviewSparkSeries],

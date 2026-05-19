@@ -133,6 +133,7 @@ import {
   postBybitSetLinearLeverage,
   postBybitLinearTradingStop,
   postBybitSpotOrder,
+  postMexcLinearOrder,
   putExitAutomationWatch,
 } from '@/services/api/tradeClient';
 import { fetchLinearMaxLeverage } from '@/services/bybit/client';
@@ -995,28 +996,36 @@ export function TradeScreen() {
     () => accountSnapshots.find((s) => s.exchange === 'bybit' && s.status === 'connected'),
     [accountSnapshots],
   );
+  const mexcSnap = useMemo(
+    () => accountSnapshots.find((s) => s.exchange === 'mexc' && s.status === 'connected'),
+    [accountSnapshots],
+  );
+  const activeExchange: 'bybit' | 'mexc' | null = bybitSnap ? 'bybit' : mexcSnap ? 'mexc' : null;
   const riskSettings = useRiskSettings();
   const dailyRiskGuard = useDailyRiskGuard();
   const dailyReviewLocked = Boolean(isBotsReviewCockpit && dailyRiskGuard.status === 'locked');
-  const exchangeOpenLegCount = useMemo(() => countExchangeOpenLegs(bybitSnap?.positions), [bybitSnap?.positions]);
+  const exchangeOpenLegCount = useMemo(() => countExchangeOpenLegs((bybitSnap ?? mexcSnap)?.positions), [(bybitSnap ?? mexcSnap)?.positions]);
   const riskMonitoredOpenCount = useMemo(
     () => activePositionCountForRisk(exchangeOpenLegCount),
     [exchangeOpenLegCount],
   );
   const maxOpenPositionsReached = riskMonitoredOpenCount >= riskSettings.maxOpenPositions;
-  /** Manage mode still posts closes/adds via `/trade/bybit/*` when Bybit is linked — only entry-mode chart shell differed before. */
-  const useRealExecution = Boolean(bybitSnap && (market === 'futures' || market === 'spot'));
+  /** Manage mode still posts closes/adds via exchange API when an exchange is linked. MEXC only supports futures. */
+  const useRealExecution =
+    Boolean(bybitSnap && (market === 'futures' || market === 'spot')) ||
+    Boolean(mexcSnap && market === 'futures');
   /** User opt-in from Risk controls — when false, Sigflo does not submit opens or TP/SL updates (closes use their own path). */
   const liveOrderSubmitEnabled = useRealExecution && riskSettings.allowLiveExecution;
   const exchangePositionForSymbol = useMemo((): PositionItem | null => {
-    if (!bybitSnap?.positions?.length) return null;
+    const snap = bybitSnap ?? mexcSnap;
+    if (!snap?.positions?.length) return null;
     const sym = pairBaseToLinearSymbol(mergedModel.pair);
-    const open = bybitSnap.positions.filter((x) => x.symbol === sym && x.size > 0);
+    const open = snap.positions.filter((x) => x.symbol === sym && x.size > 0);
     if (open.length === 0) return null;
-    /** Hedge mode: same symbol can have long + short; managing uses URL leg, else UI `side`. */
+    /** Hedge mode (Bybit): same symbol can have long + short; managing uses URL leg, else UI `side`. */
     const legSide = isManageMode && manageCtx ? manageCtx.side : side;
     return open.find((x) => x.side === legSide) ?? open[0];
-  }, [bybitSnap, isManageMode, manageCtx, mergedModel.pair, side]);
+  }, [bybitSnap, mexcSnap, isManageMode, manageCtx, mergedModel.pair, side]);
 
   const spotBaseAsset = useMemo(
     () => spotBaseAssetFromOrderSymbol(pairBaseToLinearSymbol(mergedModel.pair)),
@@ -2511,6 +2520,7 @@ export function TradeScreen() {
       if (isManageMode) setManageOrderDraftDirty(true);
 
       if (!useRealExecution || market !== 'futures') return;
+      // MEXC doesn't support the standalone set-leverage endpoint — skip for MEXC
       if (!bybitSnap || bybitSnap.status !== 'connected') return;
 
       window.clearTimeout(leverageExchangeSyncTimerRef.current);
@@ -2746,14 +2756,24 @@ export function TradeScreen() {
           const qtyBase = Math.abs(pos.size) * Math.min(1, Math.max(0, fraction));
           const qtyStr = linearQtyFromBaseAmount(qtyBase);
           const closeSide = pos.side === 'long' ? 'Sell' : 'Buy';
-          await postBybitLinearOrder({
-            symbol: pos.symbol,
-            side: closeSide,
-            qty: qtyStr,
-            reduceOnly: true,
-            positionIdx: pos.positionIdx ?? 0,
-            orderType: 'Market',
-          });
+          if (activeExchange === 'mexc') {
+            await postMexcLinearOrder({
+              symbol: pos.symbol,
+              side: closeSide,
+              qty: qtyStr,
+              reduceOnly: true,
+              orderType: 'Market',
+            });
+          } else {
+            await postBybitLinearOrder({
+              symbol: pos.symbol,
+              side: closeSide,
+              qty: qtyStr,
+              reduceOnly: true,
+              positionIdx: pos.positionIdx ?? 0,
+              orderType: 'Market',
+            });
+          }
         }
         suppressExternalPositionCloseFeedbackUntilRef.current = Date.now() + 8000;
         const mark =
@@ -2808,6 +2828,7 @@ export function TradeScreen() {
       }
     },
     [
+      activeExchange,
       exchangeSyntheticForManageChart,
       exitAuto.pushActivity,
       flashTradeToast,
@@ -2907,102 +2928,170 @@ export function TradeScreen() {
           } else {
             const qtyStr = linearQtyFromNotionalUsd(orderNotionalUsd, entryMark);
             const positionIdx = isManageMode ? (exchangePositionForSymbol?.positionIdx ?? 0) : 0;
-            if (isManageMode && opts?.manageIntent === 'reverse' && exchangePositionForSymbol) {
-              const pos = exchangePositionForSymbol;
-              const closeIdx = pos.positionIdx ?? 0;
-              const closeQtyStr = linearQtyFromBaseAmount(Math.abs(pos.size));
-              const closeSide = pos.side === 'long' ? 'Sell' : 'Buy';
-              const openIdx = bybitLinearPositionIdxForOpenSide(nextSide, closeIdx);
-              reverseOrderInProgressRef.current = true;
-              await postBybitLinearOrder({
-                symbol: orderSymbol,
-                side: closeSide,
-                qty: closeQtyStr,
-                reduceOnly: true,
-                positionIdx: closeIdx,
-                orderType: 'Market',
-              });
-              suppressExternalPositionCloseFeedbackUntilRef.current = Date.now() + 12_000;
-              const deadline = Date.now() + 8000;
-              let snaps = await refreshAccountSnapshots({ silent: true });
-              while (
-                bybitLinearLegStillOpen(snaps, orderSymbol, pos.side, closeIdx) &&
-                Date.now() < deadline
-              ) {
-                await new Promise<void>((r) => {
-                  window.setTimeout(r, 250);
+            if (activeExchange === 'mexc') {
+              // ── MEXC futures path ──────────────────────────────────────────
+              // MEXC doesn't support hedge mode or positionIdx; reverse = close then open sequentially.
+              if (isManageMode && opts?.manageIntent === 'reverse' && exchangePositionForSymbol) {
+                const pos = exchangePositionForSymbol;
+                const closeQtyStr = linearQtyFromBaseAmount(Math.abs(pos.size));
+                const closeSide = pos.side === 'long' ? 'Sell' : 'Buy';
+                reverseOrderInProgressRef.current = true;
+                await postMexcLinearOrder({
+                  symbol: orderSymbol,
+                  side: closeSide,
+                  qty: closeQtyStr,
+                  reduceOnly: true,
+                  orderType: 'Market',
                 });
-                snaps = await refreshAccountSnapshots({ silent: true });
-              }
-              if (bybitLinearLegStillOpen(snaps, orderSymbol, pos.side, closeIdx)) {
-                reverseOrderInProgressRef.current = false;
-                flashTradeToast(
-                  'Close leg still open on the exchange after reverse step 1 — new entry was not sent. Refresh Account or retry.',
-                  7000,
+                suppressExternalPositionCloseFeedbackUntilRef.current = Date.now() + 12_000;
+                // Brief settle wait before opening the new leg
+                await new Promise<void>((r) => { window.setTimeout(r, 800); });
+                await postMexcLinearOrder({
+                  symbol: orderSymbol,
+                  side: sideBybit,
+                  qty: qtyStr,
+                  orderType: 'Market',
+                  leverage: Math.min(leverage, futuresLevCap),
+                });
+                linearReverseAwaitPostSyncClear = true;
+              } else if (isManageMode) {
+                await postMexcLinearOrder({
+                  symbol: orderSymbol,
+                  side: sideBybit,
+                  qty: qtyStr,
+                  orderType: 'Market',
+                  leverage: Math.min(leverage, futuresLevCap),
+                });
+              } else {
+                const { tpSl, skippedTarget, skippedStop } = linearTpSlStringsForOpen(
+                  nextSide,
+                  entryMark,
+                  targetParsed,
+                  stopParsed,
                 );
-                return false;
+                if (userRequestedStopLoss && skippedStop) {
+                  flashTradeToast(
+                    'Stop-loss is required for this entry and must be on the correct side of entry. Order was not sent.',
+                    7000,
+                  );
+                  return false;
+                }
+                if (skippedTarget || skippedStop) {
+                  flashTradeToast(
+                    'Target/stop must be on the correct side of entry for exchange TP/SL — invalid level(s) were not sent.',
+                    7000,
+                  );
+                }
+                openedNewFuturesEntry = { side: sideBybit, qty: qtyStr, positionIdx: 0 };
+                await postMexcLinearOrder({
+                  symbol: orderSymbol,
+                  side: sideBybit,
+                  qty: qtyStr,
+                  orderType: 'Market',
+                  leverage: Math.min(leverage, futuresLevCap),
+                  ...(tpSl.takeProfit ? { takeProfit: tpSl.takeProfit } : {}),
+                  ...(tpSl.stopLoss ? { stopLoss: tpSl.stopLoss } : {}),
+                });
               }
-              await postBybitLinearOrder({
-                symbol: orderSymbol,
-                side: sideBybit,
-                qty: qtyStr,
-                orderType: 'Market',
-                leverage: Math.min(leverage, futuresLevCap),
-                positionIdx: openIdx,
-              });
-              linearReverseAwaitPostSyncClear = true;
-            } else if (isManageMode) {
-              await postBybitLinearOrder({
-                symbol: orderSymbol,
-                side: sideBybit,
-                qty: qtyStr,
-                orderType: 'Market',
-                leverage: Math.min(leverage, futuresLevCap),
-                positionIdx,
-              });
             } else {
-              const { tpSl, skippedTarget, skippedStop } = linearTpSlStringsForOpen(
-                nextSide,
-                entryMark,
-                targetParsed,
-                stopParsed,
-              );
-              if (userRequestedStopLoss && skippedStop) {
-                flashTradeToast(
-                  'Stop-loss is required for this entry and must be on the correct side of entry. Order was not sent.',
-                  7000,
+              // ── Bybit futures path ─────────────────────────────────────────
+              if (isManageMode && opts?.manageIntent === 'reverse' && exchangePositionForSymbol) {
+                const pos = exchangePositionForSymbol;
+                const closeIdx = pos.positionIdx ?? 0;
+                const closeQtyStr = linearQtyFromBaseAmount(Math.abs(pos.size));
+                const closeSide = pos.side === 'long' ? 'Sell' : 'Buy';
+                const openIdx = bybitLinearPositionIdxForOpenSide(nextSide, closeIdx);
+                reverseOrderInProgressRef.current = true;
+                await postBybitLinearOrder({
+                  symbol: orderSymbol,
+                  side: closeSide,
+                  qty: closeQtyStr,
+                  reduceOnly: true,
+                  positionIdx: closeIdx,
+                  orderType: 'Market',
+                });
+                suppressExternalPositionCloseFeedbackUntilRef.current = Date.now() + 12_000;
+                const deadline = Date.now() + 8000;
+                let snaps = await refreshAccountSnapshots({ silent: true });
+                while (
+                  bybitLinearLegStillOpen(snaps, orderSymbol, pos.side, closeIdx) &&
+                  Date.now() < deadline
+                ) {
+                  await new Promise<void>((r) => {
+                    window.setTimeout(r, 250);
+                  });
+                  snaps = await refreshAccountSnapshots({ silent: true });
+                }
+                if (bybitLinearLegStillOpen(snaps, orderSymbol, pos.side, closeIdx)) {
+                  reverseOrderInProgressRef.current = false;
+                  flashTradeToast(
+                    'Close leg still open on the exchange after reverse step 1 — new entry was not sent. Refresh Account or retry.',
+                    7000,
+                  );
+                  return false;
+                }
+                await postBybitLinearOrder({
+                  symbol: orderSymbol,
+                  side: sideBybit,
+                  qty: qtyStr,
+                  orderType: 'Market',
+                  leverage: Math.min(leverage, futuresLevCap),
+                  positionIdx: openIdx,
+                });
+                linearReverseAwaitPostSyncClear = true;
+              } else if (isManageMode) {
+                await postBybitLinearOrder({
+                  symbol: orderSymbol,
+                  side: sideBybit,
+                  qty: qtyStr,
+                  orderType: 'Market',
+                  leverage: Math.min(leverage, futuresLevCap),
+                  positionIdx,
+                });
+              } else {
+                const { tpSl, skippedTarget, skippedStop } = linearTpSlStringsForOpen(
+                  nextSide,
+                  entryMark,
+                  targetParsed,
+                  stopParsed,
                 );
-                return false;
+                if (userRequestedStopLoss && skippedStop) {
+                  flashTradeToast(
+                    'Stop-loss is required for this entry and must be on the correct side of entry. Order was not sent.',
+                    7000,
+                  );
+                  return false;
+                }
+                if (skippedTarget || skippedStop) {
+                  flashTradeToast(
+                    'Target/stop must be on the correct side of entry for exchange TP/SL — invalid level(s) were not sent.',
+                    7000,
+                  );
+                }
+                const tpslAttach =
+                  tpSl.takeProfit || tpSl.stopLoss
+                    ? {
+                        ...(tpSl.takeProfit ? { takeProfit: tpSl.takeProfit } : {}),
+                        ...(tpSl.stopLoss ? { stopLoss: tpSl.stopLoss } : {}),
+                        tpTriggerBy: futuresTpSlTriggerBy,
+                        slTriggerBy: futuresTpSlTriggerBy,
+                      }
+                    : {};
+                openedNewFuturesEntry = {
+                  side: sideBybit,
+                  qty: qtyStr,
+                  positionIdx: 0,
+                };
+                await postBybitLinearOrder({
+                  symbol: orderSymbol,
+                  side: sideBybit,
+                  qty: qtyStr,
+                  orderType: 'Market',
+                  leverage: Math.min(leverage, futuresLevCap),
+                  positionIdx: 0,
+                  ...tpslAttach,
+                });
               }
-              if (skippedTarget || skippedStop) {
-                flashTradeToast(
-                  'Target/stop must be on the correct side of entry for exchange TP/SL — invalid level(s) were not sent.',
-                  7000,
-                );
-              }
-              const tpslAttach =
-                tpSl.takeProfit || tpSl.stopLoss
-                  ? {
-                      ...(tpSl.takeProfit ? { takeProfit: tpSl.takeProfit } : {}),
-                      ...(tpSl.stopLoss ? { stopLoss: tpSl.stopLoss } : {}),
-                      tpTriggerBy: futuresTpSlTriggerBy,
-                      slTriggerBy: futuresTpSlTriggerBy,
-                    }
-                  : {};
-              openedNewFuturesEntry = {
-                side: sideBybit,
-                qty: qtyStr,
-                positionIdx: 0,
-              };
-              await postBybitLinearOrder({
-                symbol: orderSymbol,
-                side: sideBybit,
-                qty: qtyStr,
-                orderType: 'Market',
-                leverage: Math.min(leverage, futuresLevCap),
-                positionIdx: 0,
-                ...tpslAttach,
-              });
             }
           }
           flashTradeToast('Order submitted — syncing account…');
@@ -3013,7 +3102,7 @@ export function TradeScreen() {
           const hasUserTpSl =
             (Number.isFinite(targetParsed) && targetParsed > 0) ||
             (Number.isFinite(stopParsed) && stopParsed > 0);
-          if (market === 'futures' && !isManageMode && hasUserTpSl) {
+          if (market === 'futures' && !isManageMode && hasUserTpSl && activeExchange !== 'mexc') {
             const rollbackUnprotectedEntry = async (reason: string, details?: string) => {
               if (!openedNewFuturesEntry) {
                 flashTradeToast(reason, 7600);
@@ -3112,6 +3201,7 @@ export function TradeScreen() {
       return false;
     },
     [
+      activeExchange,
       amountUsd,
       bybitSnap,
       canExecute,
@@ -3130,6 +3220,7 @@ export function TradeScreen() {
       mergedModel.entry,
       mergedModel.lastPrice,
       mergedModel.pair,
+      mexcSnap,
       metrics.positionSizeUsd,
       minOrderUsd,
       orderSymbol,

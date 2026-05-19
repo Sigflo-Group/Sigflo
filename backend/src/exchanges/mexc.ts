@@ -1,4 +1,4 @@
-import { getJson, signHmacSha256 } from './http.js';
+import { getJson, postJson, signHmacSha256 } from './http.js';
 import type {
   AccountBucketSnapshot,
   BalanceItem,
@@ -93,6 +93,47 @@ async function futuresPrivateGet<T>(
   };
   const url = qs ? `${FUTURES_BASE}${path}?${qs}` : `${FUTURES_BASE}${path}`;
   return getJson<T>(url, headers);
+}
+
+async function futuresPrivatePost<T>(
+  path: string,
+  body: Record<string, unknown>,
+  creds: ConnectInput,
+): Promise<T> {
+  const timestamp = String(Date.now());
+  const bodyJson = JSON.stringify(body);
+  // MEXC futures POST signature: HMAC-SHA256(secret, apiKey + timestamp + requestBodyJson)
+  const signature = signHmacSha256(creds.apiSecret, creds.apiKey + timestamp + bodyJson);
+  const headers: Record<string, string> = {
+    'ApiKey': creds.apiKey,
+    'Request-Time': timestamp,
+    'Signature': signature,
+  };
+  return postJson<T>(`${FUTURES_BASE}${path}`, body, headers);
+}
+
+// ── Order types ──────────────────────────────────────────────────────────────
+
+export type MexcOrderRequest = {
+  symbol: string;          // "BTC_USDT"
+  side: 1 | 2 | 3 | 4;   // 1=open long, 2=close short, 3=open short, 4=close long
+  openType: 1 | 2;        // 1=isolated, 2=cross
+  type: 1 | 5;            // 1=limit, 5=market
+  vol: string;             // quantity in base currency
+  leverage?: number;       // required for opening positions
+  price?: string;          // limit orders only
+  stopLossPrice?: string;
+  takeProfitPrice?: string;
+};
+
+export type MexcOrderResponse = {
+  success: boolean;
+  data: number;            // orderId
+};
+
+/** "BTCUSDT" → "BTC_USDT" (inserts underscore before USDT) */
+function standardSymbolToMexc(sym: string): string {
+  return sym.endsWith('USDT') ? sym.slice(0, -4) + '_USDT' : sym;
 }
 
 /** "BTC_USDT" → "BTCUSDT" */
@@ -267,6 +308,55 @@ export class MexcAdapter implements ExchangeAdapter {
       },
       buckets,
     };
+  }
+
+  async placeLinearOrder(
+    input: ConnectInput,
+    params: {
+      symbol: string;           // "BTCUSDT"
+      side: 'Buy' | 'Sell';
+      reduceOnly?: boolean;
+      orderType?: 'Market' | 'Limit';
+      qty: string;
+      leverage?: number;
+      price?: string;
+      takeProfit?: string;
+      stopLoss?: string;
+    },
+  ): Promise<{ orderId: string }> {
+    const mexcSymbol = standardSymbolToMexc(params.symbol);
+
+    // Map Bybit-style side+reduceOnly → MEXC side integer
+    // 1=open long, 2=close short, 3=open short, 4=close long
+    let mexcSide: 1 | 2 | 3 | 4;
+    if (params.side === 'Buy' && !params.reduceOnly) mexcSide = 1;       // open long
+    else if (params.side === 'Sell' && !params.reduceOnly) mexcSide = 3; // open short
+    else if (params.side === 'Sell' && params.reduceOnly) mexcSide = 4;  // close long
+    else mexcSide = 2;                                                    // Buy + reduceOnly → close short
+
+    const orderBody: MexcOrderRequest = {
+      symbol: mexcSymbol,
+      side: mexcSide,
+      openType: 1, // isolated
+      type: params.orderType === 'Limit' ? 1 : 5,
+      vol: params.qty,
+      ...(params.leverage != null && !params.reduceOnly ? { leverage: params.leverage } : {}),
+      ...(params.price ? { price: params.price } : {}),
+      ...(params.takeProfit ? { takeProfitPrice: params.takeProfit } : {}),
+      ...(params.stopLoss ? { stopLossPrice: params.stopLoss } : {}),
+    };
+
+    const res = await futuresPrivatePost<MexcOrderResponse>(
+      '/api/v1/private/order/submit',
+      orderBody as unknown as Record<string, unknown>,
+      input,
+    );
+
+    if (!res.success) {
+      throw new Error(`MEXC order rejected (success=false, data=${res.data})`);
+    }
+
+    return { orderId: String(res.data) };
   }
 
   async fetchClosedTrades(input: ConnectInput, opts?: { limit?: number }): Promise<ClosedTradeItem[]> {

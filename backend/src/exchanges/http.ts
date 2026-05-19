@@ -52,3 +52,45 @@ export async function getJson<T>(url: string, headers: Record<string, string>): 
     throw new Error(`Invalid JSON from ${url.slice(0, 80)}…`);
   }
 }
+
+/**
+ * POST with a JSON body; same error enrichment as getJson.
+ */
+export async function postJson<T>(url: string, body: unknown, headers: Record<string, string>): Promise<T> {
+  const { signal, clear } = exchangeSignal();
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...headers },
+      body: JSON.stringify(body),
+      signal,
+    });
+  } catch (e) {
+    clear();
+    if (e instanceof Error && e.name === 'AbortError') throw new Error(`Exchange request timed out (${url.slice(0, 60)})`);
+    throw e;
+  }
+  clear();
+  const text = await res.text();
+  if (!res.ok) {
+    let detail = text.trim().slice(0, 400);
+    try {
+      const j = JSON.parse(text) as { retMsg?: string; retCode?: number; message?: string };
+      if (j.retMsg != null) {
+        detail = `retCode=${j.retCode ?? '?'} ${j.retMsg}`;
+      } else if (j.message != null) {
+        detail = String(j.message);
+      }
+    } catch {
+      /* not JSON */
+    }
+    detail = sanitizeHttpErrorDetail(detail, url);
+    throw new Error(`Request failed: HTTP ${res.status}${detail ? ` — ${detail}` : ''}`);
+  }
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    throw new Error(`Invalid JSON from ${url.slice(0, 80)}…`);
+  }
+}

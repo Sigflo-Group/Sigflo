@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import type { AuthedRequest } from '../middleware/auth.js';
 import { BybitAdapter } from '../exchanges/bybit.js';
+import { MexcAdapter } from '../exchanges/mexc.js';
 import { decryptBrokerCredential } from '../services/exchangeKey.service.js';
 import { listBrokerAccountsForUser } from '../db/queries/brokerAccounts.js';
 import { log } from '../lib/logger.js';
@@ -39,6 +40,7 @@ const spotOrderSchema = z.object({
 });
 
 const bybitAdapter = new BybitAdapter();
+const mexcAdapter = new MexcAdapter();
 
 tradeRouter.post('/bybit/linear-order', async (req: AuthedRequest, res) => {
   if (!req.user) {
@@ -300,6 +302,72 @@ tradeRouter.post('/bybit/spot-order', async (req: AuthedRequest, res) => {
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Order failed';
     log('warn', 'Bybit spot order failed.', { error: msg });
+    res.status(400).json({ error: 'Order failed' });
+  }
+});
+
+// ── MEXC futures ─────────────────────────────────────────────────────────────
+
+const mexcLinearOrderSchema = z.object({
+  symbol: z.string().min(4).max(32),
+  side: z.enum(['Buy', 'Sell']),
+  orderType: z.enum(['Market', 'Limit']).default('Market'),
+  qty: z.string().min(1).max(64),
+  reduceOnly: z.boolean().optional(),
+  price: z.string().optional(),
+  leverage: z.number().min(1).max(200).optional(),
+  takeProfit: z.string().min(1).max(48).optional(),
+  stopLoss: z.string().min(1).max(48).optional(),
+});
+
+tradeRouter.post('/mexc/linear-order', async (req: AuthedRequest, res) => {
+  if (!req.user) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+
+  const parsed = mexcLinearOrderSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: formatZodIssuesForApi(parsed.error.issues) });
+    return;
+  }
+
+  const accounts = await listBrokerAccountsForUser(req.user.userId);
+  const row = accounts.find((a) => a.broker === 'mexc');
+  if (!row) {
+    res.status(400).json({ error: 'Connect MEXC in Account first.' });
+    return;
+  }
+
+  const creds = {
+    apiKey: decryptBrokerCredential(row.apiKeyEncrypted),
+    apiSecret: decryptBrokerCredential(row.apiSecretEncrypted),
+  };
+
+  const p = parsed.data;
+  try {
+    const result = await mexcAdapter.placeLinearOrder(creds, {
+      symbol: p.symbol,
+      side: p.side,
+      orderType: p.orderType,
+      qty: p.qty.trim(),
+      reduceOnly: p.reduceOnly,
+      price: p.price?.trim(),
+      leverage: p.leverage,
+      takeProfit: p.takeProfit?.trim(),
+      stopLoss: p.stopLoss?.trim(),
+    });
+
+    res.json({
+      ok: true,
+      exchange: 'mexc',
+      orderId: result.orderId,
+      orderLinkId: null,
+      note: 'Order accepted by MEXC — confirm fill and position via portfolio sync.',
+    });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : 'Order failed';
+    log('warn', 'MEXC order failed.', { error: msg });
     res.status(400).json({ error: 'Order failed' });
   }
 });

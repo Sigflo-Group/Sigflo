@@ -1,11 +1,5 @@
+import { apiJson } from '@/services/api/http';
 import type { Candle } from '@/types/market';
-
-const MEXC_CONTRACT_BASE = 'https://contract.mexc.com';
-
-/** "SILVERUSDT" → "SILVER_USDT" */
-function toMexcSymbol(symbol: string): string {
-  return symbol.endsWith('USDT') ? symbol.slice(0, -4) + '_USDT' : symbol;
-}
 
 const INTERVAL_MAP: Record<string, string> = {
   '1': 'Min1',
@@ -54,16 +48,13 @@ export type MexcPublicTickerSnapshot = {
 };
 
 export async function fetchMexcKlines(symbol: string, interval: string, limit = 140): Promise<Candle[]> {
-  const mexcSymbol = toMexcSymbol(symbol);
   const mexcInterval = INTERVAL_MAP[interval] ?? 'Min15';
-  const url = `${MEXC_CONTRACT_BASE}/api/v1/contract/kline/${encodeURIComponent(mexcSymbol)}?interval=${mexcInterval}&limit=${limit}`;
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`MEXC klines HTTP ${res.status}`);
-  const json: MexcFuturesResponse<MexcKlineData> = await res.json();
-  if (!json.success || !json.data?.time?.length) return [];
+  const json = await apiJson<MexcFuturesResponse<MexcKlineData>>(
+    `/mexc-public/klines/${encodeURIComponent(symbol)}?interval=${mexcInterval}&limit=${limit}`,
+  );
+  if (!json?.success || !json.data?.time?.length) return [];
   const d = json.data;
   return d.time.map((ts, i) => ({
-    // MEXC returns Unix seconds; multiply to ms
     ts: ts < 1e12 ? ts * 1000 : ts,
     open: Number(d.open[i]),
     high: Number(d.high[i]),
@@ -74,12 +65,10 @@ export async function fetchMexcKlines(symbol: string, interval: string, limit = 
 }
 
 export async function fetchMexcTicker(symbol: string): Promise<MexcPublicTickerSnapshot | null> {
-  const mexcSymbol = toMexcSymbol(symbol);
-  const url = `${MEXC_CONTRACT_BASE}/api/v1/contract/ticker?symbol=${encodeURIComponent(mexcSymbol)}`;
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`MEXC ticker HTTP ${res.status}`);
-  const json: MexcFuturesResponse<MexcTickerData | MexcTickerData[]> = await res.json();
-  if (!json.success || !json.data) return null;
+  const json = await apiJson<MexcFuturesResponse<MexcTickerData | MexcTickerData[]>>(
+    `/mexc-public/ticker/${encodeURIComponent(symbol)}`,
+  );
+  if (!json?.success || !json.data) return null;
   const t = Array.isArray(json.data) ? json.data[0] : json.data;
   if (!t) return null;
 

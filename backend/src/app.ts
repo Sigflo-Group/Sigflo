@@ -17,6 +17,7 @@ import { secureTradeRouter } from './routes/trade.routes.js';
 import { signalRouter } from './routes/signal.routes.js';
 import { aiRouter } from './routes/ai.js';
 import { listTrades } from './controllers/trade.controller.js';
+import { mexcPublicRouter } from './routes/mexcPublic.js';
 import { authRouter } from './routes/auth.routes.js';
 import { db } from './db/index.js';
 
@@ -82,6 +83,7 @@ export function createApp() {
   }
 });
 
+  app.use('/api/mexc-public', mexcPublicRouter);
   app.use('/api/auth', authRouteLimiter, authRouter);
   app.use('/api/portfolio', requireAuth, portfolioRouter);
   app.use('/api/trade', requireAuth, tradeRouter);

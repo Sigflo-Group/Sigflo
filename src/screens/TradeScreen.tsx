@@ -735,6 +735,7 @@ export function TradeScreen() {
   const live = useLiveTradeMarket(liveSymbol, chartInterval, {
     uiThrottleMs: isManageMode ? 16 : undefined,
     immediateUiOnTick: isManageMode,
+    exchange: activeExchange ?? 'bybit',
   });
   const [manageFastMark, setManageFastMark] = useState<number | undefined>(undefined);
 

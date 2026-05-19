@@ -1191,8 +1191,7 @@ export function TradeScreen() {
           : pos.markPrice != null && pos.markPrice > 0
             ? pos.markPrice
             : entry;
-      const mkt = pos.markPrice != null && pos.markPrice > 0 ? pos.markPrice : pos.entryPrice;
-      const notional = Math.abs(pos.size) * (Number.isFinite(mkt) && mkt > 0 ? mkt : entry);
+      const notional = Math.abs(pos.size) * (entry > 0 ? entry : manageCtx.entryPrice);
       const usd = notional > 0 ? notional : manageCtx.positionUsd;
       return managePnlFromPrices(pos.side, entry, markPx, usd);
     }

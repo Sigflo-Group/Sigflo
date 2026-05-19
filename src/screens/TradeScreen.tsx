@@ -1072,7 +1072,7 @@ export function TradeScreen() {
       hadSpotManageBalanceRef.current = false;
       return;
     }
-    if (!bybitSnap) return;
+    if (!activeExchange) return;
 
     if (market === 'futures') {
       hadSpotManageBalanceRef.current = false;
@@ -1097,7 +1097,7 @@ export function TradeScreen() {
     hadSpotManageBalanceRef.current = false;
     navigate(`/trade?${buildTradeQueryString(selectedSignal, { marketStatus: scannerStatus })}`, { replace: true });
   }, [
-    bybitSnap,
+    activeExchange,
     exchangePositionForSymbol,
     exchangeSpotFreeBaseQty,
     isManageMode,
@@ -2691,7 +2691,11 @@ export function TradeScreen() {
   const prevExchangeOpenLegIdRef = useRef<string | null | undefined>(undefined);
 
   useEffect(() => {
-    if (!useRealExecution || !bybitSnap || bybitSnap.status !== 'connected') {
+    if (
+      !useRealExecution ||
+      (activeExchange === 'bybit' && (!bybitSnap || bybitSnap.status !== 'connected')) ||
+      (activeExchange === 'mexc' && (!mexcSnap || mexcSnap.status !== 'connected'))
+    ) {
       prevExchangeOpenLegIdRef.current = exchangeTrackedOpenLegId;
       return;
     }
@@ -2720,12 +2724,14 @@ export function TradeScreen() {
     }
     prevExchangeOpenLegIdRef.current = cur;
   }, [
+    activeExchange,
     bybitSnap,
     exchangeTrackedOpenLegId,
     exitAuto.activity,
     exitAuto.mode,
     exitAuto.pushActivity,
     flashTradeToast,
+    mexcSnap,
     useRealExecution,
   ]);
 
@@ -3246,12 +3252,18 @@ export function TradeScreen() {
         flashTradeToast(
           bybitSnap
             ? 'No open linear position on the exchange for this pair — confirm symbol or refresh Account.'
-            : 'Connect Bybit in Account to update TP/SL.',
+            : mexcSnap
+              ? 'No open MEXC position for this pair — confirm symbol or refresh Account.'
+              : 'Connect an exchange in Account to update TP/SL.',
         );
         return false;
       }
+      if (activeExchange === 'mexc') {
+        flashTradeToast('MEXC does not support modifying TP/SL on open positions — set them when opening the trade.');
+        return false;
+      }
       if (!useRealExecution) {
-        flashTradeToast('Connect Bybit in Account to update TP/SL.');
+        flashTradeToast('Connect an exchange in Account to update TP/SL.');
         return false;
       }
       if (!riskSettings.allowLiveExecution) {
@@ -3340,11 +3352,13 @@ export function TradeScreen() {
       !liveExecutionLocked &&
       market === 'futures' &&
       useRealExecution &&
+      activeExchange !== 'mexc' &&
       riskSettings.allowLiveExecution &&
       exchangePositionForSymbol != null &&
       isExchangeBackedOpenLeg &&
       orderPending == null,
     [
+      activeExchange,
       exchangePositionForSymbol,
       isBotsReviewCockpit,
       isExchangeBackedOpenLeg,
@@ -4922,11 +4936,12 @@ export function TradeScreen() {
           manageFuturesTpSl={
             isManageMode && market === 'futures'
               ? {
-                  canApply: Boolean(useRealExecution && exchangePositionForSymbol),
+                  canApply: Boolean(useRealExecution && activeExchange !== 'mexc' && exchangePositionForSymbol),
                   pending: orderPending === 'tpsl',
                   onApply: applyManageTradingStop,
                   canApplyAll: Boolean(
                     useRealExecution &&
+                      activeExchange !== 'mexc' &&
                       exchangePositionForSymbol &&
                       (manageTpSlDirty || (manageOrderDraftDirty && amountUsd > 0)),
                   ),

@@ -2,8 +2,8 @@ import { Router } from 'express';
 import { z } from 'zod';
 import type { AuthedRequest } from '../middleware/auth.js';
 import { BybitAdapter } from '../exchanges/bybit.js';
-import { decryptText } from '../security/crypto.js';
-import { listIntegrations } from '../repositories/integrationsRepo.js';
+import { decryptBrokerCredential } from '../services/exchangeKey.service.js';
+import { listBrokerAccountsForUser } from '../db/queries/brokerAccounts.js';
 import { log } from '../lib/logger.js';
 import { formatZodIssuesForApi } from '../lib/formatZodError.js';
 import { isBybitTradingStopNoopError } from '../lib/bybitNoopErrors.js';
@@ -52,17 +52,16 @@ tradeRouter.post('/bybit/linear-order', async (req: AuthedRequest, res) => {
     return;
   }
 
-  const integrations = await listIntegrations(req.user.userId);
-  const row = integrations.find((i) => i.exchange === 'bybit');
+  const accounts = await listBrokerAccountsForUser(req.user.userId);
+  const row = accounts.find((a) => a.broker === 'bybit');
   if (!row) {
     res.status(400).json({ error: 'Connect Bybit in Account first.' });
     return;
   }
 
   const creds = {
-    apiKey: decryptText(row.encryptedKey),
-    apiSecret: decryptText(row.encryptedSecret),
-    passphrase: row.encryptedPassphrase ? decryptText(row.encryptedPassphrase) : undefined,
+    apiKey: decryptBrokerCredential(row.apiKeyEncrypted),
+    apiSecret: decryptBrokerCredential(row.apiSecretEncrypted),
   };
 
   try {
@@ -142,17 +141,16 @@ tradeRouter.post('/bybit/linear-trading-stop', async (req: AuthedRequest, res) =
     return;
   }
 
-  const integrations = await listIntegrations(req.user.userId);
-  const row = integrations.find((i) => i.exchange === 'bybit');
+  const accounts = await listBrokerAccountsForUser(req.user.userId);
+  const row = accounts.find((a) => a.broker === 'bybit');
   if (!row) {
     res.status(400).json({ error: 'Connect Bybit in Account first.' });
     return;
   }
 
   const creds = {
-    apiKey: decryptText(row.encryptedKey),
-    apiSecret: decryptText(row.encryptedSecret),
-    passphrase: row.encryptedPassphrase ? decryptText(row.encryptedPassphrase) : undefined,
+    apiKey: decryptBrokerCredential(row.apiKeyEncrypted),
+    apiSecret: decryptBrokerCredential(row.apiSecretEncrypted),
   };
 
   try {
@@ -212,17 +210,16 @@ tradeRouter.post('/bybit/set-leverage', async (req: AuthedRequest, res) => {
     return;
   }
 
-  const integrations = await listIntegrations(req.user.userId);
-  const row = integrations.find((i) => i.exchange === 'bybit');
+  const accounts = await listBrokerAccountsForUser(req.user.userId);
+  const row = accounts.find((i) => i.broker === 'bybit');
   if (!row) {
     res.status(400).json({ error: 'Connect Bybit in Account first.' });
     return;
   }
 
   const creds = {
-    apiKey: decryptText(row.encryptedKey),
-    apiSecret: decryptText(row.encryptedSecret),
-    passphrase: row.encryptedPassphrase ? decryptText(row.encryptedPassphrase) : undefined,
+    apiKey: decryptBrokerCredential(row.apiKeyEncrypted),
+    apiSecret: decryptBrokerCredential(row.apiSecretEncrypted),
   };
 
   try {
@@ -261,17 +258,16 @@ tradeRouter.post('/bybit/spot-order', async (req: AuthedRequest, res) => {
     return;
   }
 
-  const integrations = await listIntegrations(req.user.userId);
-  const row = integrations.find((i) => i.exchange === 'bybit');
+  const accounts = await listBrokerAccountsForUser(req.user.userId);
+  const row = accounts.find((i) => i.broker === 'bybit');
   if (!row) {
     res.status(400).json({ error: 'Connect Bybit in Account first.' });
     return;
   }
 
   const creds = {
-    apiKey: decryptText(row.encryptedKey),
-    apiSecret: decryptText(row.encryptedSecret),
-    passphrase: row.encryptedPassphrase ? decryptText(row.encryptedPassphrase) : undefined,
+    apiKey: decryptBrokerCredential(row.apiKeyEncrypted),
+    apiSecret: decryptBrokerCredential(row.apiSecretEncrypted),
   };
 
   try {

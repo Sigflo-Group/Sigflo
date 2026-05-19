@@ -97,7 +97,7 @@ export function createApp() {
     listTrades(req as Parameters<typeof listTrades>[0], res).catch(next);
   });
   app.use('/api/signals', requireAuth, signalRouter);
-  app.use('/api/ai', aiRouter);
+  app.use('/api/ai', requireAuth, aiRouter);
 
   app.use(errorHandler);
   return app;

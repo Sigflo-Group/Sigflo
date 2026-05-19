@@ -1,14 +1,14 @@
 import { Router } from 'express';
 import { env } from '../config/env.js';
 import { aiLimiter } from '../middleware/rateLimit.js';
+import { validateBody } from '../middleware/validateRequest.js';
+import { aiSuggestSchema, aiNewsScanSchema } from '../schemas/ai.schema.js';
 
 export const aiRouter = Router();
 
-aiRouter.post('/news-scan', aiLimiter, async (req, res) => {
-
 const NEWS_SCAN_SYSTEM = `You are a crypto news analyst. Analyze recent news for the given asset or market regime. Return a JSON object with "summary" (string), "sentiment" (bullish|bearish|neutral), and "articles" (array of {id, title, link, source, published, excerpt}).`;
 
-aiRouter.post('/news-scan', async (req, res) => {
+aiRouter.post('/news-scan', aiLimiter, validateBody(aiNewsScanSchema), async (req, res) => {
   const apiKey = env.OPENAI_API_KEY;
   if (!apiKey) {
     res.status(500).json({ error: 'OpenAI API key not configured' });
@@ -57,14 +57,14 @@ aiRouter.post('/news-scan', async (req, res) => {
   }
 });
 
-aiRouter.post('/suggest', aiLimiter, async (req, res) => {
+aiRouter.post('/suggest', aiLimiter, validateBody(aiSuggestSchema), async (req, res) => {
   const apiKey = env.OPENAI_API_KEY;
   if (!apiKey) {
     res.status(500).json({ error: 'OpenAI API key not configured' });
     return;
   }
 
-  const { model = 'gpt-4o-mini', messages, temperature = 0.15, response_format } = req.body;
+  const { model, messages, temperature, response_format } = req.body;
 
   try {
     const response = await fetch('https://api.openai.com/v1/chat/completions', {

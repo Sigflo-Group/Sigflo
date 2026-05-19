@@ -824,7 +824,10 @@ export function TradeScreen() {
   const tradeBalanceHelper = useMemo(() => {
     if (!tradeBalance) return undefined;
     if (tradeBalance.exchange === 'mexc') {
-      return 'MEXC spot balance (USDT) — shown for reference. Real order execution requires a linked Bybit account.';
+      if (market === 'futures') {
+        return 'Balances above update from your connected MEXC account. In Futures mode, Long/Short and Close place live orders.';
+      }
+      return 'MEXC only supports futures — switch to Futures mode to place live orders.';
     }
     if (market === 'futures') {
       return 'Balances above update from your connected Bybit account. In Futures mode, Long/Short and Close place live orders.';
@@ -2889,7 +2892,9 @@ export function TradeScreen() {
         flashTradeToast(
           bybitSnap
             ? 'No open linear position on the exchange for this pair — confirm symbol or refresh Account.'
-            : 'Connect Bybit in Account to add size.',
+            : mexcSnap
+              ? 'No open MEXC position for this pair — confirm symbol or refresh Account.'
+              : 'Connect an exchange in Account to add size.',
         );
         return false;
       }
@@ -3194,8 +3199,10 @@ export function TradeScreen() {
           label: 'Risk controls',
           href: '/risk',
         });
+      } else if (mexcSnap && market !== 'futures') {
+        flashTradeToast('MEXC only supports futures — switch to Futures mode to place live orders.');
       } else {
-        flashTradeToast('Connect Bybit in Account to place real orders.');
+        flashTradeToast('Connect an exchange in Account to place real orders.');
       }
       return false;
     },

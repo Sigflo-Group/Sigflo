@@ -1,8 +1,10 @@
 import { getJson, signHmacSha256 } from './http.js';
 import type {
+  AccountBucketSnapshot,
   BalanceItem,
   ClosedTradeItem,
   ConnectInput,
+  ExchangeAccountBreakdown,
   ExchangeAdapter,
   PermissionCheck,
   PositionItem,
@@ -64,6 +66,14 @@ type MexcHistoryPage = {
   pageSize: number;
   totalPage: number;
   resultList: MexcHistoryPosition[];
+};
+
+type MexcContractAsset = {
+  currency: string;
+  availableBalance: string;
+  frozenBalance: string;
+  positionMargin: string;
+  equity: string;
 };
 
 async function futuresPrivateGet<T>(
@@ -153,6 +163,80 @@ export class MexcAdapter implements ExchangeAdapter {
         positionIM: Number(p.im) > 0 ? Number(p.im) : undefined,
         openedAtMs: p.createTime > 0 ? p.createTime : undefined,
       }));
+  }
+
+  async fetchAccountBreakdown(input: ConnectInput): Promise<ExchangeAccountBreakdown | null> {
+    const [spotAccount, contractAssets] = await Promise.all([
+      spotPrivateGet<MexcAccountResponse>('/api/v3/account', {}, input),
+      futuresPrivateGet<MexcFuturesResponse<MexcContractAsset[]>>(
+        '/api/v1/private/account/assets', {}, input,
+      ).then((r) => (r.success && Array.isArray(r.data) ? r.data : [])).catch(() => [] as MexcContractAsset[]),
+    ]);
+
+    const spotBalances: BalanceItem[] = (spotAccount.balances ?? [])
+      .map((b) => ({ asset: b.asset, free: Number(b.free ?? 0), locked: Number(b.locked ?? 0), total: Number(b.free ?? 0) + Number(b.locked ?? 0) }))
+      .filter((b) => b.total > 0)
+      .sort((a, b) => b.total - a.total);
+
+    const futuresBalances: BalanceItem[] = contractAssets
+      .map((a) => ({ asset: a.currency, free: Number(a.availableBalance ?? 0), locked: Number(a.frozenBalance ?? 0) + Number(a.positionMargin ?? 0), total: Number(a.equity ?? 0) }))
+      .filter((b) => b.total > 0)
+      .sort((a, b) => b.total - a.total);
+
+    if (spotBalances.length === 0 && futuresBalances.length === 0) return null;
+
+    const spotUsdt = spotBalances.find((b) => b.asset.toUpperCase() === 'USDT');
+    const futuresUsdt = futuresBalances.find((b) => b.asset.toUpperCase() === 'USDT');
+    const totalEquity = (spotUsdt?.total ?? 0) + (futuresUsdt?.total ?? 0);
+    const availableToTrade = (spotUsdt?.free ?? 0) + (futuresUsdt?.free ?? 0);
+
+    const buckets: AccountBucketSnapshot[] = [];
+
+    if (spotBalances.length > 0) {
+      buckets.push({
+        kind: 'spot',
+        label: 'Spot Wallet',
+        helperText: 'Available for spot trading and transfers',
+        metrics: {
+          availableBalance: spotUsdt?.free ?? null,
+          walletBalance: spotUsdt?.total ?? null,
+          equity: null,
+          marginBalance: null,
+          marginUsed: null,
+          unrealizedPnl: null,
+        },
+        assets: spotBalances,
+      });
+    }
+
+    if (futuresBalances.length > 0) {
+      buckets.push({
+        kind: 'derivatives',
+        label: 'Futures Wallet',
+        helperText: 'Contract trading balance (MEXC perpetuals)',
+        metrics: {
+          availableBalance: futuresUsdt?.free ?? null,
+          walletBalance: futuresUsdt?.total ?? null,
+          equity: futuresUsdt?.total ?? null,
+          marginBalance: null,
+          marginUsed: futuresUsdt ? (futuresUsdt.locked > 0 ? futuresUsdt.locked : null) : null,
+          unrealizedPnl: null,
+        },
+        assets: futuresBalances,
+      });
+    }
+
+    return {
+      overview: {
+        totalEquity: totalEquity > 0 ? totalEquity : null,
+        totalWalletBalance: totalEquity > 0 ? totalEquity : null,
+        availableToTrade: availableToTrade > 0 ? availableToTrade : null,
+        unifiedMarginInUseUsd: null,
+        fundingWalletBalance: spotUsdt?.total ?? null,
+        fundingPrimaryAsset: spotUsdt ? 'USDT' : null,
+      },
+      buckets,
+    };
   }
 
   async fetchClosedTrades(input: ConnectInput, opts?: { limit?: number }): Promise<ClosedTradeItem[]> {

@@ -764,7 +764,21 @@ export function TradeScreen() {
       };
     }
     const mexc = accountSnapshots.find((s) => s.exchange === 'mexc' && s.status === 'connected');
-    const usdt = mexc?.balances?.find((b) => b.asset.toUpperCase() === 'USDT');
+    if (!mexc) return null;
+    const mexcOverview = mexc.accountBreakdown?.overview;
+    if (mexcOverview) {
+      return {
+        exchange: 'mexc' as const,
+        availableToTrade: coerceUsdField(mexcOverview.availableToTrade),
+        totalWalletBalance: coerceUsdField(mexcOverview.totalWalletBalance),
+        totalEquity: coerceUsdField(mexcOverview.totalEquity),
+        marginInUseUsd: null,
+        utaUnrealizedPnl: null,
+        fundingWalletBalance: coerceUsdField(mexcOverview.fundingWalletBalance ?? null),
+        fundingPrimaryAsset: mexcOverview.fundingPrimaryAsset ?? null,
+      };
+    }
+    const usdt = mexc.balances?.find((b) => b.asset.toUpperCase() === 'USDT');
     if (!usdt) return null;
     return {
       exchange: 'mexc' as const,

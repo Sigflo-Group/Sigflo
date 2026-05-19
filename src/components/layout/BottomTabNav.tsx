@@ -14,9 +14,16 @@ export function BottomTabNav() {
 
   return (
     <nav
-      className="fixed bottom-0 left-0 right-0 z-40 border-t border-white/[0.06] bg-sigflo-bg/95 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-2 backdrop-blur-2xl"
+      className="fixed bottom-0 left-0 right-0 z-40 border-t border-white/[0.06] bg-sigflo-bg/95 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-1 backdrop-blur-2xl"
       aria-label="Primary navigation"
     >
+      {/* Persistent disclaimer — sits at the top of the nav bar, always visible */}
+      <p className="pb-1 text-center text-[9px] leading-tight text-sigflo-muted/45">
+        Market analysis only · Not financial advice ·{' '}
+        <a href="/legal" className="underline decoration-sigflo-muted/25 underline-offset-2">
+          Legal
+        </a>
+      </p>
       <div className="mx-auto flex max-w-lg items-end justify-between gap-0.5 px-2">
         {tabs.map(({ to, label, icon: Icon }) => (
           <NavLink

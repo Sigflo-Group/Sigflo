@@ -980,7 +980,32 @@ export default function ProfileScreen() {
           </div>
         </div>
       ) : null}
+
+      {/* ── Legal & disclosures ── */}
+      <section className="rounded-2xl border border-white/[0.06] bg-sigflo-surface sigflo-panel-texture p-3.5">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-sigflo-muted">Legal</p>
+        <p className="mt-1.5 text-[11px] leading-relaxed text-sigflo-muted/70">
+          Sigflo provides market analysis tools, not financial advice. Trading involves real risk — you are responsible for your decisions.
+        </p>
+        <div className="mt-3 space-y-1.5">
+          <LegalLink to="/legal?doc=risk" label="Risk disclosure" />
+          <LegalLink to="/legal?doc=terms" label="Terms of service" />
+          <LegalLink to="/legal?doc=privacy" label="Privacy policy" />
+        </div>
+      </section>
     </div>
+  );
+}
+
+function LegalLink({ to, label }: { to: string; label: string }) {
+  return (
+    <Link
+      to={to}
+      className="flex items-center justify-between rounded-lg border border-white/[0.06] bg-sigflo-elevated px-3 py-2 text-sm text-sigflo-text transition hover:border-white/[0.12] hover:bg-[#1c1d26]"
+    >
+      <span>{label}</span>
+      <span className="text-sigflo-muted">→</span>
+    </Link>
   );
 }
 

@@ -225,6 +225,11 @@ export function SignalCard({
         >
           Open Signal
         </div>
+
+        {/* Disclaimer micro-copy */}
+        <p className="mt-2.5 text-center text-[9px] leading-tight text-sigflo-muted/45">
+          Pattern detected · Not a trade recommendation
+        </p>
       </div>
     </article>
   );

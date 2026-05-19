@@ -1323,7 +1323,7 @@ export function TradeScreen() {
    */
   const exchangeSyntheticForManageChart = useMemo((): SimulatedActivePosition | null => {
     if (!isManageMode || market !== 'futures' || !exchangePositionForSymbol) return null;
-    if (!bybitSnap || bybitSnap.status !== 'connected') return null;
+    if (!useRealExecution) return null;
     return syntheticFromExchangePosition(
       exchangePositionForSymbol,
       mergedModel.pair,
@@ -1331,12 +1331,12 @@ export function TradeScreen() {
       effectiveFuturesLeverage,
     );
   }, [
-    bybitSnap,
     effectiveFuturesLeverage,
     exchangePositionForSymbol,
     isManageMode,
     market,
     mergedModel.pair,
+    useRealExecution,
   ]);
 
   /** Manage screen: show exchange leverage when synced, else URL (portfolio link), else trade slider. */
@@ -1489,13 +1489,12 @@ export function TradeScreen() {
     ],
   );
 
-  /** Stable id for the open Bybit leg on this ticket (trade + manage), for “position vanished” detection. */
+  /** Stable id for the open exchange leg on this ticket (trade + manage), for “position vanished” detection. */
   const exchangeTrackedOpenLegId = useMemo((): string | null => {
-    if (!useRealExecution || !bybitSnap || bybitSnap.status !== 'connected') return null;
+    if (!useRealExecution) return null;
     const pos = primaryOpenPosition ?? (isManageMode ? exchangeSyntheticForManageChart : null);
     return pos?.id ?? null;
   }, [
-    bybitSnap,
     exchangeSyntheticForManageChart,
     isManageMode,
     primaryOpenPosition,

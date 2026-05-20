@@ -875,6 +875,7 @@ function useSignalEngineValue(): SignalEngineState {
     let startupDone = false;
 
     void backfillFromRest('startup').then(() => {
+      if (cancelled) return;
       startupDone = true;
       exchangeManager.current.connectWebSocket({
         klineSymbols: STREAM_SYMBOLS,

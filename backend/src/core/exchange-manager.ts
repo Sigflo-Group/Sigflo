@@ -11,14 +11,12 @@ export type ActiveExchangeContext = {
 
 /**
  * Loads the single active exchange for a user.
- * Returns null when no exchange is linked.
- * Prefers 'connected' status; falls back to first account.
+ * Returns null when no exchange is linked or all accounts are invalid.
  */
 export async function getActiveExchange(userId: string): Promise<ActiveExchangeContext | null> {
   const accounts = await listBrokerAccountsForUser(userId);
-  if (accounts.length === 0) return null;
-
-  const account = accounts.find((a) => a.status === 'connected') ?? accounts[0]!;
+  const account = accounts.find((a) => a.status === 'connected');
+  if (!account) return null;
   const exchange = account.broker as ExchangeId;
 
   const creds: ConnectInput = {

@@ -155,7 +155,7 @@ export async function postRevalidateExchange(req: AuthedRequest, res: Response) 
 
 export async function deleteExchange(req: AuthedRequest, res: Response) {
   if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
-  const broker = req.params.broker as ExchangeId;
+  const broker = String(req.params.broker) as ExchangeId;
   if (!SUPPORTED_BROKERS.includes(broker)) {
     return res.status(404).json({ error: 'Exchange not supported.' });
   }
@@ -195,7 +195,7 @@ export async function deleteExchange(req: AuthedRequest, res: Response) {
  */
 export async function patchActivateExchange(req: AuthedRequest, res: Response) {
   if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
-  const accountId = req.params.id;
+  const accountId = String(req.params.id);
 
   const account = await getBrokerAccountForUser(req.user.userId, accountId);
   if (!account) return res.status(404).json({ error: 'Broker account not found.' });

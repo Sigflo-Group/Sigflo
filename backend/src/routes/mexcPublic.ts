@@ -12,7 +12,7 @@ export const mexcPublicRouter = Router();
 
 mexcPublicRouter.get('/klines/:symbol', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const raw = req.params['symbol'] ?? '';
+    const raw = String(req.params['symbol'] ?? '');
     if (!/^[A-Z0-9_]{2,20}$/i.test(raw)) {
       res.status(400).json({ error: 'Invalid symbol' });
       return;
@@ -30,7 +30,7 @@ mexcPublicRouter.get('/klines/:symbol', async (req: Request, res: Response, next
 
 mexcPublicRouter.get('/ticker/:symbol', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const raw = req.params['symbol'] ?? '';
+    const raw = String(req.params['symbol'] ?? '');
     if (!/^[A-Z0-9_]{2,20}$/i.test(raw)) {
       res.status(400).json({ error: 'Invalid symbol' });
       return;

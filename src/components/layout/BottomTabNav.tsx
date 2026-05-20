@@ -1,5 +1,6 @@
 import { NavLink } from 'react-router-dom';
 import { getFeedRoute } from '@/config/appRoutes';
+import { useFeedback } from '@/context/FeedbackContext';
 
 const staticTabs = [
   { to: '/markets', label: 'Markets', icon: MarketsIcon },
@@ -11,6 +12,7 @@ const staticTabs = [
 
 export function BottomTabNav() {
   const tabs = [{ to: getFeedRoute(), label: 'Feed', icon: FeedIcon }, ...staticTabs] as const;
+  const { open: openFeedback } = useFeedback();
 
   return (
     <nav
@@ -23,6 +25,14 @@ export function BottomTabNav() {
         <a href="/legal" className="underline decoration-sigflo-muted/25 underline-offset-2">
           Legal
         </a>
+        {' · '}
+        <button
+          type="button"
+          onClick={openFeedback}
+          className="underline decoration-sigflo-muted/25 underline-offset-2 hover:text-sigflo-muted/70 transition-colors"
+        >
+          Feedback
+        </button>
       </p>
       <div className="mx-auto flex max-w-lg items-end justify-between gap-0.5 px-2">
         {tabs.map(({ to, label, icon: Icon }) => (

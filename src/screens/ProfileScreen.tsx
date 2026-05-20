@@ -4,6 +4,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useAccountSnapshot } from '@/hooks/useAccountSnapshot';
 import { useBotStatuses } from '@/hooks/useBotStatuses';
 import { useExchangeIntegrations } from '@/hooks/useExchangeIntegrations';
+import { useFeedback } from '@/context/FeedbackContext';
 import { useSignalEngine } from '@/hooks/useSignalEngine';
 import { supabase } from '@/lib/supabase';
 import { formatFundingBalance } from '@/lib/formatFundingBalance';
@@ -79,6 +80,7 @@ export default function ProfileScreen() {
     code: string;
   } | null>(null);
   const { items: integrations, loading: integrationsLoading, error: integrationsError, refresh: refreshIntegrations, connect, disconnect, setActive } = useExchangeIntegrations();
+  const { open: openFeedback } = useFeedback();
   const [activateBusy, setActivateBusy] = useState<string | null>(null); // accountId being activated
   const { items: snapshots, closedTrades, loading: snapshotLoading, error: snapshotError, refresh: refreshSnapshots } =
     useAccountSnapshot({ pollMs: 12_000 });
@@ -1007,6 +1009,24 @@ export default function ProfileScreen() {
           </div>
         </div>
       ) : null}
+
+      {/* ── Feedback ── */}
+      <section className="rounded-2xl border border-white/[0.06] bg-sigflo-surface sigflo-panel-texture p-3.5">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-sigflo-muted">Feedback</p>
+        <p className="mt-1.5 text-[11px] leading-relaxed text-sigflo-muted/70">
+          Questions, ideas, or issues? We read everything.
+        </p>
+        <button
+          type="button"
+          onClick={openFeedback}
+          className="mt-3 flex w-full items-center justify-between rounded-lg border border-sigflo-accent/20 bg-sigflo-accent/8 px-3 py-2.5 text-sm font-semibold text-sigflo-accent transition hover:border-sigflo-accent/35 hover:bg-sigflo-accent/12"
+        >
+          <span>Send Feedback</span>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+            <path d="M22 2L11 13M22 2L15 22l-4-9-9-4 20-7z" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </button>
+      </section>
 
       {/* ── Legal & disclosures ── */}
       <section className="rounded-2xl border border-white/[0.06] bg-sigflo-surface sigflo-panel-texture p-3.5">

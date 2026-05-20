@@ -2,6 +2,8 @@ import { Outlet, useLocation } from 'react-router-dom';
 import { AppTopBar } from '@/components/layout/AppTopBar';
 import { BottomTabNav } from '@/components/layout/BottomTabNav';
 import { BotFocusLayoutProvider, isBotFocusCockpitPath, useBotFocusLayout } from '@/context/botFocusLayoutContext';
+import { FeedbackProvider } from '@/context/FeedbackContext';
+import { FeedbackModal } from '@/components/feedback/FeedbackModal';
 
 function AppShellMain() {
   const { pathname } = useLocation();
@@ -45,6 +47,7 @@ function AppShellMain() {
         </div>
       </main>
       {hideTabBar ? null : <BottomTabNav />}
+      <FeedbackModal />
     </div>
   );
 }
@@ -52,7 +55,9 @@ function AppShellMain() {
 export function AppShell() {
   return (
     <BotFocusLayoutProvider>
-      <AppShellMain />
+      <FeedbackProvider>
+        <AppShellMain />
+      </FeedbackProvider>
     </BotFocusLayoutProvider>
   );
 }

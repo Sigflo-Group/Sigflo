@@ -9,7 +9,7 @@ import {
   type ReactNode,
 } from 'react';
 import { runScannerDeterminismCheck } from '@/engine/scannerDeterminism';
-import { BybitWsClient } from '@/lib/bybitWsClient';
+import { exchangeManager } from '@/core/exchange-manager';
 import { buildSignalFromMarket, inferMarketRegime } from '@/lib/signalDetectors';
 import { atr } from '@/lib/indicators';
 import { updateMarketMemory, type MarketMemorySnapshot } from '@/lib/marketMemory';
@@ -53,12 +53,7 @@ import {
   registerSignalImpression,
   type UserAdaptationStore,
 } from '@/lib/userAdaptation';
-import {
-  fetchKlines,
-  fetchTickers,
-} from '@/services/bybit/client';
 import { TRACKED_SYMBOLS } from '@/lib/marketScannerRows';
-import type { BybitWsTicker } from '@/lib/bybitWsClient';
 import type { CandidateLifecycle } from '@/lib/timingLifecycle';
 import type { Candle, KlineInterval, SymbolTicker } from '@/types/market';
 import type { AiSnapshotStore } from '@/types/aiSnapshot';
@@ -122,19 +117,6 @@ function signalEmitKey(symbol: string, setupType: string, side: 'long' | 'short'
   return `${symbol}:${setupType}:${side}`;
 }
 
-function wsTickerToSymbolTicker(t: BybitWsTicker): SymbolTicker {
-  return {
-    symbol: t.symbol,
-    lastPrice: t.lastPrice,
-    ...(t.markPrice > 0 ? { markPrice: t.markPrice } : {}),
-    ...(t.indexPrice != null && t.indexPrice > 0 ? { indexPrice: t.indexPrice } : {}),
-    high24h: t.high24h,
-    low24h: t.low24h,
-    volume24h: t.volume24h,
-    turnover24h: t.turnover24h,
-    price24hPcnt: t.price24hPcnt,
-  };
-}
 
 function loadMarketMemoryStore(): Record<string, MarketMemorySnapshot> {
   try {
@@ -410,7 +392,6 @@ function useSignalEngineValue(): SignalEngineState {
   const streamReadyRef = useRef(false);
   const didPrintDeterminismRef = useRef(false);
   const tickerFlushRafRef = useRef<number | null>(null);
-  const wsClientRef = useRef<BybitWsClient | null>(null);
   const biasSideBySymbolRef = useRef<Record<string, 'long' | 'short'>>({});
   const userAdaptationRef = useRef<UserAdaptationStore>(loadUserAdaptationStore());
   const strategyPersonalityModeRef = useRef<StrategyPersonalityMode>(strategyPersonalityMode);
@@ -498,13 +479,13 @@ function useSignalEngineValue(): SignalEngineState {
       if (DEBUG) console.log(`[Sigflo][Engine] REST bootstrap (${reason})`);
       streamReadyRef.current = false;
       try {
-        const tickers = await fetchTickers(STREAM_SYMBOLS);
+        const tickers = await exchangeManager.current.fetchTickers(STREAM_SYMBOLS);
         if (gen !== backfillGen || cancelled) return;
         for (const ticker of tickers) tickersRef.current[ticker.symbol] = ticker;
         for (const symbol of STREAM_SYMBOLS) {
           const [candles5m, candles15m] = await Promise.all([
-            fetchKlines(symbol, '5', 240),
-            fetchKlines(symbol, '15', 240),
+            exchangeManager.current.fetchKlines(symbol, '5', 240),
+            exchangeManager.current.fetchKlines(symbol, '15', 240),
           ]);
           if (gen !== backfillGen || cancelled) return;
           candlesRef.current[symbol] = {
@@ -892,57 +873,54 @@ function useSignalEngineValue(): SignalEngineState {
     // - process closed candles only
     // - feed 15m closed bars through detector pipeline
     let startupDone = false;
-    const ws = new BybitWsClient({
-      klineSymbols: STREAM_SYMBOLS,
-      tickerSymbols: STREAM_SYMBOLS,
-      includeTickers: true,
-      onLog: DEBUG ? (msg: string) => console.log(`[Sigflo][Engine] ${msg}`) : undefined,
-      onConnectionChange: (connection) => {
-        wsConnectedRef.current = connection === 'connected';
-        if (connection === 'connected') {
-          if (startupDone) {
-            void backfillFromRest('reconnect').then(() => {
-              pushState('WS', 'connected');
-            });
-          }
-          return;
-        }
-        pushState(streamReadyRef.current ? 'REST' : 'OFFLINE', connection);
-      },
-      onTicker: (ticker) => {
-        const mapped = wsTickerToSymbolTicker(ticker);
-        tickersRef.current[ticker.symbol] = mapped;
-        if (tickerFlushRafRef.current != null) return;
-        tickerFlushRafRef.current = window.requestAnimationFrame(() => {
-          tickerFlushRafRef.current = null;
-          setLiveTickersBySymbol({ ...tickersRef.current });
-        });
-      },
-      onKline: (kline) => {
-        const interval = kline.interval as KlineInterval;
-        const symbol = kline.symbol;
-        if (!candlesRef.current[symbol]) candlesRef.current[symbol] = emptyIntervalCandles();
-        candlesRef.current[symbol][interval] = upsertCandle(candlesRef.current[symbol][interval], {
-          ts: kline.start,
-          open: kline.open,
-          high: kline.high,
-          low: kline.low,
-          close: kline.close,
-          volume: kline.volume,
-          isClosed: kline.confirm,
-        });
-        // Closed-candle event is the only trigger input for signal generation.
-        if (!kline.confirm) return;
-        if (DEBUG) console.log(`[Sigflo][Engine] closed candle received ${symbol} ${interval}`);
-        if (!streamReadyRef.current) return;
-        if (interval === '15') recomputeForSymbol(symbol, 'WS');
-      },
-    });
-    wsClientRef.current = ws;
 
     void backfillFromRest('startup').then(() => {
       startupDone = true;
-      ws.connect();
+      exchangeManager.current.connectWebSocket({
+        klineSymbols: STREAM_SYMBOLS,
+        tickerSymbols: STREAM_SYMBOLS,
+        includeTickers: true,
+        onLog: DEBUG ? (msg: string) => console.log(`[Sigflo][Engine] ${msg}`) : undefined,
+        onConnectionChange: (connection) => {
+          wsConnectedRef.current = connection === 'connected';
+          if (connection === 'connected') {
+            if (startupDone) {
+              void backfillFromRest('reconnect').then(() => {
+                pushState('WS', 'connected');
+              });
+            }
+            return;
+          }
+          pushState(streamReadyRef.current ? 'REST' : 'OFFLINE', connection);
+        },
+        onTicker: (ticker) => {
+          tickersRef.current[ticker.symbol] = ticker;
+          if (tickerFlushRafRef.current != null) return;
+          tickerFlushRafRef.current = window.requestAnimationFrame(() => {
+            tickerFlushRafRef.current = null;
+            setLiveTickersBySymbol({ ...tickersRef.current });
+          });
+        },
+        onKline: (kline) => {
+          const interval = kline.interval;
+          const symbol = kline.symbol;
+          if (!candlesRef.current[symbol]) candlesRef.current[symbol] = emptyIntervalCandles();
+          candlesRef.current[symbol][interval] = upsertCandle(candlesRef.current[symbol][interval], {
+            ts: kline.ts,
+            open: kline.open,
+            high: kline.high,
+            low: kline.low,
+            close: kline.close,
+            volume: kline.volume,
+            isClosed: kline.confirmed,
+          });
+          // Closed-candle event is the only trigger input for signal generation.
+          if (!kline.confirmed) return;
+          if (DEBUG) console.log(`[Sigflo][Engine] closed candle received ${symbol} ${interval}`);
+          if (!streamReadyRef.current) return;
+          if (interval === '15') recomputeForSymbol(symbol, 'WS');
+        },
+      });
     });
 
     const healthSummaryTimer =
@@ -963,13 +941,12 @@ function useSignalEngineValue(): SignalEngineState {
         window.cancelAnimationFrame(tickerFlushRafRef.current);
         tickerFlushRafRef.current = null;
       }
-      ws.disconnect();
-      wsClientRef.current = null;
+      exchangeManager.current.disconnectWebSocket();
     };
   }, []);
 
   useEffect(() => {
-    wsClientRef.current?.updateTickerSymbols(mergedTickerSymbols);
+    exchangeManager.current.updateTickerSymbols(mergedTickerSymbols);
   }, [mergedTickerSymbols]);
 
   return useMemo(

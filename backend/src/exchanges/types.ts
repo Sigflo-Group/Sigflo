@@ -92,8 +92,17 @@ export type ClosedTradeItem = {
   orderId?: string;
 };
 
+export type ExchangeCapabilities = {
+  spot: boolean;
+  futures: boolean;
+  hedgeMode: boolean;
+  trailingStop: boolean;
+  closedPnl: boolean;
+};
+
 export interface ExchangeAdapter {
   readonly id: ExchangeId;
+  readonly capabilities: ExchangeCapabilities;
   validateReadOnly(input: ConnectInput): Promise<ValidationResult>;
   fetchBalances(input: ConnectInput): Promise<BalanceItem[]>;
   /** Optional richer account model (bucketed balances + key metrics) when the venue supports it. */

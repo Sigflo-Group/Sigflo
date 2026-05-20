@@ -4,6 +4,7 @@ import {
   postLinkExchange,
   postRevalidateExchange,
   deleteExchange,
+  switchExchange,
 } from '../controllers/exchange.controller.js';
 import { requireStepUp } from '../middleware/requireStepUp.js';
 import { exchangeLinkLimiter } from '../middleware/rateLimit.js';
@@ -14,5 +15,6 @@ export const exchangeRouter = Router();
 
 exchangeRouter.get('/status', getExchangeStatus);
 exchangeRouter.post('/link', exchangeLinkLimiter, validateBody(linkExchangeSchema), postLinkExchange);
+exchangeRouter.post('/switch', exchangeLinkLimiter, validateBody(linkExchangeSchema), switchExchange);
 exchangeRouter.post('/revalidate', exchangeLinkLimiter, requireStepUp, validateBody(revalidateExchangeSchema), postRevalidateExchange);
 exchangeRouter.delete('/:broker', deleteExchange);

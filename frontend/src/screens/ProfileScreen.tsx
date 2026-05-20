@@ -752,7 +752,14 @@ export default function ProfileScreen() {
             <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-sigflo-accent">Authenticator setup</p>
             {totpSetup.qrCode ? (
               <div className="mt-2 flex justify-center rounded-lg border border-white/[0.08] bg-[#08090d] p-2">
-                <div className="rounded bg-white p-2" dangerouslySetInnerHTML={{ __html: totpSetup.qrCode }} />
+                {/* Render the SVG as a data-URL image to avoid dangerouslySetInnerHTML XSS risk. */}
+                <img
+                  src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(totpSetup.qrCode)}`}
+                  alt="Scan this QR code with your authenticator app"
+                  width={160}
+                  height={160}
+                  className="rounded"
+                />
               </div>
             ) : (
               <p className="mt-2 text-[11px] text-sigflo-muted">QR not available — use manual setup key or the link below.</p>

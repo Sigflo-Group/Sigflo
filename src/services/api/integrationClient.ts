@@ -18,3 +18,7 @@ export async function connectExchange(
 export async function disconnectExchange(exchange: ExchangeId): Promise<void> {
   await apiJson<void>(`/exchange/${exchange}`, { method: 'DELETE' });
 }
+
+export async function setActiveExchange(accountId: string): Promise<IntegrationStatus> {
+  return apiJson<IntegrationStatus>(`/exchange/${accountId}/activate`, { method: 'PATCH' });
+}

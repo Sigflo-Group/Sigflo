@@ -7,6 +7,7 @@ import {
   listBrokerAccountsForUser,
   upsertBrokerAccount,
   deleteBrokerAccount,
+  setActiveExchange,
   type BrokerAccountRow,
 } from '../db/queries/brokerAccounts.js';
 import { encryptBrokerCredential, decryptBrokerCredential } from '../services/exchangeKey.service.js';
@@ -20,6 +21,7 @@ function formatAccount(a: BrokerAccountRow) {
     id: a.id,
     exchange: a.broker as ExchangeId,
     status: a.status as 'connected' | 'invalid',
+    isActive: a.isActive,
     accountLabel: a.accountLabel,
     lastValidatedAt: a.lastValidatedAt,
     createdAt: a.createdAt,
@@ -44,12 +46,8 @@ export async function postLinkExchange(req: AuthedRequest, res: Response) {
 
   log('info', 'Exchange link attempt.', { userId: req.user.userId, broker });
 
-  const existingAccounts = await listBrokerAccountsForUser(req.user.userId);
-  const conflict = existingAccounts.find((a) => a.broker !== broker);
-  if (conflict) {
-    return res.status(409).json({
-      error: `You already have ${conflict.broker.toUpperCase()} connected. Disconnect it before linking a different exchange.`,
-    });
+  if (!SUPPORTED_BROKERS.includes(broker)) {
+    return res.status(400).json({ error: `Unsupported exchange: ${broker}` });
   }
 
   let validation: Awaited<ReturnType<ReturnType<typeof getAdapter>['validateReadOnly']>>;
@@ -78,6 +76,11 @@ export async function postLinkExchange(req: AuthedRequest, res: Response) {
     return res.status(400).json({ error: validation.message });
   }
 
+  // First account for this user becomes the active one automatically.
+  const existing = await listBrokerAccountsForUser(req.user.userId);
+  const hasActive = existing.some((a) => a.isActive);
+  const isFirstAccount = existing.length === 0;
+
   const account = await upsertBrokerAccount({
     userId: req.user.userId,
     broker,
@@ -86,6 +89,8 @@ export async function postLinkExchange(req: AuthedRequest, res: Response) {
     apiSecretEncrypted: encryptBrokerCredential(apiSecret),
     permissions: { withdrawalsEnabled: false },
     status: 'connected',
+    // Auto-activate if this is the user's very first account or they have no active one.
+    isActive: isFirstAccount || !hasActive,
   });
 
   log('info', 'Exchange linked successfully.', { userId: req.user.userId, broker, accountId: account.id });
@@ -131,6 +136,7 @@ export async function postRevalidateExchange(req: AuthedRequest, res: Response) 
     apiSecretEncrypted: account.apiSecretEncrypted,
     permissions: account.permissions ?? {},
     status: 'connected',
+    isActive: account.isActive,
   });
 
   await writeAuditLog({
@@ -154,7 +160,18 @@ export async function deleteExchange(req: AuthedRequest, res: Response) {
     return res.status(404).json({ error: 'Exchange not supported.' });
   }
 
+  // If the account being removed is active, auto-activate the next available account.
+  const accounts = await listBrokerAccountsForUser(req.user.userId);
+  const removing = accounts.find((a) => a.broker === broker);
+
   await deleteBrokerAccount(req.user.userId, broker);
+
+  if (removing?.isActive) {
+    const remaining = accounts.filter((a) => a.broker !== broker);
+    if (remaining.length > 0) {
+      await setActiveExchange(req.user.userId, remaining[0]!.id);
+    }
+  }
 
   log('info', 'Exchange disconnected.', { userId: req.user.userId, broker });
 
@@ -173,14 +190,44 @@ export async function deleteExchange(req: AuthedRequest, res: Response) {
 }
 
 /**
- * Switch the active exchange.
- *
- * Flow:
- * 1. Validate new exchange credentials.
- * 2. Delete all existing exchange accounts for the user.
- * 3. Store the new exchange as the only active account.
- *
- * This ensures exactly one exchange is active at all times.
+ * Activate an already-connected exchange without re-entering credentials.
+ * Uses atomic deactivate-all / activate-one so there is never a gap.
+ */
+export async function patchActivateExchange(req: AuthedRequest, res: Response) {
+  if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
+  const accountId = req.params.id;
+
+  const account = await getBrokerAccountForUser(req.user.userId, accountId);
+  if (!account) return res.status(404).json({ error: 'Broker account not found.' });
+
+  if (account.status !== 'connected') {
+    return res.status(400).json({ error: 'Cannot activate an account in invalid state. Reconnect it first.' });
+  }
+
+  const updated = await setActiveExchange(req.user.userId, accountId);
+  if (!updated) return res.status(404).json({ error: 'Broker account not found.' });
+
+  log('info', 'Active exchange changed.', { userId: req.user.userId, broker: updated.broker, accountId: updated.id });
+
+  await writeAuditLog({
+    userId: req.user.userId,
+    requestId: req.requestId,
+    action: 'exchange.activate',
+    objectType: 'broker_account',
+    objectId: updated.id,
+    outcome: 'success',
+    payload: { broker: updated.broker },
+    ipAddress: req.auditContext?.ipAddress,
+    userAgent: req.auditContext?.userAgent,
+  });
+
+  return res.json(formatAccount(updated));
+}
+
+/**
+ * Switch active exchange by providing new credentials.
+ * Validates the new credentials then stores them (upsert), marking as active.
+ * Does NOT delete other exchanges — they remain stored for later switching.
  */
 export async function switchExchange(req: AuthedRequest, res: Response) {
   if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
@@ -224,15 +271,7 @@ export async function switchExchange(req: AuthedRequest, res: Response) {
     return res.status(400).json({ error: validation.message });
   }
 
-  // Remove all existing exchanges — only one may be active.
-  const existingAccounts = await listBrokerAccountsForUser(req.user.userId);
-  for (const existing of existingAccounts) {
-    if (existing.broker !== broker) {
-      await deleteBrokerAccount(req.user.userId, existing.broker);
-      log('info', 'Exchange removed during switch.', { userId: req.user.userId, removed: existing.broker, next: broker });
-    }
-  }
-
+  // Deactivate all, then upsert the new one as active.
   const account = await upsertBrokerAccount({
     userId: req.user.userId,
     broker,
@@ -241,7 +280,10 @@ export async function switchExchange(req: AuthedRequest, res: Response) {
     apiSecretEncrypted: encryptBrokerCredential(apiSecret),
     permissions: { withdrawalsEnabled: false },
     status: 'connected',
+    isActive: false, // will be set active via setActiveExchange below
   });
+
+  const activated = await setActiveExchange(req.user.userId, account.id);
 
   log('info', 'Exchange switched successfully.', { userId: req.user.userId, broker, accountId: account.id });
 
@@ -257,5 +299,5 @@ export async function switchExchange(req: AuthedRequest, res: Response) {
     userAgent: req.auditContext?.userAgent,
   });
 
-  return res.json(formatAccount(account));
+  return res.json(formatAccount(activated ?? account));
 }

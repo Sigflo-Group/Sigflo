@@ -78,7 +78,8 @@ export default function ProfileScreen() {
     otpauthUri: string | null;
     code: string;
   } | null>(null);
-  const { items: integrations, loading: integrationsLoading, error: integrationsError, refresh: refreshIntegrations, connect, disconnect } = useExchangeIntegrations();
+  const { items: integrations, loading: integrationsLoading, error: integrationsError, refresh: refreshIntegrations, connect, disconnect, setActive } = useExchangeIntegrations();
+  const [activateBusy, setActivateBusy] = useState<string | null>(null); // accountId being activated
   const { items: snapshots, closedTrades, loading: snapshotLoading, error: snapshotError, refresh: refreshSnapshots } =
     useAccountSnapshot({ pollMs: 12_000 });
   const {
@@ -109,7 +110,8 @@ export default function ProfileScreen() {
   const canUseExchangeApi = authMode === 'dev' || Boolean(user);
   const mexcIntegration = integrations.find((item) => item.exchange === 'mexc');
   const bybitIntegration = integrations.find((item) => item.exchange === 'bybit');
-  const primaryIntegration = mexcIntegration ?? bybitIntegration ?? integrations[0] ?? null;
+  const activeIntegration = integrations.find((item) => item.isActive) ?? null;
+  const primaryIntegration = activeIntegration ?? mexcIntegration ?? bybitIntegration ?? integrations[0] ?? null;
   const connectedExchangeLabel = primaryIntegration ? primaryIntegration.exchange.toUpperCase() : null;
   const lastSynced = primaryIntegration?.lastValidatedAt
     ? new Date(primaryIntegration.lastValidatedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
@@ -463,54 +465,76 @@ export default function ProfileScreen() {
             const integration = integrations.find((i) => i.exchange === exchange);
             const snapshot = snapshots.find((s) => s.exchange === exchange);
             const connected = Boolean(integration);
-            const otherConnected = integrations.some((i) => i.exchange !== exchange);
+            const isActive = integration?.isActive ?? false;
+            const isInvalid = integration?.status === 'invalid';
             return (
               <div
                 key={exchange}
                 className={`rounded-xl border p-2.5 transition ${
-                  connected
+                  isActive
                     ? 'border-sigflo-accent/30 bg-[#101916] shadow-[0_0_26px_-16px_rgba(0,255,200,0.45)]'
-                    : 'border-white/[0.06] bg-sigflo-elevated'
+                    : connected
+                      ? 'border-white/[0.12] bg-sigflo-elevated'
+                      : 'border-white/[0.06] bg-sigflo-elevated'
                 }`}
               >
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm font-semibold uppercase text-white">{exchange}</p>
-                    <p className={`text-[11px] font-medium ${connected ? 'text-emerald-300' : 'text-sigflo-muted'}`}>
-                      {connected ? 'Connected' : 'Not connected'}
+                    <div className="flex items-center gap-1.5">
+                      <p className="text-sm font-semibold uppercase text-white">{exchange}</p>
+                      {isActive && (
+                        <span className="rounded-full bg-sigflo-accent/20 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-sigflo-accent">
+                          Active
+                        </span>
+                      )}
+                    </div>
+                    <p className={`text-[11px] font-medium ${isActive ? 'text-emerald-300' : connected ? 'text-cyan-300/70' : 'text-sigflo-muted'}`}>
+                      {isActive ? 'Active exchange' : connected ? 'Connected' : 'Not connected'}
                     </p>
                     <p className="text-[11px] text-sigflo-muted">
                       {connected
-                        ? `Last synced: ${
-                            integration?.lastValidatedAt
-                              ? new Date(integration.lastValidatedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
-                              : 'just now'
-                          }`
-                        : otherConnected
-                          ? 'Disconnect the active exchange first'
-                          : 'Link API keys — withdrawals must be off'}
+                        ? isInvalid
+                          ? 'API key invalid — reconnect to fix'
+                          : `Last synced: ${
+                              integration?.lastValidatedAt
+                                ? new Date(integration.lastValidatedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+                                : 'just now'
+                            }`
+                        : 'Link API keys — withdrawals must be off'}
                     </p>
                   </div>
                   {connected ? (
-                    <div className="flex shrink-0 items-center gap-1.5">
-                      <a
-                        href={exchange === 'bybit' ? BYBIT_API_KEYS_HREF : MEXC_API_KEYS_HREF}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        title={`Open ${exchange.toUpperCase()} API key settings in a new tab`}
+                    <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
+                      {!isActive && integration && (
+                        <button
+                          type="button"
+                          disabled={activateBusy === integration.id}
+                          onClick={async () => {
+                            if (!integration) return;
+                            setActivateBusy(integration.id);
+                            try {
+                              await setActive(integration.id);
+                            } catch (e) {
+                              setConnectError(e instanceof Error ? e.message : 'Failed to switch exchange.');
+                            } finally {
+                              setActivateBusy(null);
+                            }
+                          }}
+                          className="rounded-lg border border-sigflo-accent/30 bg-sigflo-accent/10 px-2 py-1 text-[11px] font-semibold text-sigflo-accent transition hover:bg-sigflo-accent/15 disabled:cursor-not-allowed disabled:opacity-40"
+                        >
+                          {activateBusy === integration.id ? 'Switching...' : 'Set Active'}
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setConnectError(null);
+                          setExchangeForm({ exchange, apiKey: '', apiSecret: '', passphrase: '' });
+                        }}
                         className="rounded-lg border border-white/[0.14] bg-white/[0.04] px-2 py-1 text-[11px] font-semibold text-sigflo-text transition hover:bg-white/[0.08]"
                       >
-                        API Keys
-                      </a>
-                      <a
-                        href={EXCHANGE_API_DOCS_HREF[exchange]}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        title={`Open ${exchange.toUpperCase()} API documentation in a new tab`}
-                        className="rounded-lg border border-white/[0.14] bg-white/[0.04] px-2 py-1 text-[11px] font-semibold text-sigflo-text transition hover:bg-white/[0.08]"
-                      >
-                        API Docs
-                      </a>
+                        Reconnect
+                      </button>
                       <a
                         href={exchange === 'bybit' ? BYBIT_DEPOSIT_HREF : MEXC_DEPOSIT_HREF}
                         target="_blank"
@@ -525,7 +549,7 @@ export default function ProfileScreen() {
                         onClick={() => setDisconnectTarget(exchange)}
                         className="rounded-lg border border-rose-400/30 bg-rose-500/10 px-2 py-1 text-[11px] font-semibold text-rose-200 transition hover:bg-rose-500/15"
                       >
-                        Disconnect
+                        Remove
                       </button>
                     </div>
                   ) : (
@@ -550,8 +574,7 @@ export default function ProfileScreen() {
                       </a>
                       <button
                         type="button"
-                        disabled={!canUseExchangeApi || otherConnected}
-                        title={otherConnected ? 'Disconnect the active exchange first' : undefined}
+                        disabled={!canUseExchangeApi}
                         onClick={() => {
                           setConnectError(null);
                           setExchangeForm({ exchange, apiKey: '', apiSecret: '', passphrase: '' });

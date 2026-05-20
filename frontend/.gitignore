@@ -13,3 +13,7 @@ dist
 
 # Claude local worktrees (nested repos; not part of Sigflo source)
 .claude/worktrees/
+
+# Compiled JS artefacts — TypeScript source is in .tsx / .ts files.
+# These .js files are build outputs that must not be committed.
+src/**/*.js

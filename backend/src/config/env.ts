@@ -51,6 +51,14 @@ const envSchema = z.object({
     .optional()
     .transform((v) => (v === '1' || v === 'true' || v === 'yes' ? 'true' : 'false')),
   OPENAI_API_KEY: z.string().optional(),
+  /**
+   * Explicit opt-in flag to allow unauthenticated requests via spoofable x-user-id header.
+   * Must be set to exactly "true" in .env. Never enable in production.
+   */
+  BYPASS_AUTH: z
+    .string()
+    .optional()
+    .transform((v) => v === 'true'),
 });
 
 const parsed = envSchema.safeParse(process.env);

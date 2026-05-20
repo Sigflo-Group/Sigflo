@@ -1170,7 +1170,10 @@ export function TradeScreen() {
     return next;
   }, [mergedModel, stopParsed, targetParsed, tradeBalance, linkedUtaRawMaxUsd]);
 
-  const markForManage = manageFastMark ?? live.lastPrice ?? manageCtx?.markPrice ?? mergedModel.lastPrice;
+  // live.lastPrice updates on every WS trade/ticker event (immediateUiOnTick: true).
+  // manageFastMark carries the WS mark price, but mark price only changes in ticker delta messages
+  // (not on every trade), so it lags behind. Prioritise lastPrice to keep the P&L live.
+  const markForManage = live.lastPrice ?? manageFastMark ?? manageCtx?.markPrice ?? mergedModel.lastPrice;
 
   const insightTicker = useMemo((): SymbolTicker | undefined => {
     if (live.lastPrice == null || live.high24h == null || live.low24h == null) return undefined;

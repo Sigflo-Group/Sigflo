@@ -4,6 +4,8 @@ export type IntegrationStatus = {
   id: string;
   exchange: ExchangeId;
   status: 'connected' | 'invalid';
+  isActive: boolean;
+  accountLabel: string | null;
   lastValidatedAt: string | null;
   createdAt: string;
   updatedAt: string;

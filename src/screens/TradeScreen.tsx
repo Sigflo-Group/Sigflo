@@ -3313,19 +3313,17 @@ export function TradeScreen() {
       }
       const tpExisting = exchangePositionForSymbol.takeProfitPrice;
       const slExisting = exchangePositionForSymbol.stopLossPrice;
+      // When the caller doesn't supply a valid new price (absent, wrong-side, or non-finite),
+      // preserve whatever the exchange already has rather than sending '0' (which clears the leg).
       const takeProfit =
         tpSl.takeProfit ??
-        (skippedTarget
-          ? (tpExisting != null && Number.isFinite(tpExisting) && tpExisting > 0
-              ? formatLinearPriceStringForBybit(tpExisting)
-              : '') || '0'
+        (tpExisting != null && Number.isFinite(tpExisting) && tpExisting > 0
+          ? formatLinearPriceStringForBybit(tpExisting)
           : '0');
       const stopLoss =
         tpSl.stopLoss ??
-        (skippedStop
-          ? (slExisting != null && Number.isFinite(slExisting) && slExisting > 0
-              ? formatLinearPriceStringForBybit(slExisting)
-              : '') || '0'
+        (slExisting != null && Number.isFinite(slExisting) && slExisting > 0
+          ? formatLinearPriceStringForBybit(slExisting)
           : '0');
       setOrderPending('tpsl');
       try {

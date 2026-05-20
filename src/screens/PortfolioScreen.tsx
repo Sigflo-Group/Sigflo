@@ -441,10 +441,13 @@ export default function PortfolioScreen() {
               {positions.map((p) => {
                 const current = p.markPrice ?? p.entryPrice;
                 const pnl = p.unrealizedPnl ?? 0;
-                const pnlPct =
-                  p.entryPrice > 0
-                    ? ((p.side === 'long' ? current - p.entryPrice : p.entryPrice - current) / p.entryPrice) * 100
-                    : 0;
+                const lev = p.leverage != null && p.leverage > 0 ? p.leverage : 1;
+                const posNotional = Math.abs(p.size) * (current > 0 ? current : p.entryPrice);
+                const margin =
+                  p.positionIM != null && p.positionIM > 0
+                    ? p.positionIM
+                    : posNotional / Math.max(1, lev);
+                const pnlPct = margin > 0 ? (pnl / margin) * 100 : 0;
                 const up = pnl >= 0;
                 const realizedPnl = realizedPnlByExchangeSymbol.get(`${p.exchange}:${p.symbol}`) ?? 0;
                 const realizedUp = realizedPnl >= 0;

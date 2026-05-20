@@ -732,6 +732,17 @@ export function TradeScreen() {
     );
   }, [liveSignals]);
 
+  const { items: accountSnapshots, refresh: refreshAccountSnapshots } = useAccountSnapshot({ pollMs: 12_000 });
+  const bybitSnap = useMemo(
+    () => accountSnapshots.find((s) => s.exchange === 'bybit' && s.status === 'connected'),
+    [accountSnapshots],
+  );
+  const mexcSnap = useMemo(
+    () => accountSnapshots.find((s) => s.exchange === 'mexc' && s.status === 'connected'),
+    [accountSnapshots],
+  );
+  const activeExchange: 'bybit' | 'mexc' | null = bybitSnap ? 'bybit' : mexcSnap ? 'mexc' : null;
+
   const live = useLiveTradeMarket(liveSymbol, chartInterval, {
     uiThrottleMs: isManageMode ? 16 : undefined,
     immediateUiOnTick: isManageMode,
@@ -760,7 +771,6 @@ export function TradeScreen() {
     const id = window.setInterval(push, 25);
     return () => window.clearInterval(id);
   }, [isManageMode, live.tickSnapshotRef, live.lastPrice]);
-  const { items: accountSnapshots, refresh: refreshAccountSnapshots } = useAccountSnapshot({ pollMs: 12_000 });
 
   const liveMarketTickerItems = useMemo(
     () =>
@@ -996,15 +1006,6 @@ export function TradeScreen() {
     };
   }, [market, mergedModel.pair]);
 
-  const bybitSnap = useMemo(
-    () => accountSnapshots.find((s) => s.exchange === 'bybit' && s.status === 'connected'),
-    [accountSnapshots],
-  );
-  const mexcSnap = useMemo(
-    () => accountSnapshots.find((s) => s.exchange === 'mexc' && s.status === 'connected'),
-    [accountSnapshots],
-  );
-  const activeExchange: 'bybit' | 'mexc' | null = bybitSnap ? 'bybit' : mexcSnap ? 'mexc' : null;
   const riskSettings = useRiskSettings();
   const dailyRiskGuard = useDailyRiskGuard();
   const dailyReviewLocked = Boolean(isBotsReviewCockpit && dailyRiskGuard.status === 'locked');

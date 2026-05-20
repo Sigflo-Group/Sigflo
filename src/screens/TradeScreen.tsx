@@ -1198,9 +1198,26 @@ export function TradeScreen() {
             : entry;
       const notional = Math.abs(pos.size) * (entry > 0 ? entry : manageCtx.entryPrice);
       const usd = notional > 0 ? notional : manageCtx.positionUsd;
-      return managePnlFromPrices(pos.side, entry, markPx, usd);
+      const { pnlUsd } = managePnlFromPrices(pos.side, entry, markPx, usd);
+      // Show return on margin so the % reflects actual capital at risk (matches what the exchange shows).
+      // positionIM is the initial margin in USD sent by Bybit; fall back to notional/leverage.
+      const lev = pos.leverage ?? manageCtx.leverage;
+      const marginBase =
+        pos.positionIM != null && pos.positionIM > 0
+          ? pos.positionIM
+          : lev && lev > 1 && notional > 0
+            ? notional / lev
+            : null;
+      const pnlPct = marginBase != null ? (pnlUsd / marginBase) * 100 : (pnlUsd / usd) * 100;
+      return { pnlUsd, pnlPct };
     }
-    return managePnlFromPrices(manageCtx.side, manageCtx.entryPrice, markForManage, manageCtx.positionUsd);
+    const result = managePnlFromPrices(manageCtx.side, manageCtx.entryPrice, markForManage, manageCtx.positionUsd);
+    // Without a live exchange snapshot the leverage comes from the URL context.
+    const lev = manageCtx.leverage;
+    if (lev && lev > 1) {
+      return { pnlUsd: result.pnlUsd, pnlPct: result.pnlPct * lev };
+    }
+    return result;
   }, [exchangePositionForSymbol, isManageMode, manageCtx, markForManage, market]);
 
   const manageInsightLine = useMemo(() => {

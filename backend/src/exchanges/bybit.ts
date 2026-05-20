@@ -549,6 +549,13 @@ function resolveFundingPrimary(bucket: AccountBucketSnapshot | undefined): { amo
 
 export class BybitAdapter implements ExchangeAdapter {
   readonly id = 'bybit' as const;
+  readonly capabilities = {
+    spot: true,
+    futures: true,
+    hedgeMode: true,
+    trailingStop: true,
+    closedPnl: true,
+  } as const;
 
   async validateReadOnly(input: ConnectInput): Promise<ValidationResult> {
     const result = await privateGet<BybitQueryApiResult>('/v5/user/query-api', {}, input);

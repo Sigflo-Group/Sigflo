@@ -189,6 +189,13 @@ function parsePermission(raw: MexcAccountResponse): PermissionCheck {
 
 export class MexcAdapter implements ExchangeAdapter {
   readonly id = 'mexc' as const;
+  readonly capabilities = {
+    spot: true,
+    futures: true,
+    hedgeMode: false,
+    trailingStop: false,
+    closedPnl: true,
+  } as const;
 
   async validateReadOnly(input: ConnectInput): Promise<ValidationResult> {
     const account = await spotPrivateGet<MexcAccountResponse>('/api/v3/account', {}, input);

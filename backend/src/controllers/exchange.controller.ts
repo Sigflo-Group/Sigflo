@@ -1,6 +1,6 @@
 import type { Response } from 'express';
 import type { AuthedRequest } from '../middleware/auth.js';
-import { getAdapter } from '../exchanges/registry.js';
+import { getAdapter, getSupportedExchanges } from '../core/exchange-registry.js';
 import type { ExchangeId } from '../exchanges/types.js';
 import {
   getBrokerAccountForUser,
@@ -13,7 +13,7 @@ import { encryptBrokerCredential, decryptBrokerCredential } from '../services/ex
 import { writeAuditLog } from '../services/auditLog.service.js';
 import { log } from '../lib/logger.js';
 
-const SUPPORTED_BROKERS: ExchangeId[] = ['bybit', 'mexc'];
+const SUPPORTED_BROKERS: ExchangeId[] = getSupportedExchanges();
 
 function formatAccount(a: BrokerAccountRow) {
   return {
@@ -170,4 +170,92 @@ export async function deleteExchange(req: AuthedRequest, res: Response) {
   });
 
   return res.status(204).end();
+}
+
+/**
+ * Switch the active exchange.
+ *
+ * Flow:
+ * 1. Validate new exchange credentials.
+ * 2. Delete all existing exchange accounts for the user.
+ * 3. Store the new exchange as the only active account.
+ *
+ * This ensures exactly one exchange is active at all times.
+ */
+export async function switchExchange(req: AuthedRequest, res: Response) {
+  if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
+
+  const { broker, apiKey, apiSecret, accountLabel } = req.body as {
+    broker: ExchangeId;
+    apiKey: string;
+    apiSecret: string;
+    accountLabel?: string;
+  };
+
+  if (!SUPPORTED_BROKERS.includes(broker)) {
+    return res.status(400).json({ error: `Unsupported exchange: ${broker}` });
+  }
+
+  log('info', 'Exchange switch attempt.', { userId: req.user.userId, broker });
+
+  let validation: Awaited<ReturnType<ReturnType<typeof getAdapter>['validateReadOnly']>>;
+  try {
+    const adapter = getAdapter(broker);
+    validation = await adapter.validateReadOnly({ apiKey, apiSecret });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    log('warn', 'Exchange switch — adapter threw during validation.', { userId: req.user.userId, broker, error: msg });
+    return res.status(400).json({ error: `Connection failed: ${msg}` });
+  }
+
+  if (!validation.ok) {
+    log('warn', 'Exchange switch validation failed.', { userId: req.user.userId, broker, reason: validation.message });
+    await writeAuditLog({
+      userId: req.user.userId,
+      requestId: req.requestId,
+      action: 'exchange.switch',
+      objectType: 'broker_account',
+      outcome: 'failure',
+      payload: { broker },
+      ipAddress: req.auditContext?.ipAddress,
+      userAgent: req.auditContext?.userAgent,
+      metadata: { reason: validation.message },
+    });
+    return res.status(400).json({ error: validation.message });
+  }
+
+  // Remove all existing exchanges — only one may be active.
+  const existingAccounts = await listBrokerAccountsForUser(req.user.userId);
+  for (const existing of existingAccounts) {
+    if (existing.broker !== broker) {
+      await deleteBrokerAccount(req.user.userId, existing.broker);
+      log('info', 'Exchange removed during switch.', { userId: req.user.userId, removed: existing.broker, next: broker });
+    }
+  }
+
+  const account = await upsertBrokerAccount({
+    userId: req.user.userId,
+    broker,
+    accountLabel: accountLabel ?? null,
+    apiKeyEncrypted: encryptBrokerCredential(apiKey),
+    apiSecretEncrypted: encryptBrokerCredential(apiSecret),
+    permissions: { withdrawalsEnabled: false },
+    status: 'connected',
+  });
+
+  log('info', 'Exchange switched successfully.', { userId: req.user.userId, broker, accountId: account.id });
+
+  await writeAuditLog({
+    userId: req.user.userId,
+    requestId: req.requestId,
+    action: 'exchange.switch',
+    objectType: 'broker_account',
+    objectId: account.id,
+    outcome: 'success',
+    payload: { broker },
+    ipAddress: req.auditContext?.ipAddress,
+    userAgent: req.auditContext?.userAgent,
+  });
+
+  return res.json(formatAccount(account));
 }

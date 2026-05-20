@@ -1,0 +1,16 @@
+export type {
+  ExchangeId,
+  ConnectInput,
+  PermissionCheck,
+  ValidationResult,
+  BalanceItem,
+  AccountBucketKind,
+  AccountBucketMetrics,
+  AccountBucketSnapshot,
+  AccountOverview,
+  ExchangeAccountBreakdown,
+  PositionItem,
+  ClosedTradeItem,
+  ExchangeCapabilities,
+  ExchangeAdapter,
+} from '../exchanges/types.js';

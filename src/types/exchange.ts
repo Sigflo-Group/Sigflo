@@ -8,8 +8,10 @@ export type BrokerLinkStatus = {
   lastValidatedAt: string | null;
 };
 
+export type SupportedExchangeId = 'bybit' | 'mexc';
+
 export type LinkExchangeRequest = {
-  broker: 'bybit';
+  broker: SupportedExchangeId;
   apiKey: string;
   apiSecret: string;
   accountLabel?: string;

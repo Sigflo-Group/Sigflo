@@ -2,7 +2,7 @@ import { Router } from 'express';
 import type { AuthedRequest } from '../middleware/auth.js';
 import { listBrokerAccountsForUser } from '../db/queries/brokerAccounts.js';
 import { decryptBrokerCredential } from '../services/exchangeKey.service.js';
-import { getAdapter } from '../exchanges/registry.js';
+import { getAdapter } from '../core/exchange-registry.js';
 import { log } from '../lib/logger.js';
 import type { ClosedTradeItem, ExchangeId } from '../exchanges/types.js';
 

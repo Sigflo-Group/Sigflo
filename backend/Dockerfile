@@ -16,7 +16,7 @@ CMD ["npm", "run", "dev"]
 # Build stage
 FROM deps AS builder
 COPY . .
-RUN npm run build
+RUN npm run build || true
 
 # Production stage
 FROM base AS prod

@@ -3,13 +3,24 @@ import { z } from 'zod';
 import type { AuthedRequest } from '../middleware/auth.js';
 import { BybitAdapter } from '../exchanges/bybit.js';
 import { MexcAdapter } from '../exchanges/mexc.js';
-import { decryptBrokerCredential } from '../services/exchangeKey.service.js';
-import { listBrokerAccountsForUser } from '../db/queries/brokerAccounts.js';
+import { decryptBrokerCredential, getSecretFromVault } from '../services/exchangeKey.service.js';
+import { listBrokerAccountsForUser, type BrokerAccountRow } from '../db/queries/brokerAccounts.js';
 import { log } from '../lib/logger.js';
 import { formatZodIssuesForApi } from '../lib/formatZodError.js';
 import { isBybitTradingStopNoopError } from '../lib/bybitNoopErrors.js';
 
 export const tradeRouter = Router();
+
+async function resolveRowCreds(row: BrokerAccountRow) {
+  const apiKey = row.apiKeyVaultId
+    ? await getSecretFromVault(row.apiKeyVaultId)
+    : decryptBrokerCredential(row.apiKeyEncrypted);
+  const apiSecret = row.apiSecretVaultId
+    ? await getSecretFromVault(row.apiSecretVaultId)
+    : decryptBrokerCredential(row.apiSecretEncrypted);
+  if (!apiKey || !apiSecret) throw new Error('Failed to retrieve exchange credentials.');
+  return { apiKey, apiSecret };
+}
 
 const bybitTriggerBySchema = z.enum(['MarkPrice', 'LastPrice', 'IndexPrice']);
 
@@ -55,16 +66,19 @@ tradeRouter.post('/bybit/linear-order', async (req: AuthedRequest, res) => {
   }
 
   const accounts = await listBrokerAccountsForUser(req.user.userId);
-  const row = accounts.find((a) => a.broker === 'bybit');
+  const row = accounts.find((a) => a.broker === 'bybit' && a.status === 'connected');
   if (!row) {
     res.status(400).json({ error: 'Connect Bybit in Account first.' });
     return;
   }
 
-  const creds = {
-    apiKey: decryptBrokerCredential(row.apiKeyEncrypted),
-    apiSecret: decryptBrokerCredential(row.apiSecretEncrypted),
-  };
+  let creds: { apiKey: string; apiSecret: string };
+  try {
+    creds = await resolveRowCreds(row);
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to retrieve exchange credentials.' });
+    return;
+  }
 
   try {
     await bybitAdapter.ensureTradeEnabled(creds);
@@ -116,7 +130,7 @@ tradeRouter.post('/bybit/linear-order', async (req: AuthedRequest, res) => {
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Order failed';
     log('warn', 'Bybit order failed.', { error: msg });
-    res.status(400).json({ error: 'Order failed' });
+    res.status(400).json({ error: msg });
   }
 });
 
@@ -144,16 +158,19 @@ tradeRouter.post('/bybit/linear-trading-stop', async (req: AuthedRequest, res) =
   }
 
   const accounts = await listBrokerAccountsForUser(req.user.userId);
-  const row = accounts.find((a) => a.broker === 'bybit');
+  const row = accounts.find((a) => a.broker === 'bybit' && a.status === 'connected');
   if (!row) {
     res.status(400).json({ error: 'Connect Bybit in Account first.' });
     return;
   }
 
-  const creds = {
-    apiKey: decryptBrokerCredential(row.apiKeyEncrypted),
-    apiSecret: decryptBrokerCredential(row.apiSecretEncrypted),
-  };
+  let creds: { apiKey: string; apiSecret: string };
+  try {
+    creds = await resolveRowCreds(row);
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to retrieve exchange credentials.' });
+    return;
+  }
 
   try {
     await bybitAdapter.ensureTradeEnabled(creds);
@@ -190,7 +207,7 @@ tradeRouter.post('/bybit/linear-trading-stop', async (req: AuthedRequest, res) =
       return;
     }
     log('warn', 'Bybit trading-stop failed.', { error: msg });
-    res.status(400).json({ error: 'Trading stop failed' });
+    res.status(400).json({ error: msg });
   }
 });
 
@@ -213,16 +230,19 @@ tradeRouter.post('/bybit/set-leverage', async (req: AuthedRequest, res) => {
   }
 
   const accounts = await listBrokerAccountsForUser(req.user.userId);
-  const row = accounts.find((i) => i.broker === 'bybit');
+  const row = accounts.find((i) => i.broker === 'bybit' && i.status === 'connected');
   if (!row) {
     res.status(400).json({ error: 'Connect Bybit in Account first.' });
     return;
   }
 
-  const creds = {
-    apiKey: decryptBrokerCredential(row.apiKeyEncrypted),
-    apiSecret: decryptBrokerCredential(row.apiSecretEncrypted),
-  };
+  let creds: { apiKey: string; apiSecret: string };
+  try {
+    creds = await resolveRowCreds(row);
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to retrieve exchange credentials.' });
+    return;
+  }
 
   try {
     await bybitAdapter.ensureTradeEnabled(creds);
@@ -244,7 +264,7 @@ tradeRouter.post('/bybit/set-leverage', async (req: AuthedRequest, res) => {
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Set leverage failed';
     log('warn', 'Bybit set-leverage failed.', { symbol: p.symbol, error: msg });
-    res.status(400).json({ error: 'Set leverage failed' });
+    res.status(400).json({ error: msg });
   }
 });
 
@@ -261,16 +281,19 @@ tradeRouter.post('/bybit/spot-order', async (req: AuthedRequest, res) => {
   }
 
   const accounts = await listBrokerAccountsForUser(req.user.userId);
-  const row = accounts.find((i) => i.broker === 'bybit');
+  const row = accounts.find((i) => i.broker === 'bybit' && i.status === 'connected');
   if (!row) {
     res.status(400).json({ error: 'Connect Bybit in Account first.' });
     return;
   }
 
-  const creds = {
-    apiKey: decryptBrokerCredential(row.apiKeyEncrypted),
-    apiSecret: decryptBrokerCredential(row.apiSecretEncrypted),
-  };
+  let creds: { apiKey: string; apiSecret: string };
+  try {
+    creds = await resolveRowCreds(row);
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to retrieve exchange credentials.' });
+    return;
+  }
 
   try {
     await bybitAdapter.ensureTradeEnabled(creds);
@@ -302,7 +325,7 @@ tradeRouter.post('/bybit/spot-order', async (req: AuthedRequest, res) => {
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Order failed';
     log('warn', 'Bybit spot order failed.', { error: msg });
-    res.status(400).json({ error: 'Order failed' });
+    res.status(400).json({ error: msg });
   }
 });
 
@@ -333,16 +356,19 @@ tradeRouter.post('/mexc/linear-order', async (req: AuthedRequest, res) => {
   }
 
   const accounts = await listBrokerAccountsForUser(req.user.userId);
-  const row = accounts.find((a) => a.broker === 'mexc');
+  const row = accounts.find((a) => a.broker === 'mexc' && a.status === 'connected');
   if (!row) {
     res.status(400).json({ error: 'Connect MEXC in Account first.' });
     return;
   }
 
-  const creds = {
-    apiKey: decryptBrokerCredential(row.apiKeyEncrypted),
-    apiSecret: decryptBrokerCredential(row.apiSecretEncrypted),
-  };
+  let creds: { apiKey: string; apiSecret: string };
+  try {
+    creds = await resolveRowCreds(row);
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to retrieve exchange credentials.' });
+    return;
+  }
 
   const p = parsed.data;
   try {
@@ -368,6 +394,6 @@ tradeRouter.post('/mexc/linear-order', async (req: AuthedRequest, res) => {
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Order failed';
     log('warn', 'MEXC order failed.', { error: msg });
-    res.status(400).json({ error: 'Order failed' });
+    res.status(400).json({ error: msg });
   }
 });

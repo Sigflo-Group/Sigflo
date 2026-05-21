@@ -17,7 +17,6 @@ export function ExchangeSwitcher({ onAddExchange }: Props) {
   const [switchingId, setSwitchingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const activeExchange = items.find((e) => e.isActive);
   const connectedExchanges = items.filter((e) => e.status === 'connected');
 
   const handleSwitch = useCallback(

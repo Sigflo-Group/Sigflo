@@ -4,14 +4,6 @@ import type { ExchangeId } from '@/types/integrations';
 import type { ExchangeConnectionStep } from '@/types/security';
 import { useExchangeIntegrations } from '@/hooks/useExchangeIntegrations';
 
-const STEP_ORDER: ExchangeConnectionStep[] = [
-  'choose_exchange',
-  'risk_disclosure',
-  'create_key',
-  'enter_credentials',
-  'validating',
-  'success',
-];
 
 const EXCHANGE_META: Record<ExchangeId, { name: string; logo: string; docsUrl: string; keyCreationUrl: string; description: string }> = {
   bybit: {
@@ -46,9 +38,11 @@ export function ExchangeConnectionWizard({ onComplete, onCancel }: Props) {
 
   const { connect } = useExchangeIntegrations();
 
-  const stepIndex = STEP_ORDER.indexOf(step);
-  const visibleSteps = STEP_ORDER.filter((s) => s !== 'validating' && s !== 'success');
-  const displayIndex = visibleSteps.indexOf(step);
+  const visibleSteps = ['choose_exchange', 'risk_disclosure', 'create_key', 'enter_credentials'] as const;
+  type VisibleStep = typeof visibleSteps[number];
+  const displayIndex = (visibleSteps as readonly string[]).includes(step)
+    ? visibleSteps.indexOf(step as VisibleStep)
+    : visibleSteps.length - 1;
 
   const advance = useCallback((next: ExchangeConnectionStep) => {
     setError(null);

@@ -88,7 +88,7 @@ function AuditRow({ entry }: { entry: AuditLogEntry }) {
           {entry.ipAddress && (
             <span className="text-xs text-sigflo-muted">{entry.ipAddress}</span>
           )}
-          {isFailure && entry.metadata?.reason && (
+          {isFailure && entry.metadata?.reason != null && (
             <span className="text-xs text-sigflo-loss/70 truncate">
               {String(entry.metadata.reason)}
             </span>

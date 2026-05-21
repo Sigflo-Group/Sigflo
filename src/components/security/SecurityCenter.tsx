@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { getSecuritySummary } from '@/services/api/securityClient';
-import type { SecuritySummary, PermissionAuditResult } from '@/types/security';
+import type { SecuritySummary } from '@/types/security';
 import type { IntegrationStatus } from '@/types/integrations';
 import { useExchangeIntegrations } from '@/hooks/useExchangeIntegrations';
 import { useAuth } from '@/context/AuthContext';
@@ -24,8 +24,6 @@ export function SecurityCenter({ onConnectExchange }: Props) {
   const [summaryLoading, setSummaryLoading] = useState(true);
   const [panel, setPanel] = useState<Panel>('overview');
   const [selectedAccount, setSelectedAccount] = useState<IntegrationStatus | null>(null);
-
-  const activeExchange = exchanges.find((e) => e.isActive) ?? exchanges[0] ?? null;
 
   const loadSummary = useCallback(async () => {
     setSummaryLoading(true);
@@ -283,7 +281,6 @@ function ExchangeAccountCard({
   onDelete: () => void;
   permissionSnapshot?: { hasWithdrawalRisk: boolean; readOnly: boolean } | undefined;
 }) {
-  const [auditResult, setAuditResult] = useState<PermissionAuditResult | null>(null);
   const isConnected = account.status === 'connected';
   const hasRisk = permissionSnapshot?.hasWithdrawalRisk ?? false;
 
@@ -345,7 +342,7 @@ function ExchangeAccountCard({
             <div className="px-4 pb-4 pt-1 space-y-4 border-t border-white/5">
               <PermissionStatusCard
                 account={account}
-                onAuditComplete={setAuditResult}
+                onAuditComplete={() => {}}
               />
 
               <div className="grid grid-cols-2 gap-2">

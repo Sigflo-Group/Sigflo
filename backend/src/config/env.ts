@@ -57,6 +57,14 @@ const envSchema = z.object({
    * Same list used by the Netlify admin-beta function.
    */
   SIGFLO_BETA_ADMIN_EMAILS: z.string().optional(),
+  /**
+   * Explicit opt-in flag to allow unauthenticated requests via spoofable x-user-id header.
+   * Must be set to exactly "true" in .env. Never enable in production.
+   */
+  BYPASS_AUTH: z
+    .string()
+    .optional()
+    .transform((v) => v === 'true'),
 });
 
 const parsed = envSchema.safeParse(process.env);

@@ -46,8 +46,9 @@ export async function requireAuth(req: AuthedRequest, res: Response, next: NextF
       return;
     }
 
-    // Dev fallback only enabled in development mode.
-    if (env.NODE_ENV === 'development' && !env.SUPABASE_JWT_SECRET) {
+    // Header-based bypass must be explicitly enabled via BYPASS_AUTH=true in the
+    // environment. Never set this in production — x-user-id is a spoofable header.
+    if (env.BYPASS_AUTH) {
       const userId = req.header('x-user-id')?.trim();
       if (userId) {
         const email = req.header('x-user-email')?.trim() || `${userId}@dev.local`;

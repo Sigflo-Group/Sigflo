@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { Navigate, Outlet, Route, Routes, useLocation } from 'react-router-dom';
 import { AppShell } from '@/components/layout/AppShell';
 import { BetaAccessGate } from '@/components/layout/BetaAccessGate';
@@ -11,30 +11,38 @@ import { useAuth } from '@/context/AuthContext';
 import { useAuthProvider } from '@/providers/AuthProvider';
 import { isTradingStyleOnboarded } from '@/lib/tradingStyleOnboarding';
 import { isExchangeConnectOnboardingSeen } from '@/lib/exchangeConnectOnboarding';
-import AuthCallbackScreen from '@/screens/AuthCallbackScreen';
-import ResetPasswordScreen from '@/screens/ResetPasswordScreen';
-import BotDetailScreen from '@/screens/BotDetailScreen';
-import BotFocusScreen from '@/screens/BotFocusScreen';
-import BotSettingsScreen from '@/screens/BotSettingsScreen';
-import BotsScreen from '@/screens/BotsScreen';
-import RiskControlsScreen from '@/screens/RiskControlsScreen';
-import EngineDetailScreen from '@/screens/EngineDetailScreen';
-import { EngineDebugScreen } from '@/screens/EngineDebugScreen';
-import { FeedScreen } from '@/screens/FeedScreen';
-import BetaAdminScreen from '@/screens/BetaAdminScreen';
-import LoginScreen from '@/screens/LoginScreen';
-import MarketsScreen from '@/screens/MarketsScreen';
-import OnboardingTradingStyleScreen from '@/screens/OnboardingTradingStyleScreen';
-import OnboardingConnect from '@/screens/Onboarding/OnboardingConnect';
-import PortfolioScreen from '@/screens/PortfolioScreen';
-import PrivacyPolicyScreen from '@/screens/PrivacyPolicyScreen';
-import ProfileScreen from '@/screens/ProfileScreen';
-import { ScannerLabScreen } from '@/screens/ScannerLabScreen';
-import { TradeScreen } from '@/screens/TradeScreen';
 import { SignalEngineProviderShell } from '@/components/layout/SignalEngineProviderShell';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import { StepUpProtectedRoute } from '@/components/auth/StepUpProtectedRoute';
-import StepUpVerificationScreen from '@/screens/StepUpVerificationScreen';
+
+// ─── Eagerly loaded ───────────────────────────────────────────────────────────
+// Keep screens that appear in the auth / splash critical path eager so there
+// is no additional chunk to fetch before the user can sign in or land on feed.
+import AuthCallbackScreen from '@/screens/AuthCallbackScreen';
+import ResetPasswordScreen from '@/screens/ResetPasswordScreen';
+import LoginScreen from '@/screens/LoginScreen';
+import { FeedScreen } from '@/screens/FeedScreen';
+import OnboardingTradingStyleScreen from '@/screens/OnboardingTradingStyleScreen';
+import OnboardingConnect from '@/screens/Onboarding/OnboardingConnect';
+import BetaAdminScreen from '@/screens/BetaAdminScreen';
+import PrivacyPolicyScreen from '@/screens/PrivacyPolicyScreen';
+
+// ─── Lazy loaded ─────────────────────────────────────────────────────────────
+// Heavy screens (TradeScreen ≈ 5 400 lines, BotFocusScreen ≈ 1 700 lines) are
+// split into their own chunks so the initial bundle stays lean.
+const TradeScreen = lazy(() => import('@/screens/TradeScreen').then((m) => ({ default: m.TradeScreen })));
+const BotFocusScreen = lazy(() => import('@/screens/BotFocusScreen'));
+const BotDetailScreen = lazy(() => import('@/screens/BotDetailScreen'));
+const BotSettingsScreen = lazy(() => import('@/screens/BotSettingsScreen'));
+const BotsScreen = lazy(() => import('@/screens/BotsScreen'));
+const MarketsScreen = lazy(() => import('@/screens/MarketsScreen'));
+const PortfolioScreen = lazy(() => import('@/screens/PortfolioScreen'));
+const ProfileScreen = lazy(() => import('@/screens/ProfileScreen'));
+const RiskControlsScreen = lazy(() => import('@/screens/RiskControlsScreen'));
+const EngineDetailScreen = lazy(() => import('@/screens/EngineDetailScreen'));
+const StepUpVerificationScreen = lazy(() => import('@/screens/StepUpVerificationScreen'));
+const EngineDebugScreen = lazy(() => import('@/screens/EngineDebugScreen').then((m) => ({ default: m.EngineDebugScreen })));
+const ScannerLabScreen = lazy(() => import('@/screens/ScannerLabScreen').then((m) => ({ default: m.ScannerLabScreen })));
 
 function ProtectedLayout() {
   const { user, loading } = useAuthProvider();
@@ -122,6 +130,7 @@ export default function App() {
   return (
     <ErrorBoundary>
       <ErrorBoundary key={location.pathname}>
+        <Suspense fallback={null}>
         <Routes>
           <Route path="/login" element={<LoginScreen />} />
           <Route path="/privacy" element={<PrivacyPolicyScreen />} />
@@ -161,6 +170,7 @@ export default function App() {
           </Route>
           <Route path="*" element={<Navigate to={feedRoute} replace />} />
         </Routes>
+        </Suspense>
       </ErrorBoundary>
     </ErrorBoundary>
   );

@@ -45,3 +45,51 @@ export async function insertFeedback(input: {
   );
   return rows[0]!;
 }
+
+/**
+ * Admin-only: list feedback submissions, newest first.
+ * Supports cursor-based pagination (cursor = createdAt of last seen row) and
+ * optional category filter.
+ */
+export async function listFeedback(opts: {
+  limit?: number;
+  cursor?: string;
+  category?: string;
+}): Promise<FeedbackRow[]> {
+  const conditions: string[] = [];
+  const params: unknown[] = [];
+
+  if (opts.category) {
+    params.push(opts.category);
+    conditions.push(`category = $${params.length}`);
+  }
+  if (opts.cursor) {
+    params.push(opts.cursor);
+    conditions.push(`created_at < $${params.length}`);
+  }
+
+  params.push(opts.limit ?? 50);
+  const limitParam = `$${params.length}`;
+
+  const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
+  const { rows } = await db.query<FeedbackRow>(
+    `SELECT
+       id,
+       user_id       AS "userId",
+       category,
+       message,
+       screenshot_url  AS "screenshotUrl",
+       route,
+       browser_info    AS "browserInfo",
+       active_exchange AS "activeExchange",
+       app_version     AS "appVersion",
+       created_at      AS "createdAt"
+     FROM feedback
+     ${where}
+     ORDER BY created_at DESC
+     LIMIT ${limitParam}`,
+    params,
+  );
+  return rows;
+}

@@ -213,6 +213,7 @@ export default defineConfig(({ mode }) => {
         '/api/integrations': { target: 'http://127.0.0.1:8787', changeOrigin: true },
         '/api/portfolio': { target: 'http://127.0.0.1:8787', changeOrigin: true },
         '/api/trade': { target: 'http://127.0.0.1:8787', changeOrigin: true },
+        '/api/feedback': { target: 'http://127.0.0.1:8787', changeOrigin: true },
       },
     },
   };

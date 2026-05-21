@@ -45,7 +45,8 @@
       "Bash(xargs wc -l)",
       "Bash(npm test *)",
       "Bash(gh pr create --title 'fix: code review hardening — security, lazy loading, test coverage' --body ' *)",
-      "Bash(gh pr *)"
+      "Bash(gh pr *)",
+      "mcp__823725bf-4bc8-48ca-bb87-3a83b8cc0b48__netlify-deploy-services-reader"
     ]
   }
 }

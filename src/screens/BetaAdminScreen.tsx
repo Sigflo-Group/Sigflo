@@ -100,7 +100,6 @@ function FeedbackInbox() {
   const [rows, setRows] = useState<FeedbackAdminRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [cursor, setCursor] = useState<string | undefined>();
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [filter, setFilter] = useState<FilterCategory>('');
 
@@ -122,7 +121,6 @@ function FeedbackInbox() {
   );
 
   useEffect(() => {
-    setCursor(undefined);
     void load({ category: filter });
   }, [filter, load]);
 
@@ -189,9 +187,7 @@ function FeedbackInbox() {
           type="button"
           disabled={loading}
           onClick={() => {
-            const next = nextCursor;
-            setCursor(next);
-            void load({ category: filter, cursor: next, append: true });
+            void load({ category: filter, cursor: nextCursor ?? undefined, append: true });
           }}
           className="mt-3 w-full rounded-xl border border-white/[0.08] py-2 text-sm font-semibold text-white/55 transition hover:bg-white/[0.04] disabled:opacity-40"
         >

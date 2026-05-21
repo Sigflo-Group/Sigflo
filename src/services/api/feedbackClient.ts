@@ -18,3 +18,28 @@ export async function submitFeedback(input: SubmitFeedbackInput): Promise<{ id: 
     body: JSON.stringify(input),
   });
 }
+
+// ─── Admin ────────────────────────────────────────────────────────────────────
+
+export type FeedbackAdminRow = {
+  id: string;
+  userId: string;
+  category: FeedbackCategory;
+  message: string;
+  screenshotUrl: string | null;
+  route: string | null;
+  activeExchange: string | null;
+  appVersion: string | null;
+  createdAt: string;
+};
+
+export async function listFeedbackAdmin(opts: {
+  category?: FeedbackCategory | '';
+  cursor?: string;
+} = {}): Promise<{ feedback: FeedbackAdminRow[]; nextCursor: string | null }> {
+  const params = new URLSearchParams();
+  if (opts.category) params.set('category', opts.category);
+  if (opts.cursor) params.set('cursor', opts.cursor);
+  const qs = params.toString();
+  return apiJson(`/feedback${qs ? `?${qs}` : ''}`);
+}

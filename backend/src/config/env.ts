@@ -52,6 +52,12 @@ const envSchema = z.object({
     .transform((v) => (v === '1' || v === 'true' || v === 'yes' ? 'true' : 'false')),
   OPENAI_API_KEY: z.string().optional(),
   /**
+   * Comma/semicolon-separated list of email addresses that have admin access.
+   * Checked by requireAdmin middleware for admin-only endpoints (e.g. GET /api/feedback).
+   * Same list used by the Netlify admin-beta function.
+   */
+  SIGFLO_BETA_ADMIN_EMAILS: z.string().optional(),
+  /**
    * Explicit opt-in flag to allow unauthenticated requests via spoofable x-user-id header.
    * Must be set to exactly "true" in .env. Never enable in production.
    */

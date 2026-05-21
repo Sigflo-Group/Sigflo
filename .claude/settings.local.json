@@ -40,7 +40,12 @@
       "Bash(npx vitest *)",
       "Bash(git -C C:/dev/Sigflo add backend/src/jobs/exitAutomationWorker.ts backend/src/exchanges/mexc.ts src/lib/supabase.ts src/lib/supabase/client.ts src/lib/detectors.ts src/screens/ScannerLabScreen.tsx package.json package-lock.json)",
       "Bash(git -C C:/dev/Sigflo rm src/engine/index.ts)",
-      "Bash(git -C C:/dev/Sigflo log --oneline origin/main..HEAD)"
+      "Bash(git -C C:/dev/Sigflo log --oneline origin/main..HEAD)",
+      "Bash(find \"C:/dev/Sigflo\" -type f -name \"*.json\" -o -name \"*.ts\" -o -name \"*.tsx\" -o -name \"*.js\" -o -name \"*.jsx\" | head -50)",
+      "Bash(xargs wc -l)",
+      "Bash(npm test *)",
+      "Bash(gh pr create --title 'fix: code review hardening — security, lazy loading, test coverage' --body ' *)",
+      "Bash(gh pr *)"
     ]
   }
 }

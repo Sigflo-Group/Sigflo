@@ -32,11 +32,10 @@ function buildFactsRecord(signal: CryptoSignal): Record<string, number | string>
 }
 
 function allowedIndicatorsFromFacts(signal: CryptoSignal): string[] {
-  const terms: string[] = [];
+  const terms: string[] = ['relative volume'];
   const f = signal.facts;
   if (f?.rsi != null && Number.isFinite(f.rsi)) terms.push('RSI');
   if (f?.emaTrend) terms.push('EMA trend');
-  if (f?.volumeRatio != null && Number.isFinite(f.volumeRatio)) terms.push('relative volume');
   if (
     f?.distanceToBreakoutAtr != null ||
     f?.pullbackDepthAtr != null ||

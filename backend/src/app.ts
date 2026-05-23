@@ -17,6 +17,7 @@ import { secureTradeRouter } from './routes/trade.routes.js';
 import { signalRouter } from './routes/signal.routes.js';
 import { aiRouter } from './routes/ai.js';
 import { feedbackRouter } from './routes/feedback.routes.js';
+import { securityRouter } from './routes/security.routes.js';
 import { listTrades } from './controllers/trade.controller.js';
 import { mexcPublicRouter } from './routes/mexcPublic.js';
 import { authRouter } from './routes/auth.routes.js';
@@ -102,6 +103,7 @@ export function createApp() {
   app.use('/api/signals', requireAuth, signalRouter);
   app.use('/api/ai', requireAuth, aiRouter);
   app.use('/api/feedback', requireAuth, feedbackRouter);
+  app.use('/api/security', requireAuth, securityRouter);
 
   app.use(errorHandler);
   return app;

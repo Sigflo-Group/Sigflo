@@ -2,6 +2,7 @@ functionsDirectory = "C:\\dev\\Sigflo\\netlify\\functions"
 functionsDirectoryOrigin = "config-v1"
 headersOrigin = "config"
 redirectsOrigin = "config"
+plugins = []
 
 [build]
 publish = "C:\\dev\\Sigflo\\dist"
@@ -35,18 +36,8 @@ publish = "dist"
 
 [functions]
 
-[functions.emails]
-included_files = ["./emails/**"]
-
 [functions."*"]
 node_bundler = "esbuild"
-
-[[plugins]]
-origin = "ui"
-package = "@netlify/plugin-emails"
-pinned_version = "1"
-
-[plugins.inputs]
 
 [[headers]]
 for = "/assets/*"

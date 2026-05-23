@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
+import { TriggeredStatusBadge } from '@/components/ui/TriggeredStatusBadge';
 import { useTradingControlMode } from '@/context/TradingControlModeContext';
+import { useSignalEngine } from '@/hooks/useSignalEngine';
 import { useBotUserConfig } from '@/hooks/useBotUserConfig';
 import { useExitAutomation } from '@/hooks/useExitAutomation';
 import {
@@ -11,7 +13,8 @@ import {
   type BotUserConfig,
   type BotUserRiskLevel,
 } from '@/lib/botUserConfig';
-import { baseBots, botPersonality, type BotPersonalityId } from '@/lib/bots';
+import { deriveBotsFromSignals, botPersonality, type BotPersonalityId } from '@/lib/bots';
+import { countTriggeredPairs } from '@/lib/marketScannerRows';
 import {
   TRADING_AUTO_EXECUTION_ACTIVE,
   TRADING_CONTROL_MODE_ORDER,
@@ -78,10 +81,12 @@ export default function BotSettingsScreen() {
   const { botId } = useParams<{ botId: string }>();
   const navigate = useNavigate();
   const { configById, updateBotConfig } = useBotUserConfig();
+  const { signals, loading: signalsLoading } = useSignalEngine();
   const { mode: tradingMode, setMode: setTradingMode } = useTradingControlMode();
   const exitAuto = useExitAutomation('bot-settings');
 
-  const bot = useMemo(() => baseBots.find((b) => b.id === botId) ?? null, [botId]);
+  const bots = useMemo(() => deriveBotsFromSignals(signals), [signals]);
+  const bot = useMemo(() => bots.find((b) => b.id === botId) ?? null, [botId, bots]);
 
   const defaults = useMemo(() => (bot ? defaultBotUserConfigFromAgent(bot) : null), [bot]);
 
@@ -94,6 +99,7 @@ export default function BotSettingsScreen() {
   const [toast, setToast] = useState<string | null>(null);
   const toastTimerRef = useRef<number>(0);
   const [extraMarkets, setExtraMarkets] = useState('');
+  const triggeredPairCount = useMemo(() => countTriggeredPairs(signals), [signals]);
 
   useEffect(() => {
     if (!effective) return;
@@ -173,7 +179,7 @@ export default function BotSettingsScreen() {
 
   if (!bot || !defaults || !effective) {
     return (
-      <div className="min-h-[100dvh] bg-sigflo-bg px-4 pb-24 pt-4">
+      <div className="min-h-[100dvh] bg-sigflo-bg px-4 pb-[max(6rem,env(safe-area-inset-bottom))] pt-4">
         <div className="mx-auto max-w-lg rounded-2xl border border-white/[0.06] bg-sigflo-surface sigflo-panel-texture p-4">
           <div className="relative z-[1]">
             <p className="text-sm text-sigflo-muted">Bot not found.</p>
@@ -203,7 +209,7 @@ export default function BotSettingsScreen() {
   const exitAiOn = exitAuto.mode !== 'manual';
 
   return (
-    <div className="min-h-[100dvh] bg-sigflo-bg pb-28 pt-4">
+    <div className="min-h-[100dvh] bg-sigflo-bg pb-[max(7rem,env(safe-area-inset-bottom))] pt-4">
       <div className="mx-auto w-full max-w-lg space-y-4 px-4">
         <header className="flex items-start justify-between gap-3">
           <div>
@@ -217,6 +223,7 @@ export default function BotSettingsScreen() {
             <h1 className="mt-2 text-xl font-bold tracking-tight text-white">Bot settings</h1>
             <p className="mt-1 text-xs text-sigflo-muted">Fine-tune how this agent behaves. Changes apply instantly.</p>
           </div>
+          <TriggeredStatusBadge count={triggeredPairCount} loading={signalsLoading} />
           <Link
             to={`/bots/${bot.id}/focus`}
             className="shrink-0 rounded-xl border border-white/[0.1] bg-white/[0.04] px-3 py-2 text-[11px] font-semibold text-cyan-100/90"

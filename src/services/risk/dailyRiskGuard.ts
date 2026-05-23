@@ -10,7 +10,7 @@ const DEMO_OVERRIDE_STORAGE_KEY = 'sigflo_demo_daily_loss_pct';
  * Replace with exchange / ledger daily P&L when available.
  */
 /** Below 0.5× limit → normal on first load; set `sigflo_demo_daily_loss_pct` in localStorage to stress warning/locked. */
-const DEMO_DEFAULT_LOSS_FRACTION_OF_LIMIT = 0.42;
+const DEMO_DEFAULT_LOSS_FRACTION_OF_LIMIT = 0;
 
 function readDemoLossPctOverride(): number | null {
   if (typeof window === 'undefined' || false) return null;

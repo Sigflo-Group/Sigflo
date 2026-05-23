@@ -20,7 +20,7 @@ import { positionBiasForLinearSymbol } from '@/lib/positionBiasStat';
 import { positionMicroInsight } from '@/lib/positionMicroInsight';
 import { symbolToPair } from '@/lib/marketScannerRows';
 import { buildPortfolioPositionTradeQuery } from '@/lib/tradeNavigation';
-import { baseBots } from '@/lib/bots';
+import { deriveBotsFromSignals } from '@/lib/bots';
 import { BYBIT_APP_ASSETS_HOME_HREF } from '@/lib/exchangeTransferUrls';
 import type { ExchangeSnapshot, PositionItem } from '@/types/integrations';
 import type { Candle } from '@/types/market';
@@ -234,7 +234,8 @@ export default function PortfolioScreen() {
   const { mergeBot } = useBotUserConfig();
   const { statusMap } = useBotStatuses();
 
-  const mergedBots = useMemo(() => baseBots.map(mergeBot), [mergeBot]);
+  const liveBots = useMemo(() => deriveBotsFromSignals(scannerSignals), [scannerSignals]);
+  const mergedBots = useMemo(() => liveBots.map(mergeBot), [liveBots, mergeBot]);
 
   const { unrealized, connected } = useMemo(() => aggregateStablesAndPnl(snapshots), [snapshots]);
   const positions = useMemo(() => flattenPositions(snapshots), [snapshots]);
@@ -279,11 +280,11 @@ export default function PortfolioScreen() {
   }, [connected, netWorth, todayPnl]);
 
   const managingBotsCount = useMemo(() => {
-    return baseBots.filter((b) => {
+    return liveBots.filter((b) => {
       const s = statusMap[b.id] ?? b.status;
       return s === 'active' || s === 'scanning';
     }).length;
-  }, [statusMap]);
+  }, [statusMap, liveBots]);
 
   const botDayStats = useMemo(
     () => buildBotDayStats(mergedBots, closedToday),
@@ -291,12 +292,18 @@ export default function PortfolioScreen() {
   );
 
   const overviewSparkSeries = useMemo(() => {
+    // Prefer the first active position's price data — more relevant than a BTC proxy
+    for (const pos of positions) {
+      const key = symbolToPair(pos.symbol).toUpperCase();
+      const closes = candleCloses(miniCandles[key]);
+      if (closes.length >= 2) return closes;
+    }
     const btc = candleCloses(miniCandles['BTC']);
     if (btc.length >= 2) return btc;
     const nw = connected ? netWorth : 2500;
     const up = connected ? todayPnl >= 0 : true;
     return buildSparklineSeries(Math.max(nw, 0.01), up);
-  }, [miniCandles, connected, netWorth, todayPnl]);
+  }, [miniCandles, positions, connected, netWorth, todayPnl]);
   const { line: sparkPath, area: sparkArea } = useMemo(
     () => sparklinePath(overviewSparkSeries, 320, 72),
     [overviewSparkSeries],
@@ -435,10 +442,13 @@ export default function PortfolioScreen() {
               {positions.map((p) => {
                 const current = p.markPrice ?? p.entryPrice;
                 const pnl = p.unrealizedPnl ?? 0;
-                const pnlPct =
-                  p.entryPrice > 0
-                    ? ((p.side === 'long' ? current - p.entryPrice : p.entryPrice - current) / p.entryPrice) * 100
-                    : 0;
+                const lev = p.leverage != null && p.leverage > 0 ? p.leverage : 1;
+                const posNotional = Math.abs(p.size) * (current > 0 ? current : p.entryPrice);
+                const margin =
+                  p.positionIM != null && p.positionIM > 0
+                    ? p.positionIM
+                    : posNotional / Math.max(1, lev);
+                const pnlPct = margin > 0 ? (pnl / margin) * 100 : 0;
                 const up = pnl >= 0;
                 const realizedPnl = realizedPnlByExchangeSymbol.get(`${p.exchange}:${p.symbol}`) ?? 0;
                 const realizedUp = realizedPnl >= 0;

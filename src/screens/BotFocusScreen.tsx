@@ -34,7 +34,7 @@ import { useBotStatuses } from '@/hooks/useBotStatuses';
 import { useSignalEngine } from '@/hooks/useSignalEngine';
 import { requestChartSetupFocus } from '@/lib/chartSetupFocus';
 import {
-  baseBots,
+  deriveBotsFromSignals,
   botCardStatusMeta,
   botPersonality,
   formatBotPrice,
@@ -384,7 +384,8 @@ export default function BotFocusScreen() {
   const { items: accountSnapshots, refresh: refreshAccountSnapshots } = useAccountSnapshot({ pollMs: 12_000 });
   const [symbolMaxLeverage, setSymbolMaxLeverage] = useState<number | null>(null);
 
-  const bot = useMemo(() => baseBots.find((b) => b.id === botId) ?? null, [botId]);
+  const derivedBots = useMemo(() => deriveBotsFromSignals(signals), [signals]);
+  const bot = useMemo(() => derivedBots.find((b) => b.id === botId) ?? null, [botId, derivedBots]);
 
   const selectedWatched = selectedPairRaw ?? bot?.watchedPairs[0] ?? 'BTC';
   const linearSymbol = pairToLinearSymbol(selectedWatched);

@@ -1,63 +1,35 @@
+import type { SignalLifecycleEvent } from '@/types/signal';
 import type { SystemEventModel } from '@/types/botSystem';
 
-export const mockSystemEvents: SystemEventModel[] = [
-  {
-    id: 'evt-btc-breakout',
-    timestamp: new Date(Date.now() - 18 * 1000).toISOString(),
-    eventType: 'setup_upgraded',
-    severity: 'success',
-    message: 'BTC breakout confirmed and moved to Ready.',
-    relatedPair: 'BTC/USDT',
-    relatedEngineId: 'eng-nova',
-  },
-  {
-    id: 'evt-link-watch',
-    timestamp: new Date(Date.now() - 52 * 1000).toISOString(),
-    eventType: 'setup_upgraded',
-    severity: 'info',
-    message: 'LINK upgraded to watchlist candidate.',
-    relatedPair: 'LINK/USDT',
-    relatedEngineId: 'eng-nova',
-  },
-  {
-    id: 'evt-sol-invalid',
-    timestamp: new Date(Date.now() - 2 * 60 * 1000).toISOString(),
-    eventType: 'setup_invalidated',
-    severity: 'warning',
-    message: 'SOL reversal invalidated after failed confirmation.',
-    relatedPair: 'SOL/USDT',
-    relatedEngineId: 'eng-rio',
-  },
-  {
-    id: 'evt-btc-stop-tight',
-    timestamp: new Date(Date.now() - 4 * 60 * 1000).toISOString(),
-    eventType: 'trade_managed',
-    severity: 'success',
-    message: 'Managing BTC long — stop tightened.',
-    relatedPair: 'BTC/USDT',
-    relatedEngineId: 'eng-pulse',
-  },
-  {
-    id: 'evt-risk-cap',
-    timestamp: new Date(Date.now() - 6 * 60 * 1000).toISOString(),
-    eventType: 'risk_limit',
-    severity: 'info',
-    message: 'Risk limit checked — deployment remains within limits.',
-    relatedEngineId: 'eng-guard',
-  },
-  {
-    id: 'evt-pulse-scan',
-    timestamp: new Date(Date.now() - 3 * 60 * 1000).toISOString(),
+function lifecycleSeverity(ev: SignalLifecycleEvent): SystemEventModel['severity'] {
+  if (ev.outcome === 'win') return 'success';
+  if (ev.outcome === 'loss') return 'warning';
+  if (ev.status === 'rejected' || ev.status === 'failed') return 'warning';
+  if (ev.status === 'completed') return 'success';
+  if (ev.status === 'confirmed' || ev.status === 'active') return 'info';
+  return 'info';
+}
+
+function lifecycleMessage(ev: SignalLifecycleEvent): string {
+  const pair = ev.symbol.replace('USDT', '/USDT');
+  if (ev.status === 'completed') return `${pair} setup completed (${ev.outcome ?? 'neutral'})`;
+  if (ev.status === 'confirmed' || ev.status === 'active') return `${pair} signal active — ${ev.bias} bias`;
+  if (ev.status === 'rejected' || ev.status === 'failed') return `${pair} setup ${ev.status}`;
+  return `${pair} signal ${ev.status}`;
+}
+
+export function deriveSystemEvents(lifecycleEvents: SignalLifecycleEvent[]): SystemEventModel[] {
+  return lifecycleEvents.map((ev) => ({
+    id: ev.id,
+    timestamp: new Date(ev.timestamp).toISOString(),
     eventType: 'engine',
-    severity: 'info',
-    message: 'Momentum watch refreshed after volatility window.',
-    relatedEngineId: 'eng-pulse',
-  },
-  {
-    id: 'evt-conn-ok',
-    timestamp: new Date(Date.now() - 9 * 60 * 1000).toISOString(),
-    eventType: 'connection',
-    severity: 'success',
-    message: 'Exchange connection healthy.',
-  },
-];
+    severity: lifecycleSeverity(ev),
+    message: lifecycleMessage(ev),
+    relatedPair: ev.symbol.replace('USDT', '/USDT'),
+  }));
+}
+
+export const mockSystemEvents: SystemEventModel[] = [];
+
+/** Shown when there are no system events yet. */
+export const EMPTY_SYSTEM_EVENTS_MESSAGE = 'No system events yet — they appear here as engines scan and signals progress.';

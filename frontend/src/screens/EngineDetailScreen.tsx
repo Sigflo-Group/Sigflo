@@ -6,8 +6,8 @@ import { EngineHeaderCard } from '@/components/engines/EngineHeaderCard';
 import { EngineJournal } from '@/components/engines/EngineJournal';
 import { EngineOpportunityList } from '@/components/engines/EngineOpportunityList';
 import { TriggeredStatusBadge } from '@/components/ui/TriggeredStatusBadge';
-import { mockEngines } from '@/data/mockEngines';
-import { mockSystemEvents } from '@/data/mockSystemEvents';
+import { deriveEnginesFromSignals } from '@/data/mockEngines';
+import { deriveSystemEvents } from '@/data/mockSystemEvents';
 import { useSignalEngine } from '@/hooks/useSignalEngine';
 import { countTriggeredPairs } from '@/lib/marketScannerRows';
 import { getAlertPreferences } from '@/services/alerts/alertPreferences';
@@ -27,15 +27,21 @@ const ENGINE_SETUP_MAP: Record<string, string[]> = {
 export default function EngineDetailScreen() {
   const { engineId } = useParams<{ engineId: string }>();
   const navigate = useNavigate();
-  const { signals, loading: signalsLoading, liveTickersBySymbol } = useSignalEngine();
+  const { signals, loading: signalsLoading, liveTickersBySymbol, lifecycleAnalytics } = useSignalEngine();
   const [isPausedLocally, setIsPausedLocally] = useState(false);
   const [localJournalEvents, setLocalJournalEvents] = useState<SystemEventModel[]>([]);
   const [alertPrefs, setAlertPrefs] = useState<AlertPreference>(() => getAlertPreferences());
   const triggeredPairCount = useMemo(() => countTriggeredPairs(signals), [signals]);
 
+  const derivedEngines = useMemo(() => deriveEnginesFromSignals(signals), [signals]);
+  const derivedEvents = useMemo(
+    () => deriveSystemEvents(lifecycleAnalytics.events),
+    [lifecycleAnalytics.events],
+  );
+
   const engine = useMemo(
-    () => (engineId ? mockEngines.find((e) => e.engineId === engineId) ?? null : null),
-    [engineId],
+    () => (engineId ? derivedEngines.find((e) => e.engineId === engineId) ?? null : null),
+    [engineId, derivedEngines],
   );
 
   const prices = useMemo(() => {
@@ -62,8 +68,8 @@ export default function EngineDetailScreen() {
 
   const scopedJournalEvents = useMemo(() => {
     if (!engineId) return [];
-    return mockSystemEvents.filter((e) => e.relatedEngineId === engineId);
-  }, [engineId]);
+    return derivedEvents.filter((e) => e.relatedEngineId === engineId);
+  }, [engineId, derivedEvents]);
 
   const navigateToTradeReview = useCallback(
     (opportunity: OpportunityCardModel) => {
@@ -149,7 +155,7 @@ export default function EngineDetailScreen() {
     <div className="min-h-[100dvh] bg-[#050505] pb-[max(7rem,env(safe-area-inset-bottom))] pt-3">
       <div className="mx-auto w-full max-w-md space-y-3 px-3">
         <div className="flex items-center justify-between gap-2">
-          <p className="text-[10px] font-medium text-zinc-600">Engine intelligence · demo</p>
+          <p className="text-[10px] font-medium text-zinc-600">Engine intelligence</p>
           <TriggeredStatusBadge count={triggeredPairCount} loading={signalsLoading} />
         </div>
 

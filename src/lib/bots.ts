@@ -118,29 +118,15 @@ export type BotAgent = {
   expandedSetupPending?: boolean;
 };
 
-export const baseBots: BotAgent[] = [
+const BOT_TEMPLATES: Omit<BotAgent, 'stats' | 'detail' | 'signalId' | 'intentLine' | 'activityLine'>[] = [
   {
     id: 'bot-kai',
     name: 'Kai',
     strategy: 'Momentum Bot',
     personalityId: 'kai',
-    status: 'active',
+    status: 'scanning',
     watchedPairs: ['BTC', 'ETH', 'SOL'],
-    signalId: 'sig-3',
     riskMode: 'balanced',
-    intentLine: 'Awaiting confirmation above resistance',
-    activityLine: 'Monitoring LINK momentum follow-through',
-    stats: { signalsToday: 3, winRatePct: 0, lastResultPct: 2.4 },
-    detail: {
-      setupStateLabel: 'Momentum continuation',
-      bias: 'Long',
-      confidencePct: 72,
-      setupType: 'Pullback',
-      marketContext: { volatility: 'Medium', structure: 'Trending', volume: 'Building' },
-      aiNote:
-        'Momentum can stay constructive while price works below prior swing highs — confirmation only matters once a nearby structural level is clear on your active timeframe.',
-      commentaryShort: 'Momentum intact — waiting for structure to tighten (live levels come from the chart).',
-    },
   },
   {
     id: 'bot-nova',
@@ -149,51 +135,83 @@ export const baseBots: BotAgent[] = [
     personalityId: 'nova',
     status: 'scanning',
     watchedPairs: ['BTC', 'AVAX', 'LINK'],
-    signalId: 'sig-1',
     riskMode: 'aggressive',
-    expandedSetupPending: true,
-    intentLine: 'Watching for breakout pressure',
-    activityLine: 'LINK market activity picking up',
-    stats: { signalsToday: 2, winRatePct: 0, lastResultPct: 1.3 },
-    detail: {
-      setupStateLabel: 'Breakout watch',
-      bias: 'Neutral',
-      confidencePct: 58,
-      setupType: 'Breakout',
-      marketContext: { volatility: 'High', structure: 'Ranging', volume: 'Weak' },
-      aiNote: 'Breakout structure is forming, but volume is not yet supportive — waiting for expansion + acceptance.',
-      commentaryShort: 'Breakout structure is forming, but volume is not yet supportive.',
-      entry: 18.42,
-      stop: 17.65,
-      target: 20.1,
-    },
   },
   {
     id: 'bot-rio',
     name: 'Rio',
     strategy: 'Reversal Bot',
     personalityId: 'rio',
-    status: 'active',
+    status: 'scanning',
     watchedPairs: ['ETH', 'SOL', 'ADA'],
-    signalId: 'sig-2',
     riskMode: 'defensive',
-    intentLine: 'Waiting for reversal confirmation',
-    activityLine: 'SOL rejected from local high, re-evaluating',
-    stats: { signalsToday: 1, winRatePct: 0, lastResultPct: -0.8 },
-    detail: {
-      setupStateLabel: 'Reversal probe',
-      bias: 'Short',
-      confidencePct: 61,
-      setupType: 'Reversal',
-      marketContext: { volatility: 'Medium', structure: 'Trending', volume: 'Building' },
-      aiNote: 'Rejection at the local high is credible; confirmation needs a lower high fail or breakdown follow-through.',
-      commentaryShort: 'Reversal conditions are still weak — waiting for a stronger rejection signal.',
-      entry: 142.2,
-      stop: 146.8,
-      target: 132.5,
-    },
   },
 ];
+
+function buildBotDetail(signal: CryptoSignal | undefined): BotExpandDetail {
+  if (!signal) {
+    return {
+      setupStateLabel: 'Awaiting setup',
+      bias: 'Neutral',
+      confidencePct: 0,
+      setupType: 'Pullback',
+      marketContext: { volatility: 'Medium', structure: 'Ranging', volume: 'Weak' },
+      aiNote: 'Waiting for signals from the detection engine.',
+    };
+  }
+  return {
+    setupStateLabel: `${signal.setupType.charAt(0).toUpperCase() + signal.setupType.slice(1)} setup`,
+    bias: signal.side === 'long' ? 'Long' : 'Short',
+    confidencePct: Math.round(signal.confidence ?? signal.setupScore ?? 50),
+    setupType: setupTypeFromSignal(signal.setupType),
+    marketContext: {
+      volatility: signal.marketState?.volatilityState === 'expanding' ? 'High' : 'Medium',
+      structure: signal.marketState?.regime === 'trend' ? 'Trending' : 'Ranging',
+      volume: signal.facts?.volumeRatio != null && signal.facts.volumeRatio > 1.5 ? 'Strong' : signal.facts?.volumeRatio != null && signal.facts.volumeRatio > 0.8 ? 'Building' : 'Weak',
+    },
+    aiNote: signal.aiExplanation || `${signal.pair} ${signal.setupType} signal — score ${signal.setupScore}`,
+  };
+}
+
+export function deriveBotsFromSignals(signals: CryptoSignal[]): BotAgent[] {
+  return BOT_TEMPLATES.map((tmpl) => {
+    const matched = signals.filter((s) => {
+      if (tmpl.id === 'bot-kai') return s.setupType === 'pullback';
+      if (tmpl.id === 'bot-nova') return s.setupType === 'breakout';
+      if (tmpl.id === 'bot-rio') return s.setupType === 'overextended';
+      return false;
+    });
+
+    const signal = matched[0];
+    const pairs = new Set<string>();
+    for (const s of matched) {
+      const base = s.pair.replace(/\/USDT$/i, '').replace(/USDT$/i, '');
+      if (base) pairs.add(base);
+    }
+    const watchedPairs = pairs.size > 0 ? [...pairs].slice(0, 3) : tmpl.watchedPairs;
+
+    return {
+      ...tmpl,
+      watchedPairs,
+      signalId: signal?.id ?? '',
+      status: matched.length > 0 ? 'active' : 'scanning',
+      intentLine: signal
+        ? `${signal.pair} ${signal.setupType} — score ${signal.setupScore}`
+        : 'Waiting for live market data',
+      activityLine: signal
+        ? `${signal.pair} ${signal.side}`
+        : 'Monitoring for setups',
+      stats: {
+        signalsToday: matched.length,
+        winRatePct: 0,
+        lastResultPct: 0,
+      },
+      detail: buildBotDetail(signal),
+    };
+  });
+}
+
+export const baseBots: BotAgent[] = [];
 
 /** Map engine setup type to card label (overextended → Reversal). */
 export function setupTypeFromSignal(setupType: CryptoSignal['setupType']): BotSetupTypeLabel {

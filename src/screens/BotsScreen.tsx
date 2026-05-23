@@ -12,8 +12,8 @@ import ScanningStateCard from '@/components/bots/ScanningStateCard';
 import SystemEventRow from '@/components/bots/SystemEventRow';
 import { TriggeredStatusBadge } from '@/components/ui/TriggeredStatusBadge';
 import { mockCommandBar } from '@/data/mockCommandBar';
-import { mockEngines } from '@/data/mockEngines';
-import { mockSystemEvents } from '@/data/mockSystemEvents';
+import { deriveEnginesFromSignals } from '@/data/mockEngines';
+import { deriveSystemEvents, EMPTY_SYSTEM_EVENTS_MESSAGE } from '@/data/mockSystemEvents';
 import { useSignalEngine } from '@/hooks/useSignalEngine';
 import { buildLatestActivityLine } from '@/lib/botsOpportunityIntel';
 import { countTriggeredPairs } from '@/lib/marketScannerRows';
@@ -101,7 +101,7 @@ function symbolToDisplayPair(symbol: string): string {
 
 export default function BotsScreen() {
   const navigate = useNavigate();
-  const { signals, loading: signalsLoading, liveTickersBySymbol } = useSignalEngine();
+  const { signals, loading: signalsLoading, liveTickersBySymbol, lifecycleAnalytics } = useSignalEngine();
   const [searchParams, setSearchParams] = useSearchParams();
   const liveSectionRef = useRef<HTMLDivElement>(null);
   const formingSectionRef = useRef<HTMLElement>(null);
@@ -136,6 +136,13 @@ export default function BotsScreen() {
   const riskSettings = useRiskSettings();
   const dailyRiskGuard = useDailyRiskGuard();
   const reviewLocked = dailyRiskGuard.status === 'locked';
+
+  const derivedEngines = useMemo(() => deriveEnginesFromSignals(signals), [signals]);
+  const derivedEvents = useMemo(
+    () => deriveSystemEvents(lifecycleAnalytics.events),
+    [lifecycleAnalytics.events],
+  );
+
   const commandBarModel = useMemo(
     () => ({
       ...mockCommandBar,
@@ -606,7 +613,7 @@ export default function BotsScreen() {
         <motion.section custom={5} initial="hidden" animate="visible" variants={sectionVariants}>
           <h3 className="mb-2 text-[11px] font-bold uppercase tracking-[0.14em] text-zinc-500">Engine status</h3>
           <div className="grid grid-cols-1 gap-2">
-            {mockEngines.map((engine) => (
+            {derivedEngines.map((engine) => (
               <EngineStatusCard
                 key={engine.engineId}
                 engine={engine}
@@ -622,11 +629,17 @@ export default function BotsScreen() {
 
         <motion.section custom={6} initial="hidden" animate="visible" variants={sectionVariants}>
           <h3 className="mb-2 text-[11px] font-bold uppercase tracking-[0.14em] text-zinc-500">System journal</h3>
-          <div className="space-y-2">
-            {mockSystemEvents.map((event) => (
-              <SystemEventRow key={event.id} event={event} />
-            ))}
-          </div>
+          {derivedEvents.length > 0 ? (
+            <div className="space-y-2">
+              {derivedEvents.map((event) => (
+                <SystemEventRow key={event.id} event={event} />
+              ))}
+            </div>
+          ) : (
+            <p className="rounded-xl border border-white/10 bg-white/[0.04] px-3 py-3 text-sm text-zinc-500">
+              {EMPTY_SYSTEM_EVENTS_MESSAGE}
+            </p>
+          )}
         </motion.section>
       </div>
     </div>

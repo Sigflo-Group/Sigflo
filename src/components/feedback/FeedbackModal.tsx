@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useFeedback } from '@/context/FeedbackContext';
-import { submitFeedback, type FeedbackCategory } from '@/services/api/feedbackClient';
+import { submitFeedback, type FeedbackCategory, type FeedbackSeverityInput } from '@/services/api/feedbackClient';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { useAccountSnapshot } from '@/hooks/useAccountSnapshot';
 
@@ -31,6 +31,7 @@ export function FeedbackModal() {
   const { items: snapshots } = useAccountSnapshot({ pollMs: 0 });
 
   const [category, setCategory] = useState<FeedbackCategory>('general');
+  const [severity, setSeverity] = useState<FeedbackSeverityInput>('annoying');
   const [message, setMessage] = useState('');
   const [screenshotFile, setScreenshotFile] = useState<File | null>(null);
   const [screenshotPreview, setScreenshotPreview] = useState<string | null>(null);
@@ -44,6 +45,7 @@ export function FeedbackModal() {
   useEffect(() => {
     if (isOpen) {
       setCategory('general');
+      setSeverity('annoying');
       setMessage('');
       setScreenshotFile(null);
       setScreenshotPreview(null);
@@ -108,6 +110,7 @@ export function FeedbackModal() {
 
       await submitFeedback({
         category,
+        severity: category === 'bug' ? severity : undefined,
         message: message.trim(),
         screenshotUrl,
         route: pathname,
@@ -163,6 +166,33 @@ export function FeedbackModal() {
                 </svg>
               </button>
             </div>
+
+            {/* Severity — only for bug reports */}
+            {category === 'bug' && (
+              <div className="mb-4">
+                <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-sigflo-muted">Severity</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {([['cosmetic', 'Cosmetic'], ['annoying', 'Annoying'], ['blocking', 'Blocking']] as const).map(([val, label]) => (
+                    <button
+                      key={val}
+                      type="button"
+                      onClick={() => setSeverity(val)}
+                      className={`rounded-full border px-3 py-1 text-[12px] font-semibold transition ${
+                        severity === val
+                          ? val === 'blocking'
+                            ? 'border-rose-500/60 bg-rose-500/15 text-rose-200'
+                            : val === 'annoying'
+                              ? 'border-amber-500/60 bg-amber-500/15 text-amber-200'
+                              : 'border-white/[0.20] bg-white/[0.08] text-white/85'
+                          : 'border-white/[0.10] bg-white/[0.04] text-sigflo-muted hover:border-white/[0.20] hover:text-sigflo-text'
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Category pills */}
             <div className="mb-4">

@@ -3,7 +3,7 @@ import { Link, Navigate, useNavigate } from 'react-router-dom';
 import { getFeedRoute } from '@/config/appRoutes';
 import { useAuth } from '@/context/AuthContext';
 import { postAdminBeta, type AdminBetaListResponse } from '@/lib/adminBetaApi';
-import { listFeedbackAdmin, type FeedbackAdminRow, type FeedbackCategory } from '@/services/api/feedbackClient';
+import { listFeedbackAdmin, listTopReporters, type FeedbackAdminRow, type FeedbackCategory, type TopReporter } from '@/services/api/feedbackClient';
 
 const ACCENT = '#00ffc8';
 
@@ -26,6 +26,13 @@ const CATEGORY_COLOURS: Record<FeedbackCategory, string> = {
   general: 'bg-white/[0.07] text-white/65 border-white/10',
 };
 
+const SEVERITY_COLOURS: Record<string, string> = {
+  blocking: 'bg-rose-500/20 text-rose-200 border-rose-500/30',
+  annoying: 'bg-amber-500/20 text-amber-200 border-amber-500/30',
+  cosmetic: 'bg-white/[0.06] text-white/60 border-white/10',
+  normal: 'bg-white/[0.04] text-white/40 border-white/10',
+};
+
 function timeAgo(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime();
   const m = Math.floor(diff / 60_000);
@@ -41,6 +48,7 @@ function timeAgo(iso: string): string {
 function FeedbackRow({ row }: { row: FeedbackAdminRow }) {
   const [expanded, setExpanded] = useState(false);
   const colour = CATEGORY_COLOURS[row.category] ?? CATEGORY_COLOURS.general;
+  const sevColour = SEVERITY_COLOURS[row.severity] ?? SEVERITY_COLOURS.normal;
 
   return (
     <div className="border-b border-white/[0.05] last:border-0">
@@ -49,9 +57,16 @@ function FeedbackRow({ row }: { row: FeedbackAdminRow }) {
         onClick={() => setExpanded((v) => !v)}
         className="flex w-full items-start gap-3 px-4 py-3 text-left transition hover:bg-white/[0.025]"
       >
-        <span className={`mt-0.5 shrink-0 rounded-md border px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${colour}`}>
-          {CATEGORY_LABELS[row.category] ?? row.category}
-        </span>
+        <div className="flex shrink-0 flex-col items-start gap-1">
+          <span className={`rounded-md border px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${colour}`}>
+            {CATEGORY_LABELS[row.category] ?? row.category}
+          </span>
+          {row.severity && row.severity !== 'normal' && (
+            <span className={`rounded-md border px-1 py-0.5 text-[9px] font-semibold uppercase tracking-wide ${sevColour}`}>
+              {row.severity}
+            </span>
+          )}
+        </div>
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm text-white/90">{row.message}</p>
           <p className="mt-0.5 text-[11px] text-white/40">
@@ -83,6 +98,7 @@ function FeedbackRow({ row }: { row: FeedbackAdminRow }) {
           )}
           <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1 text-[11px]">
             <div><span className="text-white/35">User ID</span> <span className="font-mono text-white/65">{row.userId}</span></div>
+            {row.severity && <div><span className="text-white/35">Severity</span> <span className="text-white/65">{row.severity}</span></div>}
             {row.route && <div><span className="text-white/35">Route</span> <span className="font-mono text-white/65">{row.route}</span></div>}
             {row.activeExchange && <div><span className="text-white/35">Exchange</span> <span className="text-white/65">{row.activeExchange}</span></div>}
             {row.appVersion && <div><span className="text-white/35">Version</span> <span className="text-white/65">{row.appVersion}</span></div>}
@@ -102,6 +118,7 @@ function FeedbackInbox() {
   const [error, setError] = useState<string | null>(null);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [filter, setFilter] = useState<FilterCategory>('');
+  const [reporters, setReporters] = useState<TopReporter[] | null>(null);
 
   const load = useCallback(
     async (opts: { category: FilterCategory; cursor?: string; append?: boolean }) => {
@@ -122,6 +139,7 @@ function FeedbackInbox() {
 
   useEffect(() => {
     void load({ category: filter });
+    listTopReporters().then((r) => setReporters(r.reporters)).catch(() => {});
   }, [filter, load]);
 
   const FILTERS: Array<{ value: FilterCategory; label: string }> = [
@@ -135,6 +153,23 @@ function FeedbackInbox() {
 
   return (
     <div>
+      {/* Top reporters */}
+      {reporters && reporters.length > 0 && (
+        <div className="mb-6 rounded-xl border border-white/[0.06] bg-white/[0.015] p-4">
+          <p className="mb-3 text-[11px] font-bold uppercase tracking-[0.12em] text-white/50">Top reporters</p>
+          <div className="flex flex-wrap gap-3">
+            {reporters.slice(0, 5).map((r) => (
+              <div key={r.userId} className="rounded-lg border border-white/[0.06] bg-white/[0.03] px-3 py-2 text-[11px]">
+                <span className="font-mono text-white/80">{r.email !== 'unknown' ? r.email : r.userId.slice(0, 12)}</span>
+                <span className="ml-2 rounded-full bg-cyan-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-cyan-200">
+                  {r.count}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Filter pills */}
       <div className="flex flex-wrap gap-2 pb-4">
         {FILTERS.map((f) => (

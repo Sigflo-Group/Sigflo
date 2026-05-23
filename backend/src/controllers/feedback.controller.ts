@@ -1,13 +1,14 @@
 import type { Response } from 'express';
 import type { AuthedRequest } from '../middleware/auth.js';
-import { insertFeedback, listFeedback } from '../db/queries/feedback.js';
+import { countFeedbackByUser, insertFeedback, listFeedback } from '../db/queries/feedback.js';
 import { log } from '../lib/logger.js';
 
 export async function postFeedback(req: AuthedRequest, res: Response) {
   if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
 
-  const { category, message, screenshotUrl, route, browserInfo, activeExchange, appVersion } = req.body as {
+  const { category, severity, message, screenshotUrl, route, browserInfo, activeExchange, appVersion } = req.body as {
     category: string;
+    severity?: string;
     message: string;
     screenshotUrl?: string | null;
     route?: string | null;
@@ -19,6 +20,7 @@ export async function postFeedback(req: AuthedRequest, res: Response) {
   const row = await insertFeedback({
     userId: req.user.userId,
     category,
+    severity,
     message,
     screenshotUrl,
     route,
@@ -43,4 +45,10 @@ export async function listFeedbackAdmin(req: AuthedRequest, res: Response) {
   const nextCursor = rows.length === 50 ? (rows[rows.length - 1]?.createdAt ?? null) : null;
 
   return res.json({ feedback: rows, nextCursor });
+}
+
+/** Admin-only: top feedback submitters. */
+export async function listTopReporters(res: Response) {
+  const rows = await countFeedbackByUser();
+  return res.json({ reporters: rows });
 }

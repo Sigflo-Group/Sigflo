@@ -15,6 +15,7 @@ import { interpretSignal } from '@/lib/signalInterpretation';
 import { MarketPostureBar } from '@/components/shared/MarketPostureBar';
 import { TriggeredFireMark } from '@/components/ui/TriggeredFireMark';
 import { useSignalEngine } from '@/hooks/useSignalEngine';
+import { submitSignalReaction } from '@/services/api/feedbackClient';
 import type { CryptoSignal } from '@/types/signal';
 import type { Candle } from '@/types/market';
 
@@ -80,6 +81,8 @@ export function SignalCard({
   const navigate = useNavigate();
   const { registerSignalFollowed } = useSignalEngine();
   const [tick, setTick] = useState(0);
+  const [reaction, setReaction] = useState<'helpful' | 'not_helpful' | null>(null);
+  const [reactionBusy, setReactionBusy] = useState(false);
   useEffect(() => {
     const id = window.setInterval(() => setTick((v) => v + 1), 1000);
     return () => window.clearInterval(id);
@@ -203,6 +206,71 @@ export function SignalCard({
               {uiSignalStateLabel(uiState)}
             </span>
           )}
+        </div>
+
+        {/* Reactions */}
+        <div className="mt-3 flex items-center gap-2">
+          <span className="text-[9px] font-semibold uppercase tracking-[0.12em] text-sigflo-muted/60">Was this signal helpful?</span>
+          <div className="flex gap-1">
+            <button
+              type="button"
+              disabled={reactionBusy}
+              onClick={(e) => {
+                e.stopPropagation();
+                if (reactionBusy) return;
+                const next = reaction === 'helpful' ? null : 'helpful';
+                setReaction(next);
+                if (next) {
+                  setReactionBusy(true);
+                  submitSignalReaction({
+                    signalId: signal.id,
+                    pair: signal.pair,
+                    side: signal.side,
+                    setupType: signal.setupType,
+                    setupScore: signal.setupScore,
+                    riskTag: signal.riskTag ?? null,
+                    reaction: next,
+                  }).finally(() => setReactionBusy(false));
+                }
+              }}
+              className={`rounded-lg border px-2 py-1 text-[11px] font-semibold transition ${
+                reaction === 'helpful'
+                  ? 'border-emerald-500/50 bg-emerald-500/15 text-emerald-300'
+                  : 'border-white/[0.08] bg-white/[0.04] text-sigflo-muted hover:border-white/[0.18] hover:text-sigflo-text'
+              }`}
+            >
+              👍 Helpful
+            </button>
+            <button
+              type="button"
+              disabled={reactionBusy}
+              onClick={(e) => {
+                e.stopPropagation();
+                if (reactionBusy) return;
+                const next = reaction === 'not_helpful' ? null : 'not_helpful';
+                setReaction(next);
+                if (next) {
+                  setReactionBusy(true);
+                  submitSignalReaction({
+                    signalId: signal.id,
+                    pair: signal.pair,
+                    side: signal.side,
+                    setupType: signal.setupType,
+                    setupScore: signal.setupScore,
+                    riskTag: signal.riskTag ?? null,
+                    reaction: next,
+                  }).finally(() => setReactionBusy(false));
+                }
+              }}
+              className={`rounded-lg border px-2 py-1 text-[11px] font-semibold transition ${
+                reaction === 'not_helpful'
+                  ? 'border-rose-500/50 bg-rose-500/15 text-rose-300'
+                  : 'border-white/[0.08] bg-white/[0.04] text-sigflo-muted hover:border-white/[0.18] hover:text-sigflo-text'
+              }`}
+            >
+              👎 Not helpful
+            </button>
+          </div>
         </div>
 
         {/* Entry price */}

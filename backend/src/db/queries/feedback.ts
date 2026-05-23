@@ -4,6 +4,7 @@ export type FeedbackRow = {
   id: string;
   userId: string;
   category: string;
+  severity: string;
   message: string;
   screenshotUrl: string | null;
   route: string | null;
@@ -16,6 +17,7 @@ export type FeedbackRow = {
 export async function insertFeedback(input: {
   userId: string;
   category: string;
+  severity?: string;
   message: string;
   screenshotUrl?: string | null;
   route?: string | null;
@@ -25,16 +27,17 @@ export async function insertFeedback(input: {
 }): Promise<FeedbackRow> {
   const { rows } = await db.query<FeedbackRow>(
     `insert into feedback
-      (user_id, category, message, screenshot_url, route, browser_info, active_exchange, app_version)
-     values ($1, $2, $3, $4, $5, $6::jsonb, $7, $8)
+      (user_id, category, severity, message, screenshot_url, route, browser_info, active_exchange, app_version)
+     values ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9)
      returning
-       id, user_id as "userId", category, message,
+       id, user_id as "userId", category, severity, message,
        screenshot_url as "screenshotUrl", route,
        browser_info as "browserInfo", active_exchange as "activeExchange",
        app_version as "appVersion", created_at as "createdAt"`,
     [
       input.userId,
       input.category,
+      input.severity ?? 'normal',
       input.message,
       input.screenshotUrl ?? null,
       input.route ?? null,
@@ -44,6 +47,21 @@ export async function insertFeedback(input: {
     ],
   );
   return rows[0]!;
+}
+
+export async function countFeedbackByUser(): Promise<Array<{ userId: string; email: string; count: number }>> {
+  const { rows } = await db.query<{ userId: string; email: string; count: number }>(
+    `select
+       f.user_id as "userId",
+       coalesce(p.email, 'unknown') as email,
+       count(*)::int as count
+     from feedback f
+     left join public.profiles p on p.id = f.user_id
+     group by f.user_id, p.email
+     order by count(*) desc
+     limit 20`,
+  );
+  return rows;
 }
 
 /**
@@ -78,6 +96,7 @@ export async function listFeedback(opts: {
        id,
        user_id       AS "userId",
        category,
+       severity,
        message,
        screenshot_url  AS "screenshotUrl",
        route,

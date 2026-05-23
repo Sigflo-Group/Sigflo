@@ -1,4 +1,5 @@
 import { secureStorage } from '@/lib/storage';
+import { dismissFirstTradeGuide, isFirstTradeGuideDismissed } from '@/lib/firstTradeGuide';
 import { ariaExpanded, ariaPressed, ariaSelected } from '@/a11y/ariaBoolean';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
@@ -343,18 +344,6 @@ export function TradeScreen() {
   const [botsPlannedTargets, setBotsPlannedTargets] = useState<number[] | null>(null);
   const [botsPaperPulseToken, setBotsPaperPulseToken] = useState(0);
 
-  useEffect(() => {
-    const id = botsReviewContext?.opportunityId?.trim();
-    if (!id) {
-      setBotsTradeOpp(undefined);
-      setBotsTradeOppLoading(false);
-      return;
-    }
-    setBotsTradeOppLoading(true);
-    setBotsTradeOpp(tradeScreenOpps.find((o) => o.id === id) ?? null);
-    setBotsTradeOppLoading(false);
-  }, [botsReviewContext?.opportunityId, tradeScreenOpps]);
-
   /** Deep link from Bots active strip: `/trade?pair=BTCUSDT&source=position` */
   const positionReviewFromQuery = useMemo(() => {
     const src = (params.get('source') ?? '').trim().toLowerCase();
@@ -368,6 +357,7 @@ export function TradeScreen() {
 
   /** When reviewing an open Sigflo row without an engine opportunity, skip workspace setup hints. */
   const hideFreshSetupTradeHint = Boolean(positionReviewFromQuery && !opportunityIdFromQuery);
+  const [showTradeGuide, setShowTradeGuide] = useState(() => !hideFreshSetupTradeHint && !isFirstTradeGuideDismissed());
 
   useEffect(() => {
     if (!botsTradeOpp) return;
@@ -585,6 +575,18 @@ export function TradeScreen() {
   }, [liveTickersBySymbol]);
 
   const tradeScreenOpps = useMemo(() => signalsToOpportunities(liveSignals, oppPrices, {}), [liveSignals, oppPrices]);
+
+  useEffect(() => {
+    const id = botsReviewContext?.opportunityId?.trim();
+    if (!id) {
+      setBotsTradeOpp(undefined);
+      setBotsTradeOppLoading(false);
+      return;
+    }
+    setBotsTradeOppLoading(true);
+    setBotsTradeOpp(tradeScreenOpps.find((o) => o.id === id) ?? null);
+    setBotsTradeOppLoading(false);
+  }, [botsReviewContext?.opportunityId, tradeScreenOpps]);
 
   const selectedSignal = useMemo(() => {
     const fromQuery = buildSignalContextFromQuery(params, signalId);
@@ -4450,6 +4452,32 @@ export function TradeScreen() {
               <p className="rounded-lg border border-white/[0.06] bg-white/[0.03] px-2 py-1.5 text-[9px] leading-snug text-zinc-400">
                 Review position · Managing exits · Suggestion only · Live changes require confirmation
               </p>
+            ) : null}
+            {showTradeGuide && !isManageMode && !hideFreshSetupTradeHint ? (
+              <div className="rounded-xl border border-cyan-400/20 bg-cyan-500/[0.06] px-3 py-2.5">
+                <div className="flex items-start justify-between gap-2">
+                  <p className="text-[11px] font-semibold text-cyan-100">How to review a setup</p>
+                  <button
+                    type="button"
+                    onClick={() => { dismissFirstTradeGuide(); setShowTradeGuide(false); }}
+                    className="text-[10px] text-zinc-500 hover:text-zinc-300"
+                    aria-label="Dismiss trade guide"
+                  >
+                    Dismiss
+                  </button>
+                </div>
+                <div className="mt-2 space-y-1.5">
+                  <p className="text-[11px] leading-relaxed text-zinc-300">
+                    <span className="text-cyan-200/80">1.</span> Review the signal thesis and score in the cards below.
+                  </p>
+                  <p className="text-[11px] leading-relaxed text-zinc-300">
+                    <span className="text-cyan-200/80">2.</span> The chart shows price action — set your entry, stop, and target on the plan.
+                  </p>
+                  <p className="text-[11px] leading-relaxed text-zinc-300">
+                    <span className="text-cyan-200/80">3.</span> Use <span className="font-semibold text-white">Paper trade</span> to try a position without real funds.
+                  </p>
+                </div>
+              </div>
             ) : null}
             {!isManageMode ? (
               <ActivePositionsPanel

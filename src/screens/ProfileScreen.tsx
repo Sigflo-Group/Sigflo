@@ -6,6 +6,7 @@ import { useBotStatuses } from '@/hooks/useBotStatuses';
 import { useExchangeIntegrations } from '@/hooks/useExchangeIntegrations';
 import { useFeedback } from '@/context/FeedbackContext';
 import { useSignalEngine } from '@/hooks/useSignalEngine';
+import { readTradingStyleChoice } from '@/lib/tradingStyleOnboarding';
 import { supabase } from '@/lib/supabase';
 import { formatFundingBalance } from '@/lib/formatFundingBalance';
 import { getOAuthRedirectToProfile } from '@/lib/oauthRedirectOrigin';
@@ -757,6 +758,20 @@ export default function ProfileScreen() {
           })}
         </div>
         <p className={`mt-2 text-xs ${riskColor}`}>Risk profile: {riskMode}</p>
+        <div className="mt-3 flex items-center justify-between gap-2 rounded-lg border border-white/[0.06] bg-sigflo-elevated px-3 py-2">
+          <div>
+            <p className="text-[11px] font-semibold text-white">Your style</p>
+            <p className="text-[11px] text-sigflo-muted">
+              {readTradingStyleChoice() ?? 'Not set'}
+            </p>
+          </div>
+          <Link
+            to="/onboarding"
+            className="rounded-lg border border-white/[0.12] bg-white/[0.04] px-2.5 py-1 text-[10px] font-semibold text-sigflo-text transition hover:bg-white/[0.08]"
+          >
+            Change
+          </Link>
+        </div>
       </section>
 
       <section className="rounded-2xl border border-white/[0.06] bg-sigflo-surface sigflo-panel-texture p-3.5">

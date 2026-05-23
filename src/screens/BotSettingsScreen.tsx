@@ -13,7 +13,7 @@ import {
   type BotUserConfig,
   type BotUserRiskLevel,
 } from '@/lib/botUserConfig';
-import { baseBots, botPersonality, type BotPersonalityId } from '@/lib/bots';
+import { deriveBotsFromSignals, botPersonality, type BotPersonalityId } from '@/lib/bots';
 import { countTriggeredPairs } from '@/lib/marketScannerRows';
 import {
   TRADING_AUTO_EXECUTION_ACTIVE,
@@ -85,7 +85,8 @@ export default function BotSettingsScreen() {
   const { mode: tradingMode, setMode: setTradingMode } = useTradingControlMode();
   const exitAuto = useExitAutomation('bot-settings');
 
-  const bot = useMemo(() => baseBots.find((b) => b.id === botId) ?? null, [botId]);
+  const bots = useMemo(() => deriveBotsFromSignals(signals), [signals]);
+  const bot = useMemo(() => bots.find((b) => b.id === botId) ?? null, [botId, bots]);
 
   const defaults = useMemo(() => (bot ? defaultBotUserConfigFromAgent(bot) : null), [bot]);
 

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSetupAlerts } from '@/hooks/useSetupAlerts';
 import { motion } from 'framer-motion';
 import { useNavigate, useSearchParams } from 'react-router-dom';
@@ -12,13 +12,13 @@ import ScanningStateCard from '@/components/bots/ScanningStateCard';
 import SystemEventRow from '@/components/bots/SystemEventRow';
 import { TriggeredStatusBadge } from '@/components/ui/TriggeredStatusBadge';
 import { mockCommandBar } from '@/data/mockCommandBar';
-import { mockEngines } from '@/data/mockEngines';
-import { mockSystemEvents } from '@/data/mockSystemEvents';
+import { deriveEnginesFromSignals } from '@/data/mockEngines';
+import { deriveSystemEvents, EMPTY_SYSTEM_EVENTS_MESSAGE } from '@/data/mockSystemEvents';
 import { useSignalEngine } from '@/hooks/useSignalEngine';
 import { buildLatestActivityLine } from '@/lib/botsOpportunityIntel';
 import { countTriggeredPairs } from '@/lib/marketScannerRows';
 import { getAlertPreferences, saveAlertPreferences } from '@/services/alerts/alertPreferences';
-import { getOpportunityRepository, listOpportunities } from '@/services/opportunities';
+import { signalsToOpportunities } from '@/lib/signalsToOpportunities';
 import { getPositionRepository, sigfloActivePositionFromExchange, sigfloActiveToStripPosition } from '@/services/positions';
 import { DemoPositionRepository, DEMO_POSITIONS_CHANGED_EVENT } from '@/services/positions/demoPositionRepository';
 import { DailyRiskGuardBanner } from '@/components/risk/DailyRiskGuardBanner';
@@ -101,21 +101,14 @@ function symbolToDisplayPair(symbol: string): string {
 
 export default function BotsScreen() {
   const navigate = useNavigate();
-  const { signals, loading: signalsLoading } = useSignalEngine();
+  const { signals, loading: signalsLoading, liveTickersBySymbol, lifecycleAnalytics } = useSignalEngine();
   const [searchParams, setSearchParams] = useSearchParams();
   const liveSectionRef = useRef<HTMLDivElement>(null);
   const formingSectionRef = useRef<HTMLElement>(null);
   const alertSettingsPanelRef = useRef<HTMLDivElement>(null);
   const pendingAlertsScrollRef = useRef(false);
-  const [opportunities, setOpportunities] = useState<OpportunityCardModel[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [isDemoSource, setIsDemoSource] = useState(false);
   const [opportunityFilter, setOpportunityFilter] = useState<'all' | 'forming'>('all');
   const [locallyPausedEngineIds, setLocallyPausedEngineIds] = useState<ReadonlySet<string>>(() => new Set());
-  const [lastSyncedAt, setLastSyncedAt] = useState<number | null>(null);
-  const [isSyncing, setIsSyncing] = useState(false);
-  const [lastSyncErrorAt, setLastSyncErrorAt] = useState<number | null>(null);
   const [scanLineTick, setScanLineTick] = useState(0);
   const [alertPrefs, setAlertPrefs] = useState<AlertPreference>(() => getAlertPreferences());
   const [showAlertSettings, setShowAlertSettings] = useState(readOpenAlertsFromUrl);
@@ -123,11 +116,33 @@ export default function BotsScreen() {
   const [positionRevision, setPositionRevision] = useState(0);
   const [paperTradeToast, setPaperTradeToast] = useState<string | null>(null);
   const triggeredPairCount = useMemo(() => countTriggeredPairs(signals), [signals]);
+
+  const prices = useMemo(() => {
+    const p: Record<string, number> = {};
+    for (const [sym, ticker] of Object.entries(liveTickersBySymbol)) {
+      const pair = sym.replace(/USDT$/i, '/USDT').replace(/USDC$/i, '/USDC');
+      p[pair] = ticker.lastPrice;
+    }
+    return p;
+  }, [liveTickersBySymbol]);
+
+  const opportunities = useMemo(() => {
+    if (!signals.length) return [];
+    return signalsToOpportunities(signals, prices, {});
+  }, [signals, prices]);
+
   const { highlightIds, commandBarFlashKey, setupReadyBanner } = useSetupAlerts(opportunities);
   const { items: accountSnapshots } = useAccountSnapshot();
   const riskSettings = useRiskSettings();
   const dailyRiskGuard = useDailyRiskGuard();
   const reviewLocked = dailyRiskGuard.status === 'locked';
+
+  const derivedEngines = useMemo(() => deriveEnginesFromSignals(signals), [signals]);
+  const derivedEvents = useMemo(
+    () => deriveSystemEvents(lifecycleAnalytics.events),
+    [lifecycleAnalytics.events],
+  );
+
   const commandBarModel = useMemo(
     () => ({
       ...mockCommandBar,
@@ -178,40 +193,6 @@ export default function BotsScreen() {
     next.delete('alerts');
     setSearchParams(next, { replace: true });
   }, [showAlertSettings, searchParams, setSearchParams]);
-
-  const refreshOpportunities = useCallback(async (opts?: { silent?: boolean }) => {
-    const silent = opts?.silent ?? false;
-    if (!silent) setIsLoading(true);
-    setIsSyncing(true);
-    setError(null);
-    try {
-      const list = await listOpportunities();
-      setOpportunities(list);
-      setLastSyncedAt(Date.now());
-      setLastSyncErrorAt(null);
-    } catch (e) {
-      const message = e instanceof Error && e.message ? e.message : 'Could not load opportunities';
-      setError(message);
-      if (!silent) setOpportunities([]);
-      setLastSyncErrorAt(Date.now());
-    } finally {
-      setIsSyncing(false);
-      if (!silent) setIsLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    const repo = getOpportunityRepository();
-    setIsDemoSource(repo.source === 'demo');
-    void refreshOpportunities();
-  }, [refreshOpportunities]);
-
-  useEffect(() => {
-    const id = window.setInterval(() => {
-      void refreshOpportunities({ silent: true });
-    }, 10_000);
-    return () => window.clearInterval(id);
-  }, [refreshOpportunities]);
 
   useEffect(() => {
     const onPositionsChanged = () => setPositionRevision((v) => v + 1);
@@ -310,10 +291,8 @@ export default function BotsScreen() {
   const scanFreshSec = ranked.length ? Math.min(...ranked.map((o) => o.freshnessSec)) : null;
   const scanAgeSec = useMemo(() => {
     void scanLineTick;
-    if (scanFreshSec != null) return scanFreshSec;
-    if (lastSyncedAt == null) return null;
-    return Math.max(1, Math.floor((Date.now() - lastSyncedAt) / 1000));
-  }, [scanFreshSec, lastSyncedAt, scanLineTick]);
+    return scanFreshSec;
+  }, [scanFreshSec, scanLineTick]);
   const scanningLabel =
     scanAgeSec != null ? `Engines scanning · ${formatFreshness(scanAgeSec)}` : 'Engines scanning';
   const liveReadout = useMemo(() => {
@@ -321,20 +300,8 @@ export default function BotsScreen() {
     const total = ranked.length;
     const ready = ranked.filter((o) => o.state === 'Ready' || o.state === 'Triggered').length;
     const forming = ranked.filter((o) => isFormingOpportunity(o)).length;
-    const age =
-      lastSyncedAt != null ? Math.max(1, Math.floor((Date.now() - lastSyncedAt) / 1000)) : null;
-    const ageLabel = age != null ? formatFreshness(age) : 'no sync yet';
-    if (isSyncing) {
-      return `Live readout: syncing now · ${total} tracked · ${forming} forming · ${ready} ready`;
-    }
-    if (lastSyncErrorAt != null && (lastSyncedAt == null || lastSyncErrorAt > lastSyncedAt)) {
-      return `Live readout: reconnecting · last successful update ${ageLabel}`;
-    }
-    if (!isDemoSource && total === 0) {
-      return 'Live readout: 0 tracked · no opportunities rows returned yet';
-    }
-    return `Live readout: live · ${total} tracked · ${forming} forming · ${ready} ready · updated ${ageLabel}`;
-  }, [ranked, lastSyncedAt, isSyncing, lastSyncErrorAt, scanLineTick, isDemoSource]);
+    return `Live readout: live · ${total} tracked · ${forming} forming · ${ready} ready`;
+  }, [ranked, scanLineTick]);
 
   const engineIntel = useMemo(
     () => ({
@@ -475,18 +442,6 @@ export default function BotsScreen() {
 
         <DailyRiskGuardBanner model={dailyRiskGuard} />
 
-        {isDemoSource ? (
-          <div className="flex justify-end">
-            <span className="rounded-full border border-white/[0.08] bg-white/[0.03] px-2 py-0.5 text-[9px] font-medium uppercase tracking-wide text-zinc-500">
-              Demo engine output
-            </span>
-          </div>
-        ) : null}
-
-        {error ? (
-          <p className="rounded-lg border border-amber-400/20 bg-amber-500/10 px-3 py-2 text-xs text-amber-100/90">{error}</p>
-        ) : null}
-
         {activeStripPositions.length > 0 ? (
           <motion.section ref={activeSectionRef} custom={1} initial="hidden" animate="visible" variants={sectionVariants}>
             <ActivePositionsStrip positions={activeStripPositions} onSelectPosition={onSelectActivePosition} />
@@ -499,7 +454,7 @@ export default function BotsScreen() {
         ) : null}
 
         <motion.section custom={2} initial="hidden" animate="visible" variants={sectionVariants}>
-          {isLoading ? (
+          {signalsLoading ? (
             <OpportunitiesSkeleton />
           ) : hero ? (
             <PriorityOpportunityCard
@@ -579,7 +534,7 @@ export default function BotsScreen() {
               </div>
             ) : null}
           </div>
-          {isLoading ? null : filteredLiveRows.length > 0 ? (
+          {signalsLoading ? null : filteredLiveRows.length > 0 ? (
             <div className="space-y-2">
               {filteredLiveRows.map((row: OpportunityCardModel) => (
                 <OpportunityDecisionCard
@@ -617,7 +572,7 @@ export default function BotsScreen() {
           )}
         </motion.section>
 
-        {!isLoading && (formingBand.length > 0 || opportunityFilter === 'forming') ? (
+        {!signalsLoading && (formingBand.length > 0 || opportunityFilter === 'forming') ? (
           <motion.section
             ref={formingSectionRef}
             custom={4}
@@ -658,7 +613,7 @@ export default function BotsScreen() {
         <motion.section custom={5} initial="hidden" animate="visible" variants={sectionVariants}>
           <h3 className="mb-2 text-[11px] font-bold uppercase tracking-[0.14em] text-zinc-500">Engine status</h3>
           <div className="grid grid-cols-1 gap-2">
-            {mockEngines.map((engine) => (
+            {derivedEngines.map((engine) => (
               <EngineStatusCard
                 key={engine.engineId}
                 engine={engine}
@@ -674,11 +629,17 @@ export default function BotsScreen() {
 
         <motion.section custom={6} initial="hidden" animate="visible" variants={sectionVariants}>
           <h3 className="mb-2 text-[11px] font-bold uppercase tracking-[0.14em] text-zinc-500">System journal</h3>
-          <div className="space-y-2">
-            {mockSystemEvents.map((event) => (
-              <SystemEventRow key={event.id} event={event} />
-            ))}
-          </div>
+          {derivedEvents.length > 0 ? (
+            <div className="space-y-2">
+              {derivedEvents.map((event) => (
+                <SystemEventRow key={event.id} event={event} />
+              ))}
+            </div>
+          ) : (
+            <p className="rounded-xl border border-white/10 bg-white/[0.04] px-3 py-3 text-sm text-zinc-500">
+              {EMPTY_SYSTEM_EVENTS_MESSAGE}
+            </p>
+          )}
         </motion.section>
       </div>
     </div>

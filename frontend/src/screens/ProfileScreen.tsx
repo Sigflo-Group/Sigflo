@@ -1,15 +1,18 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+﻿import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { useAccountSnapshot } from '@/hooks/useAccountSnapshot';
 import { useBotStatuses } from '@/hooks/useBotStatuses';
 import { useExchangeIntegrations } from '@/hooks/useExchangeIntegrations';
+import { useFeedback } from '@/context/FeedbackContext';
 import { useSignalEngine } from '@/hooks/useSignalEngine';
+import { readTradingStyleChoice } from '@/lib/tradingStyleOnboarding';
 import { supabase } from '@/lib/supabase';
 import { formatFundingBalance } from '@/lib/formatFundingBalance';
 import { getOAuthRedirectToProfile } from '@/lib/oauthRedirectOrigin';
 import { BYBIT_API_KEYS_HREF, BYBIT_DEPOSIT_HREF, MEXC_API_KEYS_HREF, MEXC_DEPOSIT_HREF } from '@/lib/exchangeTransferUrls';
 import { sanitizeUserFacingHttpErrorMessage } from '@/lib/httpErrorMessage';
+import { playUiTapSound } from '@/utils/sound';
 import type { ExchangeId, ExchangeSnapshot } from '@/types/integrations';
 
 const MFA_TOTP_FRIENDLY_NAME = 'Sigflo Account';
@@ -36,6 +39,7 @@ export default function ProfileScreen() {
   } | null>(null);
   const [connectError, setConnectError] = useState<string | null>(null);
   const [connectBusy, setConnectBusy] = useState(false);
+  const [connectPanelFlash, setConnectPanelFlash] = useState(false);
   const [disconnectTarget, setDisconnectTarget] = useState<ExchangeId | null>(null);
   const [disconnectBusy, setDisconnectBusy] = useState(false);
   const [syncBusy, setSyncBusy] = useState(false);
@@ -44,13 +48,30 @@ export default function ProfileScreen() {
   const [mfaEnabled, setMfaEnabled] = useState<boolean>(false);
   const [mfaStatusLoading, setMfaStatusLoading] = useState<boolean>(false);
   const [googleSignInError, setGoogleSignInError] = useState<string | null>(null);
+  const connectPanelRef = useRef<HTMLElement | null>(null);
+  const connectApiKeyInputRef = useRef<HTMLInputElement | null>(null);
+  const connectPanelFlashTimerRef = useRef<number | null>(null);
   const [totpCopyFlash, setTotpCopyFlash] = useState(false);
   const totpCopyFlashTimerRef = useRef<number | null>(null);
   useEffect(() => {
     return () => {
       if (totpCopyFlashTimerRef.current != null) window.clearTimeout(totpCopyFlashTimerRef.current);
+      if (connectPanelFlashTimerRef.current != null) window.clearTimeout(connectPanelFlashTimerRef.current);
     };
   }, []);
+  useEffect(() => {
+    if (!exchangeForm) return;
+    setConnectPanelFlash(true);
+    if (connectPanelFlashTimerRef.current != null) window.clearTimeout(connectPanelFlashTimerRef.current);
+    connectPanelFlashTimerRef.current = window.setTimeout(() => {
+      setConnectPanelFlash(false);
+      connectPanelFlashTimerRef.current = null;
+    }, 1600);
+    window.requestAnimationFrame(() => {
+      connectPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      window.setTimeout(() => connectApiKeyInputRef.current?.focus(), 120);
+    });
+  }, [exchangeForm]);
   const [totpSetup, setTotpSetup] = useState<{
     factorId: string;
     challengeId: string | null;
@@ -59,10 +80,19 @@ export default function ProfileScreen() {
     otpauthUri: string | null;
     code: string;
   } | null>(null);
-  const { items: integrations, loading: integrationsLoading, error: integrationsError, refresh: refreshIntegrations, connect, disconnect } = useExchangeIntegrations();
+  const { items: integrations, loading: integrationsLoading, error: integrationsError, refresh: refreshIntegrations, connect, disconnect, setActive } = useExchangeIntegrations();
+  const { open: openFeedback } = useFeedback();
+  const [activateBusy, setActivateBusy] = useState<string | null>(null); // accountId being activated
   const { items: snapshots, closedTrades, loading: snapshotLoading, error: snapshotError, refresh: refreshSnapshots } =
     useAccountSnapshot({ pollMs: 12_000 });
-  const { signals, connection: signalConnection } = useSignalEngine();
+  const {
+    signals,
+    connection: signalConnection,
+    proIntelligenceMode,
+    setProIntelligenceMode,
+    advancedLayout,
+    setAdvancedLayout,
+  } = useSignalEngine();
   const { statusMap } = useBotStatuses();
 
   const displayName = user
@@ -83,7 +113,8 @@ export default function ProfileScreen() {
   const canUseExchangeApi = authMode === 'dev' || Boolean(user);
   const mexcIntegration = integrations.find((item) => item.exchange === 'mexc');
   const bybitIntegration = integrations.find((item) => item.exchange === 'bybit');
-  const primaryIntegration = mexcIntegration ?? bybitIntegration ?? integrations[0] ?? null;
+  const activeIntegration = integrations.find((item) => item.isActive) ?? null;
+  const primaryIntegration = activeIntegration ?? mexcIntegration ?? bybitIntegration ?? integrations[0] ?? null;
   const connectedExchangeLabel = primaryIntegration ? primaryIntegration.exchange.toUpperCase() : null;
   const lastSynced = primaryIntegration?.lastValidatedAt
     ? new Date(primaryIntegration.lastValidatedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
@@ -325,14 +356,26 @@ export default function ProfileScreen() {
   async function handleManualSync() {
     setSyncBusy(true);
     try {
-      await Promise.all([refreshIntegrations(), refreshSnapshots()]);
+      await refreshIntegrations();
+      await refreshSnapshots();
+    } catch {
+      // Individual hooks surface their own errors via integrationsError / snapshotError.
+      // Swallow here so syncBusy always resets.
     } finally {
       setSyncBusy(false);
     }
   }
 
   return (
-    <div className="space-y-3.5 pb-6 pt-4">
+    <div
+      className="space-y-3.5 pb-6 pt-4"
+      onClickCapture={(event) => {
+        const target = event.target as HTMLElement | null;
+        const btn = target?.closest('button');
+        if (!btn || btn.hasAttribute('disabled')) return;
+        playUiTapSound();
+      }}
+    >
       <div className="px-1">
         <h2 className="text-lg font-semibold tracking-tight text-white">Account</h2>
         {returnTo ? (
@@ -425,54 +468,76 @@ export default function ProfileScreen() {
             const integration = integrations.find((i) => i.exchange === exchange);
             const snapshot = snapshots.find((s) => s.exchange === exchange);
             const connected = Boolean(integration);
-            const otherConnected = integrations.some((i) => i.exchange !== exchange);
+            const isActive = integration?.isActive ?? false;
+            const isInvalid = integration?.status === 'invalid';
             return (
               <div
                 key={exchange}
                 className={`rounded-xl border p-2.5 transition ${
-                  connected
+                  isActive
                     ? 'border-sigflo-accent/30 bg-[#101916] shadow-[0_0_26px_-16px_rgba(0,255,200,0.45)]'
-                    : 'border-white/[0.06] bg-sigflo-elevated'
+                    : connected
+                      ? 'border-white/[0.12] bg-sigflo-elevated'
+                      : 'border-white/[0.06] bg-sigflo-elevated'
                 }`}
               >
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm font-semibold uppercase text-white">{exchange}</p>
-                    <p className={`text-[11px] font-medium ${connected ? 'text-emerald-300' : 'text-sigflo-muted'}`}>
-                      {connected ? 'Connected' : 'Not connected'}
+                    <div className="flex items-center gap-1.5">
+                      <p className="text-sm font-semibold uppercase text-white">{exchange}</p>
+                      {isActive && (
+                        <span className="rounded-full bg-sigflo-accent/20 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-sigflo-accent">
+                          Active
+                        </span>
+                      )}
+                    </div>
+                    <p className={`text-[11px] font-medium ${isActive ? 'text-emerald-300' : connected ? 'text-cyan-300/70' : 'text-sigflo-muted'}`}>
+                      {isActive ? 'Active exchange' : connected ? 'Connected' : 'Not connected'}
                     </p>
                     <p className="text-[11px] text-sigflo-muted">
                       {connected
-                        ? `Last synced: ${
-                            integration?.lastValidatedAt
-                              ? new Date(integration.lastValidatedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
-                              : 'just now'
-                          }`
-                        : otherConnected
-                          ? 'Disconnect the active exchange first'
-                          : 'Link API keys — withdrawals must be off'}
+                        ? isInvalid
+                          ? 'API key invalid — reconnect to fix'
+                          : `Last synced: ${
+                              integration?.lastValidatedAt
+                                ? new Date(integration.lastValidatedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+                                : 'just now'
+                            }`
+                        : 'Link API keys — withdrawals must be off'}
                     </p>
                   </div>
                   {connected ? (
-                    <div className="flex shrink-0 items-center gap-1.5">
-                      <a
-                        href={exchange === 'bybit' ? BYBIT_API_KEYS_HREF : MEXC_API_KEYS_HREF}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        title={`Open ${exchange.toUpperCase()} API key settings in a new tab`}
+                    <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
+                      {!isActive && integration && (
+                        <button
+                          type="button"
+                          disabled={activateBusy === integration.id}
+                          onClick={async () => {
+                            if (!integration) return;
+                            setActivateBusy(integration.id);
+                            try {
+                              await setActive(integration.id);
+                            } catch (e) {
+                              setConnectError(e instanceof Error ? e.message : 'Failed to switch exchange.');
+                            } finally {
+                              setActivateBusy(null);
+                            }
+                          }}
+                          className="rounded-lg border border-sigflo-accent/30 bg-sigflo-accent/10 px-2 py-1 text-[11px] font-semibold text-sigflo-accent transition hover:bg-sigflo-accent/15 disabled:cursor-not-allowed disabled:opacity-40"
+                        >
+                          {activateBusy === integration.id ? 'Switching...' : 'Set Active'}
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setConnectError(null);
+                          setExchangeForm({ exchange, apiKey: '', apiSecret: '', passphrase: '' });
+                        }}
                         className="rounded-lg border border-white/[0.14] bg-white/[0.04] px-2 py-1 text-[11px] font-semibold text-sigflo-text transition hover:bg-white/[0.08]"
                       >
-                        API Keys
-                      </a>
-                      <a
-                        href={EXCHANGE_API_DOCS_HREF[exchange]}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        title={`Open ${exchange.toUpperCase()} API documentation in a new tab`}
-                        className="rounded-lg border border-white/[0.14] bg-white/[0.04] px-2 py-1 text-[11px] font-semibold text-sigflo-text transition hover:bg-white/[0.08]"
-                      >
-                        API Docs
-                      </a>
+                        Reconnect
+                      </button>
                       <a
                         href={exchange === 'bybit' ? BYBIT_DEPOSIT_HREF : MEXC_DEPOSIT_HREF}
                         target="_blank"
@@ -487,7 +552,7 @@ export default function ProfileScreen() {
                         onClick={() => setDisconnectTarget(exchange)}
                         className="rounded-lg border border-rose-400/30 bg-rose-500/10 px-2 py-1 text-[11px] font-semibold text-rose-200 transition hover:bg-rose-500/15"
                       >
-                        Disconnect
+                        Remove
                       </button>
                     </div>
                   ) : (
@@ -512,8 +577,7 @@ export default function ProfileScreen() {
                       </a>
                       <button
                         type="button"
-                        disabled={!canUseExchangeApi || otherConnected}
-                        title={otherConnected ? 'Disconnect the active exchange first' : undefined}
+                        disabled={!canUseExchangeApi}
                         onClick={() => {
                           setConnectError(null);
                           setExchangeForm({ exchange, apiKey: '', apiSecret: '', passphrase: '' });
@@ -560,14 +624,36 @@ export default function ProfileScreen() {
             </button>
           </div>
         ) : null}
-        {connectError ? <p className="mt-2 text-[11px] text-rose-300">{connectError}</p> : null}
+        {connectError ? (
+          <div className="mt-2 flex items-center gap-2">
+            <p className="text-[11px] text-rose-300">{connectError}</p>
+            {connectError.toLowerCase().includes('step-up') ? (
+              <button
+                type="button"
+                onClick={() => navigate('/security/step-up?redirect=' + encodeURIComponent('/profile'))}
+                className="shrink-0 rounded-lg border border-rose-300/40 bg-rose-300/10 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-rose-200 transition hover:bg-rose-300/15"
+              >
+                Verify session
+              </button>
+            ) : null}
+          </div>
+        ) : null}
       </section>
 
       {exchangeForm ? (
-        <section className="rounded-2xl border border-cyan-400/25 bg-cyan-500/[0.06] p-3.5">
+        <section
+          ref={connectPanelRef}
+          className={`rounded-2xl border bg-cyan-500/[0.06] p-3.5 transition-all ${
+            connectPanelFlash
+              ? 'border-cyan-300/65 ring-2 ring-cyan-300/35 shadow-[0_0_0_2px_rgba(34,211,238,0.2),0_0_32px_-14px_rgba(34,211,238,0.8)]'
+              : 'border-cyan-400/25'
+          }`}
+        >
           <p className="text-sm font-semibold text-cyan-100">Connect {exchangeForm.exchange.toUpperCase()}</p>
+          <p className="mt-1 text-[11px] text-cyan-100/85">Connection panel opened below. Paste keys to continue.</p>
           <div className="mt-2 space-y-2">
             <input
+              ref={connectApiKeyInputRef}
               value={exchangeForm.apiKey}
               onChange={(e) => setExchangeForm({ ...exchangeForm, apiKey: e.target.value })}
               placeholder="API key"
@@ -672,6 +758,65 @@ export default function ProfileScreen() {
           })}
         </div>
         <p className={`mt-2 text-xs ${riskColor}`}>Risk profile: {riskMode}</p>
+        <div className="mt-3 flex items-center justify-between gap-2 rounded-lg border border-white/[0.06] bg-sigflo-elevated px-3 py-2">
+          <div>
+            <p className="text-[11px] font-semibold text-white">Your style</p>
+            <p className="text-[11px] text-sigflo-muted">
+              {readTradingStyleChoice() ?? 'Not set'}
+            </p>
+          </div>
+          <Link
+            to="/onboarding"
+            className="rounded-lg border border-white/[0.12] bg-white/[0.04] px-2.5 py-1 text-[10px] font-semibold text-sigflo-text transition hover:bg-white/[0.08]"
+          >
+            Change
+          </Link>
+        </div>
+      </section>
+
+      <section className="rounded-2xl border border-white/[0.06] bg-sigflo-surface sigflo-panel-texture p-3.5">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-sigflo-muted">Intelligence Mode</p>
+        <div className="mt-2 space-y-2">
+          <ToggleRow
+            label="Pro Intelligence Mode"
+            subtext="Unlock replay internals, market condition insights, attribution analytics, and advanced diagnostics."
+            value={proIntelligenceMode}
+            onChange={setProIntelligenceMode}
+          />
+          {proIntelligenceMode ? (
+            <div className="rounded-lg border border-cyan-400/20 bg-cyan-500/[0.07] p-2.5">
+              <p className="text-[11px] font-semibold text-cyan-100">Advanced layout density</p>
+              <div className="mt-2 grid grid-cols-2 gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setAdvancedLayout('compact')}
+                  className={`rounded-lg border px-2 py-1.5 text-[11px] font-semibold transition ${
+                    advancedLayout === 'compact'
+                      ? 'border-cyan-300/35 bg-cyan-500/15 text-cyan-100'
+                      : 'border-white/[0.1] bg-white/[0.04] text-sigflo-muted hover:text-sigflo-text'
+                  }`}
+                >
+                  Compact
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAdvancedLayout('expanded')}
+                  className={`rounded-lg border px-2 py-1.5 text-[11px] font-semibold transition ${
+                    advancedLayout === 'expanded'
+                      ? 'border-cyan-300/35 bg-cyan-500/15 text-cyan-100'
+                      : 'border-white/[0.1] bg-white/[0.04] text-sigflo-muted hover:text-sigflo-text'
+                  }`}
+                >
+                  Expanded
+                </button>
+              </div>
+            </div>
+          ) : (
+            <p className="text-[11px] text-sigflo-muted">
+              Default mode keeps the trading experience calm and focused. Pro tools stay available when you turn this on.
+            </p>
+          )}
+        </div>
       </section>
 
       <section className="rounded-2xl border border-white/[0.06] bg-sigflo-surface sigflo-panel-texture p-3.5">
@@ -752,14 +897,7 @@ export default function ProfileScreen() {
             <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-sigflo-accent">Authenticator setup</p>
             {totpSetup.qrCode ? (
               <div className="mt-2 flex justify-center rounded-lg border border-white/[0.08] bg-[#08090d] p-2">
-                {/* Render the SVG as a data-URL image to avoid dangerouslySetInnerHTML XSS risk. */}
-                <img
-                  src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(totpSetup.qrCode)}`}
-                  alt="Scan this QR code with your authenticator app"
-                  width={160}
-                  height={160}
-                  className="rounded"
-                />
+                <div className="rounded bg-white p-2" dangerouslySetInnerHTML={{ __html: totpSetup.qrCode }} />
               </div>
             ) : (
               <p className="mt-2 text-[11px] text-sigflo-muted">QR not available — use manual setup key or the link below.</p>
@@ -886,7 +1024,50 @@ export default function ProfileScreen() {
           </div>
         </div>
       ) : null}
+
+      {/* ── Feedback ── */}
+      <section className="rounded-2xl border border-white/[0.06] bg-sigflo-surface sigflo-panel-texture p-3.5">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-sigflo-muted">Feedback</p>
+        <p className="mt-1.5 text-[11px] leading-relaxed text-sigflo-muted/70">
+          Questions, ideas, or issues? We read everything.
+        </p>
+        <button
+          type="button"
+          onClick={openFeedback}
+          className="mt-3 flex w-full items-center justify-between rounded-lg border border-sigflo-accent/20 bg-sigflo-accent/8 px-3 py-2.5 text-sm font-semibold text-sigflo-accent transition hover:border-sigflo-accent/35 hover:bg-sigflo-accent/12"
+        >
+          <span>Send Feedback</span>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+            <path d="M22 2L11 13M22 2L15 22l-4-9-9-4 20-7z" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </button>
+      </section>
+
+      {/* ── Legal & disclosures ── */}
+      <section className="rounded-2xl border border-white/[0.06] bg-sigflo-surface sigflo-panel-texture p-3.5">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-sigflo-muted">Legal</p>
+        <p className="mt-1.5 text-[11px] leading-relaxed text-sigflo-muted/70">
+          Sigflo provides market analysis tools, not financial advice. Trading involves real risk — you are responsible for your decisions.
+        </p>
+        <div className="mt-3 space-y-1.5">
+          <LegalLink to="/disclosure" label="Risk disclosure" />
+          <LegalLink to="/terms" label="Terms of service" />
+          <LegalLink to="/privacy" label="Privacy policy" />
+        </div>
+      </section>
     </div>
+  );
+}
+
+function LegalLink({ to, label }: { to: string; label: string }) {
+  return (
+    <Link
+      to={to}
+      className="flex items-center justify-between rounded-lg border border-white/[0.06] bg-sigflo-elevated px-3 py-2 text-sm text-sigflo-text transition hover:border-white/[0.12] hover:bg-[#1c1d26]"
+    >
+      <span>{label}</span>
+      <span className="text-sigflo-muted">→</span>
+    </Link>
   );
 }
 
@@ -964,10 +1145,11 @@ function ExchangeBalanceBreakdown({ snapshot }: { snapshot: ExchangeSnapshot }) 
     const noRows = snapshot.balances.length === 0 && snapshot.positions.length === 0;
     if (noRows) {
       return (
-        <div className=”mt-2 space-y-2”>
-          <p className=”rounded-lg border border-amber-300/25 bg-amber-300/10 px-2.5 py-2 text-[11px] leading-snug text-amber-100/95”>
-            Connected, but <span className=”font-semibold”>no balance data</span> came back. Check that the API key
-            has read access and is not IP-restricted. Disconnect and reconnect if the issue persists.
+        <div className="mt-2 space-y-2">
+          <p className="rounded-lg border border-amber-300/25 bg-amber-300/10 px-2.5 py-2 text-[11px] leading-snug text-amber-100/95">
+            Connected, but{' '}
+            <span className="font-semibold">no balance data</span>
+            {' '}came back. Check that the API key has read access and is not IP-restricted. Disconnect and reconnect if the issue persists.
           </p>
         </div>
       );
@@ -984,19 +1166,19 @@ function ExchangeBalanceBreakdown({ snapshot }: { snapshot: ExchangeSnapshot }) 
       .sort((a, b) => b.total - a.total)
       .slice(0, 3);
     return (
-      <div className=”mt-2 space-y-1.5”>
-        <div className=”grid grid-cols-2 gap-1.5”>
-          <BalanceMetricCell label=”Available (USDT)” value={stableFree > 0 ? stableFree : null} />
-          <BalanceMetricCell label=”Total Stable” value={stableTotal > 0 ? stableTotal : null} />
+      <div className="mt-2 space-y-1.5">
+        <div className="grid grid-cols-2 gap-1.5">
+          <BalanceMetricCell label="Available (USDT)" value={stableFree > 0 ? stableFree : null} />
+          <BalanceMetricCell label="Total Stable" value={stableTotal > 0 ? stableTotal : null} />
         </div>
         {nonStableBalances.length > 0 ? (
-          <div className=”rounded-lg border border-white/[0.06] bg-sigflo-elevated p-2”>
-            <p className=”mb-1.5 text-[9px] uppercase tracking-[0.12em] text-sigflo-muted”>Other assets</p>
-            <div className=”space-y-1”>
+          <div className="rounded-lg border border-white/[0.06] bg-sigflo-elevated p-2">
+            <p className="mb-1.5 text-[9px] uppercase tracking-[0.12em] text-sigflo-muted">Other assets</p>
+            <div className="space-y-1">
               {nonStableBalances.map((b) => (
-                <div key={b.asset} className=”flex items-center justify-between”>
-                  <span className=”text-[10px] font-semibold text-white/80”>{b.asset}</span>
-                  <span className=”text-[10px] tabular-nums text-white/60”>
+                <div key={b.asset} className="flex items-center justify-between">
+                  <span className="text-[10px] font-semibold text-white/80">{b.asset}</span>
+                  <span className="text-[10px] tabular-nums text-white/60">
                     {b.total.toLocaleString('en-US', { maximumFractionDigits: 6 })}
                   </span>
                 </div>
@@ -1005,8 +1187,8 @@ function ExchangeBalanceBreakdown({ snapshot }: { snapshot: ExchangeSnapshot }) 
           </div>
         ) : null}
         {snapshot.positions.length > 0 ? (
-          <div className=”rounded-lg border border-white/[0.06] bg-sigflo-elevated px-2 py-1.5”>
-            <p className=”text-[10px] text-sigflo-muted”>
+          <div className="rounded-lg border border-white/[0.06] bg-sigflo-elevated px-2 py-1.5">
+            <p className="text-[10px] text-sigflo-muted">
               {snapshot.positions.length} open {snapshot.positions.length === 1 ? 'position' : 'positions'}
             </p>
           </div>

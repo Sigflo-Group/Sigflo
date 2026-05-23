@@ -1,3 +1,4 @@
+import { secureStorage } from '@/lib/storage';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { TRADING_AUTO_EXECUTION_ACTIVE } from '@/lib/tradingControlMode';
@@ -10,6 +11,7 @@ import {
 import { BotExecutionSheet } from '@/components/bots/BotExecutionSheet';
 import { AdjustRiskSheet, type AdjustRiskPositionSnapshot } from '@/components/trade/AdjustRiskSheet';
 import { TradeChartPanel } from '@/components/trade/TradeChartPanel';
+import { TriggeredStatusBadge } from '@/components/ui/TriggeredStatusBadge';
 import {
   BOT_FOCUS_CHART_PLOT_PX,
   BOT_FOCUS_FULL_CHART_DOCK_GAP_PX,
@@ -25,13 +27,14 @@ import type { TradeChartInterval } from '@/hooks/useLiveTradeMarket';
 import { useLiveTradeMarket } from '@/hooks/useLiveTradeMarket';
 import { useSyncedTradeChartInterval } from '@/hooks/useSyncedTradeChartInterval';
 import { ExitAiCoPilotBlock } from '@/components/trade/exit/ExitAiCoPilotBlock';
+import { roundUsdAmount, coerceUsdField } from '@/lib/tradeMath';
 import { useAccountSnapshot } from '@/hooks/useAccountSnapshot';
 import { useExitAutomation } from '@/hooks/useExitAutomation';
 import { useBotStatuses } from '@/hooks/useBotStatuses';
 import { useSignalEngine } from '@/hooks/useSignalEngine';
 import { requestChartSetupFocus } from '@/lib/chartSetupFocus';
 import {
-  baseBots,
+  deriveBotsFromSignals,
   botCardStatusMeta,
   botPersonality,
   formatBotPrice,
@@ -40,8 +43,10 @@ import {
 } from '@/lib/bots';
 import {
   buildTrackedFallbackSignal,
+  countTriggeredPairs,
   deriveMarketStatus,
   isFeedActionableOpportunity,
+  pickBestSignalForPair,
 } from '@/lib/marketScannerRows';
 import {
   SIGFLO_CHART_INTERVAL_EVENT,
@@ -84,16 +89,7 @@ function resolveMinOrderUsd(symbol: string): number {
   return SYMBOL_MIN_NOTIONAL_USD[s] ?? BETA_FALLBACK_MIN_ORDER_USD;
 }
 
-function roundUsdAmount(n: number): number {
-  return Math.round(n * 100) / 100;
-}
 
-function coerceUsdField(value: unknown): number | null {
-  if (value == null) return null;
-  if (typeof value === 'string' && value.trim() === '') return null;
-  const num = Number(value);
-  return Number.isFinite(num) ? num : null;
-}
 
 type TradeBalanceOverview = {
   availableToTrade: number | null;
@@ -238,10 +234,12 @@ function mergeModelWithBotLevels(
 function BotFocusHeader({
   bot,
   cardStatus,
+  triggeredPairCount,
   onBack,
 }: {
   bot: BotAgent;
   cardStatus: ReturnType<typeof resolveBotCardStatus>;
+  triggeredPairCount: number;
   onBack?: () => void;
 }) {
   const personality = botPersonality(bot.personalityId);
@@ -289,6 +287,7 @@ function BotFocusHeader({
             <span className="inline-flex max-w-full rounded-full border border-landing-accent/30 bg-landing-accent-dim/50 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-landing-accent-hi">
               {personality.label}
             </span>
+            <TriggeredStatusBadge count={triggeredPairCount} className="bg-landing-accent-dim/50 text-[9px]" />
           </div>
         </div>
       </div>
@@ -385,17 +384,19 @@ export default function BotFocusScreen() {
   const { items: accountSnapshots, refresh: refreshAccountSnapshots } = useAccountSnapshot({ pollMs: 12_000 });
   const [symbolMaxLeverage, setSymbolMaxLeverage] = useState<number | null>(null);
 
-  const bot = useMemo(() => baseBots.find((b) => b.id === botId) ?? null, [botId]);
+  const derivedBots = useMemo(() => deriveBotsFromSignals(signals), [signals]);
+  const bot = useMemo(() => derivedBots.find((b) => b.id === botId) ?? null, [botId, derivedBots]);
 
   const selectedWatched = selectedPairRaw ?? bot?.watchedPairs[0] ?? 'BTC';
   const linearSymbol = pairToLinearSymbol(selectedWatched);
+  const triggeredPairCount = useMemo(() => countTriggeredPairs(signals), [signals]);
 
   const focusSignal = useMemo(() => {
     if (!bot) return null;
     const watchBase = pairFromWatched(selectedWatched);
     const sym = pairToLinearSymbol(selectedWatched);
     const byId = signals.find((s) => s.id === bot.signalId);
-    const forPair = signals.find((s) => pairFromWatched(s.pair) === watchBase);
+    const forPair = pickBestSignalForPair(signals, watchBase);
     if (byId && pairFromWatched(byId.pair) === watchBase) return byId;
     if (forPair) return forPair;
     return buildTrackedFallbackSignal(watchBase, sym);
@@ -759,7 +760,7 @@ export default function BotFocusScreen() {
       return;
     }
     if (focusSignal) {
-      navigate(`/trade?${buildTradeQueryString(focusSignal, { marketStatus })}`);
+      navigate(`/trade?${buildTradeQueryString(focusSignal, { marketStatus })}&reviewTop=1`);
     }
   }, [
     accountSnapshots,
@@ -855,9 +856,7 @@ export default function BotFocusScreen() {
                   tpTriggerBy: DEFAULT_BYBIT_TPSL_TRIGGER,
                   slTriggerBy: DEFAULT_BYBIT_TPSL_TRIGGER,
                 });
-              } catch {
-                /* order live; TP/SL sync best-effort */
-              }
+              } catch (e) { console.error("[Caught Error]", e); }
             }
           }
         }
@@ -1018,11 +1017,9 @@ export default function BotFocusScreen() {
 
   const onIntervalChange = (v: TradeChartInterval) => {
     try {
-      window.localStorage.setItem(TRADE_CHART_INTERVAL_STORAGE_KEY, v);
+      secureStorage.setItem(TRADE_CHART_INTERVAL_STORAGE_KEY, v);
       window.dispatchEvent(new CustomEvent(SIGFLO_CHART_INTERVAL_EVENT, { detail: v }));
-    } catch {
-      /* ignore */
-    }
+    } catch (e) { console.error("[Caught Error]", e); }
   };
 
   const tapFlashTimerRef = useRef<number | null>(null);
@@ -1204,7 +1201,7 @@ export default function BotFocusScreen() {
 
   return (
     <motion.div
-      layout={fullChartMode}
+      layout={false}
       className={
         fullChartMode
           ? 'sigflo-bot-focus-root fixed inset-0 z-[95] flex h-[100dvh] max-h-[100dvh] flex-col overflow-hidden bg-landing-bg text-landing-text motion-reduce:transition-none'
@@ -1233,11 +1230,16 @@ export default function BotFocusScreen() {
             bot={bot}
             onBack={() => setFullChartMode(false)}
             pairLabel={chartModel.pair}
+            triggeredPairCount={triggeredPairCount}
             onOpenTradeWorkspace={() => {
-              if (focusSignal) navigate(`/trade?${buildTradeQueryString(focusSignal, { marketStatus })}`);
+              if (focusSignal) navigate(`/trade?${buildTradeQueryString(focusSignal, { marketStatus })}&reviewTop=1`);
             }}
           />
-          <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto overflow-x-hidden overscroll-y-contain px-1 pb-[calc(env(safe-area-inset-bottom,0px)+0.75rem)] [-webkit-overflow-scrolling:touch] touch-pan-y">
+          {/*
+            Chart must NOT sit inside overflow-y-auto — mobile scroll parents steal touch drags from Lightweight Charts.
+            Scroll only the tools + insights stack below the plot.
+          */}
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden px-1 pb-[calc(env(safe-area-inset-bottom,0px)+0.75rem)]">
             <div className="pointer-events-none shrink-0 px-2 pt-1 text-center">
               <p className="text-[10px] font-medium tracking-tight text-landing-muted/80">
                 {bot.detail.setupStateLabel}
@@ -1248,7 +1250,7 @@ export default function BotFocusScreen() {
               <motion.div
                 layout={false}
                 ref={chartSlotRef}
-                className={`relative min-h-0 w-full min-w-0 overflow-hidden motion-reduce:transition-none ${
+                className={`relative min-h-0 w-full min-w-0 overflow-hidden overscroll-none motion-reduce:transition-none ${
                   BOT_FOCUS_FULL_CHART_PLOT_FLEX_FILL ? 'flex min-h-0 flex-1 flex-col' : ''
                 }`}
                 style={{
@@ -1261,50 +1263,52 @@ export default function BotFocusScreen() {
                 {biasOverlay}
               </motion.div>
             </div>
-            <BotFocusChartToolsDock
-              chartInterval={chartInterval}
-              onIntervalChange={onIntervalChange}
-              options={FOCUS_INTERVAL_OPTIONS}
-              onFocusSetup={() =>
-                requestChartSetupFocus({ pairFilter: chartModelForPlot.pair, botName: bot.name })
-              }
-            />
-            {execLive && chartModelForPlot && focusSignal ? (
-              <div className="shrink-0 border-t border-landing-border/40 bg-landing-bg/90 px-2 py-2">
-                <ExitAiCoPilotBlock
-                  model={botExitAiModel}
-                  exitMode={exitAuto.mode}
-                  onExitModeChange={exitAuto.setMode}
-                  onCloseNow={navigateToTradeForExit}
-                  compact
-                />
-              </div>
-            ) : null}
-            <BotFocusInsightDrawer
-              open={insightDrawerOpen}
-              onToggle={() => setInsightDrawerOpen((v) => !v)}
-              bot={bot}
-              hasActiveSetup={hasDisplayableSetup}
-              rrDisplay={Number.isFinite(rrDisplay) ? rrDisplay : chartModel.riskReward}
-              toggleClassName="pr-[4.75rem] sm:pr-[5.25rem]"
-              intentDisplay={liveSetupCopy?.intentLine}
-              commentaryDisplay={liveSetupCopy?.commentaryShort}
-              structureNote={liveSetupCopy?.structureFootnote}
-            />
+            <div className="max-h-[min(52dvh,480px)] min-h-0 shrink-0 overflow-y-auto overflow-x-hidden overscroll-y-contain [-webkit-overflow-scrolling:touch] border-t border-landing-border/35">
+              <BotFocusChartToolsDock
+                chartInterval={chartInterval}
+                onIntervalChange={onIntervalChange}
+                options={FOCUS_INTERVAL_OPTIONS}
+                onFocusSetup={() =>
+                  requestChartSetupFocus({ pairFilter: chartModelForPlot.pair, botName: bot.name })
+                }
+              />
+              {execLive && chartModelForPlot && focusSignal ? (
+                <div className="shrink-0 border-t border-landing-border/40 bg-landing-bg/90 px-2 py-2">
+                  <ExitAiCoPilotBlock
+                    model={botExitAiModel}
+                    exitMode={exitAuto.mode}
+                    onExitModeChange={exitAuto.setMode}
+                    onCloseNow={navigateToTradeForExit}
+                    compact
+                  />
+                </div>
+              ) : null}
+              <BotFocusInsightDrawer
+                open={insightDrawerOpen}
+                onToggle={() => setInsightDrawerOpen((v) => !v)}
+                bot={bot}
+                hasActiveSetup={hasDisplayableSetup}
+                rrDisplay={Number.isFinite(rrDisplay) ? rrDisplay : chartModel.riskReward}
+                toggleClassName="pr-[4.75rem] sm:pr-[5.25rem]"
+                intentDisplay={liveSetupCopy?.intentLine}
+                commentaryDisplay={liveSetupCopy?.commentaryShort}
+                structureNote={liveSetupCopy?.structureFootnote}
+              />
+            </div>
           </div>
         </>
       ) : (
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto overflow-x-hidden overscroll-y-contain [-webkit-overflow-scrolling:touch] touch-pan-y">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
           {/*
-            Sticky only the compact chrome — not the chart. A tall sticky block + chart touch handling
-            made the cockpit feel non-scrollable on many phones.
+            Chart stays outside overflow-y-auto so pan/zoom reaches Lightweight Charts on touch devices.
           */}
           <div
-            className={`sticky top-0 z-20 -mx-0 border-b border-landing-border/60 bg-landing-bg/95 backdrop-blur-xl ${stickyTone}`}
+            className={`sticky top-0 z-20 shrink-0 -mx-0 border-b border-landing-border/60 bg-landing-bg/95 backdrop-blur-xl ${stickyTone}`}
           >
             <BotFocusHeader
               bot={bot}
               cardStatus={cardStatus}
+              triggeredPairCount={triggeredPairCount}
               onBack={canGoBack ? () => navigate(-1) : undefined}
             />
             <div className="border-t border-landing-border/50 bg-black/20 px-3 py-1.5">
@@ -1319,7 +1323,7 @@ export default function BotFocusScreen() {
             </div>
           </div>
           {pairPicker}
-          <div className="relative w-full shrink-0">
+          <div className="relative w-full shrink-0 overflow-hidden overscroll-none">
             <motion.div
               layout={false}
               ref={chartSlotRef}
@@ -1330,6 +1334,7 @@ export default function BotFocusScreen() {
               {biasOverlay}
             </motion.div>
           </div>
+          <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain [-webkit-overflow-scrolling:touch]">
           <div className="space-y-4 px-4 pb-[calc(12.5rem+env(safe-area-inset-bottom))] pt-4 md:pb-[calc(13rem+env(safe-area-inset-bottom))]">
         <section className="rounded-2xl border border-landing-border bg-landing-surface landing-panel-texture p-4 shadow-landing-card">
           <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-landing-muted">Intent</p>
@@ -1505,6 +1510,7 @@ export default function BotFocusScreen() {
           ) : null}
         </section>
           </div>
+          </div>
         </div>
       )}
 
@@ -1643,7 +1649,7 @@ export default function BotFocusScreen() {
         onExecute={executeTradeFromFocus}
         onViewPosition={() => {
           if (focusSignal) {
-            navigate(`/trade?${buildTradeQueryString(focusSignal, { marketStatus })}`);
+            navigate(`/trade?${buildTradeQueryString(focusSignal, { marketStatus })}&reviewTop=1`);
           }
         }}
         tabBarInsetPx={fullChartMode ? 16 : 74}

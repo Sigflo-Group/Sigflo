@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { MarketNewsScanSheet } from '@/components/news/MarketNewsScanSheet';
 import { SignalCard } from '@/components/feed/SignalCard';
@@ -6,6 +6,7 @@ import { useFeedMiniCharts } from '@/hooks/useFeedMiniCharts';
 import { useSyncedTradeChartInterval } from '@/hooks/useSyncedTradeChartInterval';
 import { tradeChartIntervalShortLabel } from '@/lib/tradeChartIntervalPreference';
 import { useSignalEngine } from '@/hooks/useSignalEngine';
+import { dismissFeedWelcome, isFeedWelcomeDismissed } from '@/lib/feedWelcomeBanner';
 import {
   buildTrackedFallbackSignal,
   deriveMarketStatus,
@@ -13,12 +14,13 @@ import {
   symbolToPair,
   TRACKED_SYMBOLS,
 } from '@/lib/marketScannerRows';
+import { STRATEGY_PERSONALITY_PROFILES, type StrategyPersonalityMode } from '@/lib/strategyPersonality';
 
 type FeedFilter = 'all' | 'strong' | 'actionable' | 'risky';
 
 const filterChips: { id: FeedFilter; label: string }[] = [
   { id: 'all', label: 'All' },
-  { id: 'strong', label: 'Strong+' },
+  { id: 'strong', label: 'Strong 75+' },
   { id: 'actionable', label: 'Actionable' },
   { id: 'risky', label: 'Risky' },
 ];
@@ -32,7 +34,20 @@ export function FeedScreen() {
       : 'all';
   const [filter, setFilter] = useState<FeedFilter>(initialFilter);
   const [newsScanOpen, setNewsScanOpen] = useState(false);
-  const { signals: liveSignals, loading, mode, connection } = useSignalEngine();
+  const [showWelcome, setShowWelcome] = useState(!isFeedWelcomeDismissed());
+  const onDismissWelcome = useCallback(() => {
+    dismissFeedWelcome();
+    setShowWelcome(false);
+  }, []);
+  const {
+    signals: liveSignals,
+    loading,
+    mode,
+    connection,
+    strategyPersonalityMode,
+    setStrategyPersonalityMode,
+    userAdaptation,
+  } = useSignalEngine();
 
   /** Tracked watchlist pairs with no engine emission yet — same shells as Markets “Tracked”. */
   const feedSignalsBase = useMemo(() => {
@@ -51,7 +66,7 @@ export function FeedScreen() {
   }, [searchParams]);
 
   const signals = useMemo(() => {
-    if (filter === 'strong') return feedSignalsBase.filter((s) => s.setupScore >= 70);
+    if (filter === 'strong') return feedSignalsBase.filter((s) => s.setupScore >= 75);
     if (filter === 'actionable') return feedSignalsBase.filter(isFeedActionableOpportunity);
     if (filter === 'risky') {
       return feedSignalsBase.filter((s) => s.riskTag === 'High Risk' || deriveMarketStatus(s) === 'overextended');
@@ -118,6 +133,43 @@ export function FeedScreen() {
           ) : null}
         </div>
 
+        {showWelcome ? (
+          <div className="rounded-2xl border border-sigflo-accent/20 bg-sigflo-accent/[0.04] px-4 py-3.5">
+            <div className="flex items-start justify-between gap-2">
+              <p className="text-xs font-bold uppercase tracking-[0.14em] text-sigflo-accent">Welcome to Sigflo</p>
+              <button type="button" onClick={onDismissWelcome} className="text-[11px] text-zinc-500 hover:text-zinc-300" aria-label="Dismiss welcome">
+                Dismiss
+              </button>
+            </div>
+            <div className="mt-3 space-y-2.5">
+              <div className="flex gap-2.5">
+                <span className="mt-0.5 shrink-0 text-sigflo-accent text-sm">✦</span>
+                <p className="text-[12px] leading-relaxed text-zinc-300">
+                  <span className="font-semibold text-white">Signals</span> are live market setups the scanner detects — each shows a score, direction bias, and trade plan.
+                </p>
+              </div>
+              <div className="flex gap-2.5">
+                <span className="mt-0.5 shrink-0 text-sigflo-accent text-sm">✦</span>
+                <p className="text-[12px] leading-relaxed text-zinc-300">
+                  <span className="font-semibold text-white">Scores</span> (0–100) rate conviction: 75+ is strong, 55–74 developing, below 55 still forming.
+                </p>
+              </div>
+              <div className="flex gap-2.5">
+                <span className="mt-0.5 shrink-0 text-sigflo-accent text-sm">✦</span>
+                <p className="text-[12px] leading-relaxed text-zinc-300">
+                  <span className="font-semibold text-white">Status dots:</span> gray is forming, cyan is in play, green is triggered. Tap any signal to review it on Trade.
+                </p>
+              </div>
+              <div className="flex gap-2.5">
+                <span className="mt-0.5 shrink-0 text-sigflo-accent text-sm">✦</span>
+                <p className="text-[12px] leading-relaxed text-zinc-300">
+                  <span className="font-semibold text-white">Paper trading</span> is available on every setup — no exchange needed.
+                </p>
+              </div>
+            </div>
+          </div>
+        ) : null}
+
         <button
           type="button"
           onClick={() => setNewsScanOpen(true)}
@@ -134,15 +186,39 @@ export function FeedScreen() {
         </button>
 
         {/* Filter chips */}
-        <div className="flex gap-2" role="tablist" aria-label="Filter signals">
+        <div className="space-y-2">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-sigflo-muted">Strategy personality</p>
+          <div className="flex flex-wrap gap-2">
+            {(Object.keys(STRATEGY_PERSONALITY_PROFILES) as StrategyPersonalityMode[]).map((m) => {
+              const active = strategyPersonalityMode === m;
+              return (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => setStrategyPersonalityMode(m)}
+                  className={`rounded-full border px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] transition ${
+                    active
+                      ? 'border-sigflo-accent/45 bg-sigflo-accentDim text-sigflo-accent'
+                      : 'border-white/[0.08] bg-sigflo-elevated text-sigflo-muted hover:text-sigflo-text'
+                  }`}
+                >
+                  {STRATEGY_PERSONALITY_PROFILES[m].label}
+                </button>
+              );
+            })}
+          </div>
+          <p className="text-[10px] text-sigflo-muted">
+            User adaptation: {userAdaptation.preferences.preferredTradeType} setups · {userAdaptation.preferences.preferredSignalFrequency} frequency · {userAdaptation.preferences.preferredRiskLevel} risk preference
+          </p>
+        </div>
+
+        <div className="flex gap-2" aria-label="Filter signals">
           {filterChips.map((chip) => {
             const active = filter === chip.id;
             return (
               <button
                 key={chip.id}
                 type="button"
-                role="tab"
-                aria-selected={active}
                 onClick={() => setFilter(chip.id)}
                 className={`rounded-full px-4 py-1.5 text-xs font-semibold transition ${
                   active
@@ -157,11 +233,19 @@ export function FeedScreen() {
         </div>
 
         {/* Signal cards */}
-        <div className="space-y-4">
+        <div className="space-y-5 sm:space-y-5">
           {!loading && signals.length === 0 ? (
-            <p className="rounded-xl border border-white/[0.06] bg-sigflo-elevated px-3 py-4 text-center text-[13px] text-sigflo-muted">
-              No live setups yet — the scanner is running; stronger structure will appear as the market produces it.
-            </p>
+            <div className="rounded-xl border border-white/[0.06] bg-sigflo-elevated px-3 py-4 text-center">
+              <p className="text-[13px] text-sigflo-muted">No setups meet this filter right now.</p>
+              <p className="mt-2 text-[11px] text-sigflo-muted/60">
+                {connection === 'connected'
+                  ? `Scanner is live across ${feedSignalsBase.length} pairs — signals appear here as they develop.`
+                  : `Scanner is ${mode.toLowerCase()} — reconnecting to market data feeds.`}
+              </p>
+              <p className="mt-1.5 text-[11px] text-sigflo-muted/60">
+                Try a different filter or check back as price action builds new structure.
+              </p>
+            </div>
           ) : null}
           {signals.map((s) => (
             <SignalCard

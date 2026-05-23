@@ -1,10 +1,10 @@
 import type { CommandBarModel } from '@/types/botSystem';
 
 export const mockCommandBar: CommandBarModel = {
-  automationMode: 'Assisted',
+  automationMode: 'Manual',
   riskMode: 'Balanced',
   liveExecutionLine: 'Live locked',
-  exchange: 'Bybit connected',
-  capitalDeployedPct: 18,
+  exchange: 'No exchange connected',
+  capitalDeployedPct: 0,
   systemHealth: 'Healthy',
 };

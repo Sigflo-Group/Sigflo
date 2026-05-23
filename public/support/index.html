@@ -52,21 +52,29 @@
         background: rgba(255,255,255,0.025);
       }
       .contact-card strong { display: block; margin-bottom: 6px; }
-      .form-preview {
+            .form-preview {
         display: grid; gap: 12px; margin-top: 16px;
       }
       .field {
-        min-height: 48px; display: flex; align-items: center; padding: 0 14px;
+        display: block; padding: 14px;
         border-radius: 14px; border: 1px solid rgba(255,255,255,0.08); background: rgba(255,255,255,0.02);
-        color: rgba(255,255,255,0.5); font-size: 14px;
+        font-size: 14px;
       }
-      .field.textarea { min-height: 128px; align-items: flex-start; padding-top: 14px; }
+      .field input, .field select, .field textarea {
+        width: 100%; border: none; background: transparent; color: rgba(255,255,255,0.92);
+        font-family: inherit; font-size: 14px; outline: none; resize: vertical;
+      }
+      .field textarea { min-height: 100px; }
+      .field select { cursor: pointer; }
+      .field select option { background: #111; color: rgba(255,255,255,0.92); }
+      .field input::placeholder, .field textarea::placeholder { color: rgba(255,255,255,0.35); }
       .button {
         display: inline-flex; align-items: center; justify-content: center; min-height: 46px; padding: 0 18px;
-        border-radius: 999px; border: 1px solid rgba(0,255,200,0.18);
+        border: 1px solid rgba(0,255,200,0.18);
         background: linear-gradient(180deg, rgba(0,255,200,0.2), rgba(0,255,200,0.1));
-        color: #03110d; font-weight: 700; width: fit-content; margin-top: 6px;
+        color: #03110d; font-weight: 700; width: fit-content; margin-top: 6px; cursor: pointer; border-radius: 999px; font-size: 14px; font-family: inherit;
       }
+      .button:hover { background: linear-gradient(180deg, rgba(0,255,200,0.3), rgba(0,255,200,0.15)); }
 .faq-item + .faq-item {
         margin-top: 14px; padding-top: 14px; border-top: 1px solid rgba(255,255,255,0.08);
       }
@@ -156,15 +164,44 @@
         <section class="panel">
           <h2>Contact Support</h2>
           <p>Tell us what’s going on and we’ll take a look.</p>
-          <div class="form-preview">
-            <div class="field">Name</div>
-            <div class="field">Email</div>
-            <div class="field">Category</div>
-            <div class="field">Subject</div>
-            <div class="field textarea">Message</div>
-            <div class="field">Screenshot / attachment (optional)</div>
-            <a class="button" href="mailto:support@sigflo.group">Send Request</a>
-          </div>
+          <form class="form-preview" onsubmit="return sendForm(event)">
+            <label class="field">
+              <input type="text" id="support-name" placeholder="Name" required />
+            </label>
+            <label class="field">
+              <input type="email" id="support-email" placeholder="Email" required />
+            </label>
+            <label class="field">
+              <select id="support-category" required>
+                <option value="">Category</option>
+                <option value="account">Account issue</option>
+                <option value="bug">Bug / technical issue</option>
+                <option value="feedback">Feedback / suggestion</option>
+                <option value="broker">Broker connection problem</option>
+                <option value="other">Other</option>
+              </select>
+            </label>
+            <label class="field">
+              <input type="text" id="support-subject" placeholder="Subject" required />
+            </label>
+            <label class="field">
+              <textarea id="support-message" placeholder="Message" rows="5" required></textarea>
+            </label>
+            <button type="submit" class="button">Send Request</button>
+          </form>
+          <script>
+            function sendForm(e) {
+              e.preventDefault();
+              var name = document.getElementById('support-name').value;
+              var email = document.getElementById('support-email').value;
+              var subject = document.getElementById('support-subject').value;
+              var cat = document.getElementById('support-category').value;
+              var msg = document.getElementById('support-message').value;
+              var body = 'Category: ' + cat + '%0D%0A%0D%0A' + msg;
+              window.location.href = 'mailto:support@sigflo.group?subject=' + encodeURIComponent('[Sigflo] ' + name + ' - ' + subject) + '&body=' + encodeURIComponent(body);
+              return false;
+            }
+          </script>
         </section>
   <section class="panel">
           <h2>FAQ</h2>

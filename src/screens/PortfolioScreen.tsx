@@ -20,7 +20,7 @@ import { positionBiasForLinearSymbol } from '@/lib/positionBiasStat';
 import { positionMicroInsight } from '@/lib/positionMicroInsight';
 import { symbolToPair } from '@/lib/marketScannerRows';
 import { buildPortfolioPositionTradeQuery } from '@/lib/tradeNavigation';
-import { baseBots } from '@/lib/bots';
+import { deriveBotsFromSignals } from '@/lib/bots';
 import { BYBIT_APP_ASSETS_HOME_HREF } from '@/lib/exchangeTransferUrls';
 import type { ExchangeSnapshot, PositionItem } from '@/types/integrations';
 import type { Candle } from '@/types/market';
@@ -234,7 +234,8 @@ export default function PortfolioScreen() {
   const { mergeBot } = useBotUserConfig();
   const { statusMap } = useBotStatuses();
 
-  const mergedBots = useMemo(() => baseBots.map(mergeBot), [mergeBot]);
+  const liveBots = useMemo(() => deriveBotsFromSignals(scannerSignals), [scannerSignals]);
+  const mergedBots = useMemo(() => liveBots.map(mergeBot), [liveBots, mergeBot]);
 
   const { unrealized, connected } = useMemo(() => aggregateStablesAndPnl(snapshots), [snapshots]);
   const positions = useMemo(() => flattenPositions(snapshots), [snapshots]);
@@ -279,11 +280,11 @@ export default function PortfolioScreen() {
   }, [connected, netWorth, todayPnl]);
 
   const managingBotsCount = useMemo(() => {
-    return baseBots.filter((b) => {
+    return liveBots.filter((b) => {
       const s = statusMap[b.id] ?? b.status;
       return s === 'active' || s === 'scanning';
     }).length;
-  }, [statusMap]);
+  }, [statusMap, liveBots]);
 
   const botDayStats = useMemo(
     () => buildBotDayStats(mergedBots, closedToday),

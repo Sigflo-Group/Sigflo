@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useBotStatuses } from '@/hooks/useBotStatuses';
 import { useSignalEngine } from '@/hooks/useSignalEngine';
-import { baseBots, shortActionLabel, statusTone } from '@/lib/bots';
+import { deriveBotsFromSignals, shortActionLabel, statusTone } from '@/lib/bots';
 import { countTriggeredPairs, deriveMarketStatus } from '@/lib/marketScannerRows';
 import { uiSignalStateClasses, uiSignalStateFromMarketStatus, uiSignalStateLabel } from '@/lib/signalState';
 import { feedActionablePath } from '@/config/appRoutes';
@@ -15,7 +15,8 @@ export default function BotDetailScreen() {
   const { signals } = useSignalEngine();
   const { statusMap, togglePause, setBotStatus } = useBotStatuses();
 
-  const bot = useMemo(() => baseBots.find((b) => b.id === botId) ?? null, [botId]);
+  const bots = useMemo(() => deriveBotsFromSignals(signals), [signals]);
+  const bot = useMemo(() => bots.find((b) => b.id === botId) ?? null, [botId, bots]);
   const signal = useMemo(() => {
     if (!bot) return null;
     return signals.find((s) => s.id === bot.signalId) ?? signals[0] ?? null;

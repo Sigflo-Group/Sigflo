@@ -10,20 +10,24 @@ import { mockEngines } from '@/data/mockEngines';
 import { mockSystemEvents } from '@/data/mockSystemEvents';
 import { useSignalEngine } from '@/hooks/useSignalEngine';
 import { countTriggeredPairs } from '@/lib/marketScannerRows';
-import { parseSourceEngineFromOpportunityId } from '@/lib/tradeReviewCockpit';
 import { getAlertPreferences } from '@/services/alerts/alertPreferences';
 import { playUiTapSound } from '@/utils/sound';
-import { listOpportunities } from '@/services/opportunities';
+import { signalsToOpportunities } from '@/lib/signalsToOpportunities';
 import type { AlertPreference } from '@/types/alerts';
 import type { OpportunityCardModel, SystemEventModel } from '@/types/botSystem';
 import { sortOpportunities } from '@/types/botSystem';
 
+const ENGINE_SETUP_MAP: Record<string, string[]> = {
+  Nova: ['Range expansion / breakout'],
+  Rio: ['Mean reversion'],
+  Pulse: ['Trend impulse'],
+  Guard: ['Trend pullback'],
+};
+
 export default function EngineDetailScreen() {
   const { engineId } = useParams<{ engineId: string }>();
   const navigate = useNavigate();
-  const { signals, loading: signalsLoading } = useSignalEngine();
-  const [opportunities, setOpportunities] = useState<OpportunityCardModel[]>([]);
-  const [oppLoading, setOppLoading] = useState(true);
+  const { signals, loading: signalsLoading, liveTickersBySymbol } = useSignalEngine();
   const [isPausedLocally, setIsPausedLocally] = useState(false);
   const [localJournalEvents, setLocalJournalEvents] = useState<SystemEventModel[]>([]);
   const [alertPrefs, setAlertPrefs] = useState<AlertPreference>(() => getAlertPreferences());
@@ -34,35 +38,27 @@ export default function EngineDetailScreen() {
     [engineId],
   );
 
-  useEffect(() => {
-    let cancelled = false;
-    const run = async () => {
-      setOppLoading(true);
-      try {
-        const list = await listOpportunities();
-        if (!cancelled) setOpportunities(list);
-      } catch {
-        if (!cancelled) setOpportunities([]);
-      } finally {
-        if (!cancelled) setOppLoading(false);
-      }
-    };
-    void run();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const prices = useMemo(() => {
+    const p: Record<string, number> = {};
+    for (const [sym, ticker] of Object.entries(liveTickersBySymbol)) {
+      const pair = sym.replace(/USDT$/i, '/USDT').replace(/USDC$/i, '/USDC');
+      p[pair] = ticker.lastPrice;
+    }
+    return p;
+  }, [liveTickersBySymbol]);
+
+  const opportunities = useMemo(() => {
+    return signalsToOpportunities(signals, prices, {});
+  }, [signals, prices]);
+
+  const setupTypes = engineId ? ENGINE_SETUP_MAP[engineId] ?? [] : [];
 
   const formingForEngine = useMemo(() => {
-    if (!engine) return [];
-    return sortOpportunities(
-      opportunities.filter(
-        (o) =>
-          (o.state === 'Building' || o.state === 'Watching') &&
-          parseSourceEngineFromOpportunityId(o.id) === engine.engineName,
-      ),
-    );
-  }, [opportunities, engine]);
+    const filtered = setupTypes.length
+      ? opportunities.filter((o) => setupTypes.includes(o.setupType))
+      : opportunities;
+    return sortOpportunities(filtered.filter((o) => o.state === 'Building' || o.state === 'Watching'));
+  }, [opportunities, setupTypes]);
 
   const scopedJournalEvents = useMemo(() => {
     if (!engineId) return [];
@@ -175,7 +171,7 @@ export default function EngineDetailScreen() {
 
         <EngineFocusCard engineId={engine.engineId} />
 
-        <EngineOpportunityList loading={oppLoading} opportunities={formingForEngine} onSelect={onSelectOpportunity} />
+        <EngineOpportunityList loading={signalsLoading} opportunities={formingForEngine} onSelect={onSelectOpportunity} />
 
         <EngineJournal events={scopedJournalEvents} localEvents={localJournalEvents} />
 

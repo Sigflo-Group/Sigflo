@@ -137,7 +137,7 @@ import {
   putExitAutomationWatch,
 } from '@/services/api/tradeClient';
 import { fetchLinearMaxLeverage } from '@/services/bybit/client';
-import { getOpportunityById } from '@/services/opportunities';
+import { signalsToOpportunities } from '@/lib/signalsToOpportunities';
 import {
   getPositionRepository,
   sigfloActivePositionFromExchange,
@@ -342,31 +342,6 @@ export function TradeScreen() {
   const [botsPlannedStop, setBotsPlannedStop] = useState<number | null>(null);
   const [botsPlannedTargets, setBotsPlannedTargets] = useState<number[] | null>(null);
   const [botsPaperPulseToken, setBotsPaperPulseToken] = useState(0);
-
-  useEffect(() => {
-    const id = botsReviewContext?.opportunityId?.trim();
-    if (!id) {
-      setBotsTradeOpp(undefined);
-      setBotsTradeOppLoading(false);
-      return;
-    }
-    let cancelled = false;
-    setBotsTradeOpp(undefined);
-    setBotsTradeOppLoading(true);
-    void (async () => {
-      try {
-        const opp = await getOpportunityById(id);
-        if (!cancelled) setBotsTradeOpp(opp ?? null);
-      } catch {
-        if (!cancelled) setBotsTradeOpp(null);
-      } finally {
-        if (!cancelled) setBotsTradeOppLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [botsReviewContext?.opportunityId]);
 
   /** Deep link from Bots active strip: `/trade?pair=BTCUSDT&source=position` */
   const positionReviewFromQuery = useMemo(() => {
@@ -587,6 +562,29 @@ export function TradeScreen() {
   }, [isManageMode]);
 
   const { signals: liveSignals, liveTickersBySymbol, regimePredictorBySymbol, proIntelligenceMode } = useSignalEngine();
+
+  const oppPrices = useMemo(() => {
+    const p: Record<string, number> = {};
+    for (const [sym, ticker] of Object.entries(liveTickersBySymbol)) {
+      const pair = sym.replace(/USDT$/i, '/USDT').replace(/USDC$/i, '/USDC');
+      p[pair] = ticker.lastPrice;
+    }
+    return p;
+  }, [liveTickersBySymbol]);
+
+  const tradeScreenOpps = useMemo(() => signalsToOpportunities(liveSignals, oppPrices, {}), [liveSignals, oppPrices]);
+
+  useEffect(() => {
+    const id = botsReviewContext?.opportunityId?.trim();
+    if (!id) {
+      setBotsTradeOpp(undefined);
+      setBotsTradeOppLoading(false);
+      return;
+    }
+    setBotsTradeOppLoading(true);
+    setBotsTradeOpp(tradeScreenOpps.find((o) => o.id === id) ?? null);
+    setBotsTradeOppLoading(false);
+  }, [botsReviewContext?.opportunityId, tradeScreenOpps]);
 
   const selectedSignal = useMemo(() => {
     const fromQuery = buildSignalContextFromQuery(params, signalId);

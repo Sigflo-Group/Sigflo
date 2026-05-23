@@ -107,14 +107,25 @@ function extractStructuredFromRemotePayload(data: unknown): AiStructuredAnalysis
   }
 }
 
+function levelInAllowed(n: number, allowed: number[]): boolean {
+  for (const a of allowed) {
+    const tol = Math.max(1e-8, Math.abs(a) * 0.0005);
+    if (Math.abs(n - a) <= tol) return true;
+  }
+  return false;
+}
+
 function validateAndBuildRemoteQuickResponse(
   req: AssistantRequest,
   structured: AiStructuredAnalysis,
 ): AssistantResponseGrounded | null {
-  const v = validateGroundedStructuredAnalysis(structured, req.context);
+  const allowed = req.context?.allowedPriceLevels ?? [];
+  const filtered = structured.levels_used.filter((l) => levelInAllowed(l, allowed));
+  const cleaned = { ...structured, levels_used: filtered };
+  const v = validateGroundedStructuredAnalysis(cleaned, req.context);
   if (!v.ok) return null;
-  const { headline, body } = expandStructuredToQuickNarrative(req.action, structured, req.context);
-  return { structured, headline, body, source: 'remote' };
+  const { headline, body } = expandStructuredToQuickNarrative(req.action, cleaned, req.context);
+  return { structured: cleaned, headline, body, source: 'remote' };
 }
 
 function announceAssistantResult(req: AssistantRequest, out: AssistantResponseGrounded) {

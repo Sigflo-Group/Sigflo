@@ -11,11 +11,16 @@ export function DisclaimerFooter() {
       <p className="text-[10px] leading-tight text-sigflo-muted/60">
         Market analysis only · Not financial advice · Trading carries real risk
         {' · '}
-        <Link
-          to="/legal"
-          className="underline decoration-sigflo-muted/30 underline-offset-2 transition hover:text-sigflo-muted/90 hover:decoration-sigflo-muted/60"
-        >
-          Legal
+        <Link to="/disclosure" className="underline decoration-sigflo-muted/30 underline-offset-2 transition hover:text-sigflo-muted/90 hover:decoration-sigflo-muted/60">
+          Disclosure
+        </Link>
+        {' · '}
+        <Link to="/terms" className="underline decoration-sigflo-muted/30 underline-offset-2 transition hover:text-sigflo-muted/90 hover:decoration-sigflo-muted/60">
+          Terms
+        </Link>
+        {' · '}
+        <Link to="/privacy" className="underline decoration-sigflo-muted/30 underline-offset-2 transition hover:text-sigflo-muted/90 hover:decoration-sigflo-muted/60">
+          Privacy
         </Link>
       </p>
     </div>

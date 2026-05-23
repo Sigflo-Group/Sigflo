@@ -105,6 +105,8 @@ export default function App() {
 
   const skipSplash =
     isAuthFastEntryPath(location.pathname) ||
+    location.pathname === '/disclosure' ||
+    location.pathname === '/terms' ||
     location.pathname === '/privacy' ||
     location.pathname === '/privacy/' ||
     location.pathname === '/legal' ||
@@ -137,6 +139,8 @@ export default function App() {
       <ErrorBoundary key={location.pathname}>
         <Routes>
           <Route path="/login" element={<LoginScreen />} />
+          <Route path="/disclosure" element={<LegalScreen />} />
+          <Route path="/terms" element={<LegalScreen />} />
           <Route path="/privacy" element={<PrivacyPolicyScreen />} />
           <Route path="/legal" element={<LegalScreen />} />
           <Route path="/auth/callback" element={<AuthCallbackScreen />} />

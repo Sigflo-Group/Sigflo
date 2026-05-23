@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useMemo, useState } from 'react';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { useCanGoBack } from '@/hooks/useCanGoBack';
 
 type LegalDoc = 'risk' | 'terms' | 'privacy';
@@ -10,13 +10,22 @@ const DOCS: { id: LegalDoc; label: string; src: string }[] = [
   { id: 'privacy', label: 'Privacy policy', src: '/privacy/index.html' },
 ];
 
+function docFromPath(path: string): LegalDoc {
+  if (path.startsWith('/disclosure')) return 'risk';
+  if (path.startsWith('/terms')) return 'terms';
+  if (path.startsWith('/privacy')) return 'privacy';
+  return 'risk';
+}
+
 export default function LegalScreen() {
   const navigate = useNavigate();
+  const { pathname } = useLocation();
   const canGoBack = useCanGoBack();
   const [searchParams] = useSearchParams();
   const docParam = searchParams.get('doc') as LegalDoc | null;
+  const initialDoc = useMemo(() => docFromPath(pathname), [pathname]);
   const [active, setActive] = useState<LegalDoc>(
-    docParam && DOCS.some((d) => d.id === docParam) ? docParam : 'risk',
+    docParam && DOCS.some((d) => d.id === docParam) ? docParam : initialDoc,
   );
 
   const doc = DOCS.find((d) => d.id === active)!;
@@ -32,7 +41,7 @@ export default function LegalScreen() {
         >
           ← Back
         </button>
-        <span className="truncate text-xs font-medium text-[rgba(245,247,250,0.45)]">Legal</span>
+        <span className="truncate text-xs font-medium text-[rgba(245,247,250,0.45)]">{doc?.label ?? 'Legal'}</span>
         <div className="w-12" />
       </div>
 

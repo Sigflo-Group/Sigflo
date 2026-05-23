@@ -21,8 +21,16 @@ export function BottomTabNav() {
       {/* Persistent disclaimer — sits at the top of the nav bar, always visible */}
       <p className="pb-1 text-center text-[9px] leading-tight text-sigflo-muted/45">
         Market analysis only · Not financial advice ·{' '}
-        <a href="/legal" className="underline decoration-sigflo-muted/25 underline-offset-2">
-          Legal
+        <a href="/disclosure" className="underline decoration-sigflo-muted/25 underline-offset-2 hover:text-sigflo-muted/70 transition-colors">
+          Disclosure
+        </a>
+        {' · '}
+        <a href="/terms" className="underline decoration-sigflo-muted/25 underline-offset-2 hover:text-sigflo-muted/70 transition-colors">
+          Terms
+        </a>
+        {' · '}
+        <a href="/privacy" className="underline decoration-sigflo-muted/25 underline-offset-2 hover:text-sigflo-muted/70 transition-colors">
+          Privacy
         </a>
         {' · '}
         <button

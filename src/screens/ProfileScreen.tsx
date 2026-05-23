@@ -1035,9 +1035,9 @@ export default function ProfileScreen() {
           Sigflo provides market analysis tools, not financial advice. Trading involves real risk — you are responsible for your decisions.
         </p>
         <div className="mt-3 space-y-1.5">
-          <LegalLink to="/legal?doc=risk" label="Risk disclosure" />
-          <LegalLink to="/legal?doc=terms" label="Terms of service" />
-          <LegalLink to="/legal?doc=privacy" label="Privacy policy" />
+          <LegalLink to="/disclosure" label="Risk disclosure" />
+          <LegalLink to="/terms" label="Terms of service" />
+          <LegalLink to="/privacy" label="Privacy policy" />
         </div>
       </section>
     </div>

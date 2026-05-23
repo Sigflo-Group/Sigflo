@@ -4,6 +4,7 @@ import { MarketNewsScanSheet } from '@/components/news/MarketNewsScanSheet';
 import { MarketPostureBar } from '@/components/shared/MarketPostureBar';
 import { StatusChip } from '@/components/trade/StatusChip';
 import { requestAssistantSuggestion } from '@/services/ai/client';
+import { submitSignalReaction } from '@/services/api/feedbackClient';
 import { humanizeTraderCopy } from '@/lib/marketConditionsCopy';
 import { interpretSignal } from '@/lib/signalInterpretation';
 import { spotBaseAssetFromOrderSymbol } from '@/lib/spotSymbol';
@@ -65,6 +66,8 @@ export function ScannerInsightCard({
     structured?: AiStructuredAnalysis;
   } | null>(null);
   const [aiLoading, setAiLoading] = useState(false);
+  const [reaction, setReaction] = useState<'helpful' | 'not_helpful' | null>(null);
+  const [reactionBusy, setReactionBusy] = useState(false);
   const [contextOpen, setContextOpen] = useState(false);
   const [deepSheetOpen, setDeepSheetOpen] = useState(false);
   const [newsScanOpen, setNewsScanOpen] = useState(false);
@@ -308,6 +311,69 @@ export function ScannerInsightCard({
         ) : (
           <p className="mt-2 text-[10px] text-sigflo-muted">Assistant is ready for this setup.</p>
         )}
+      </div>
+
+      {/* Reactions */}
+      <div className="mt-2 flex items-center gap-2">
+        <span className="text-[9px] font-semibold uppercase tracking-[0.12em] text-sigflo-muted/60">Helpful?</span>
+        <div className="flex gap-1">
+          <button
+            type="button"
+            disabled={reactionBusy}
+            onClick={() => {
+              if (reactionBusy) return;
+              const next = reaction === 'helpful' ? null : 'helpful';
+              setReaction(next);
+              if (next) {
+                setReactionBusy(true);
+                submitSignalReaction({
+                  signalId: signal.id,
+                  pair: signal.pair,
+                  side: signal.side,
+                  setupType: signal.setupType,
+                  setupScore: signal.setupScore,
+                  riskTag: signal.riskTag ?? null,
+                  reaction: next,
+                }).finally(() => setReactionBusy(false));
+              }
+            }}
+            className={`rounded-lg border px-2 py-1 text-[10px] font-semibold transition ${
+              reaction === 'helpful'
+                ? 'border-emerald-500/50 bg-emerald-500/15 text-emerald-300'
+                : 'border-white/[0.08] bg-white/[0.04] text-sigflo-muted hover:border-white/[0.18] hover:text-sigflo-text'
+            }`}
+          >
+            👍
+          </button>
+          <button
+            type="button"
+            disabled={reactionBusy}
+            onClick={() => {
+              if (reactionBusy) return;
+              const next = reaction === 'not_helpful' ? null : 'not_helpful';
+              setReaction(next);
+              if (next) {
+                setReactionBusy(true);
+                submitSignalReaction({
+                  signalId: signal.id,
+                  pair: signal.pair,
+                  side: signal.side,
+                  setupType: signal.setupType,
+                  setupScore: signal.setupScore,
+                  riskTag: signal.riskTag ?? null,
+                  reaction: next,
+                }).finally(() => setReactionBusy(false));
+              }
+            }}
+            className={`rounded-lg border px-2 py-1 text-[10px] font-semibold transition ${
+              reaction === 'not_helpful'
+                ? 'border-rose-500/50 bg-rose-500/15 text-rose-300'
+                : 'border-white/[0.08] bg-white/[0.04] text-sigflo-muted hover:border-white/[0.18] hover:text-sigflo-text'
+            }`}
+          >
+            👎
+          </button>
+        </div>
       </div>
 
       {/* Disclaimer */}

@@ -2,8 +2,14 @@ import { apiJson } from './http';
 
 export type FeedbackCategory = 'bug' | 'feature' | 'signal_quality' | 'exchange_issue' | 'general';
 
+export type FeedbackSeverityInput = 'cosmetic' | 'annoying' | 'blocking';
+export type FeedbackSeverity = FeedbackSeverityInput | 'normal';
+
+export type SignalReaction = 'helpful' | 'not_helpful';
+
 export type SubmitFeedbackInput = {
   category: FeedbackCategory;
+  severity?: FeedbackSeverityInput;
   message: string;
   screenshotUrl?: string | null;
   route?: string | null;
@@ -25,6 +31,7 @@ export type FeedbackAdminRow = {
   id: string;
   userId: string;
   category: FeedbackCategory;
+  severity: FeedbackSeverity;
   message: string;
   screenshotUrl: string | null;
   route: string | null;
@@ -42,4 +49,33 @@ export async function listFeedbackAdmin(opts: {
   if (opts.cursor) params.set('cursor', opts.cursor);
   const qs = params.toString();
   return apiJson(`/feedback${qs ? `?${qs}` : ''}`);
+}
+
+// ─── Signal reactions ─────────────────────────────────────────────────────────
+
+export async function submitSignalReaction(input: {
+  signalId: string;
+  pair: string;
+  side: string;
+  setupType: string;
+  setupScore: number;
+  riskTag: string | null;
+  reaction: SignalReaction;
+}): Promise<void> {
+  await apiJson('/feedback/reactions', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+// ─── Top reporters (admin) ────────────────────────────────────────────────────
+
+export type TopReporter = {
+  userId: string;
+  email: string;
+  count: number;
+};
+
+export async function listTopReporters(): Promise<{ reporters: TopReporter[] }> {
+  return apiJson('/feedback/top-reporters');
 }

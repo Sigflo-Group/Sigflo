@@ -15,6 +15,9 @@ export type PositionRepository = {
   /** All rows the repository currently considers open (demo: mock list; future: synced open legs). */
   listActivePositions(): readonly SigfloActivePosition[];
   /** Optional mutable operations (supported by demo repository). */
-  closePositionByPair?: (pair: string) => boolean;
-  closeAllPositions?: () => number;
+  closePositionByPair?: (
+    pair: string,
+    opts?: { markPrice?: number; reason?: 'manual_close' | 'close_all' | 'flip_position' },
+  ) => boolean;
+  closeAllPositions?: (opts?: { markByPair?: Record<string, number> }) => number;
 };

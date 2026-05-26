@@ -1,7 +1,6 @@
 import { useEffect, useState, type ReactElement } from 'react';
 import { Navigate, Outlet, Route, Routes, useLocation } from 'react-router-dom';
 import { AppShell } from '@/components/layout/AppShell';
-import { BetaAccessGate } from '@/components/layout/BetaAccessGate';
 import { ErrorBoundary } from '@/components/layout/ErrorBoundary';
 import { SigfloMobileLoader } from '@/components/layout/SigfloMobileLoader';
 import { SplashScreen } from '@/components/layout/SplashScreen';
@@ -21,7 +20,6 @@ import RiskControlsScreen from '@/screens/RiskControlsScreen';
 import EngineDetailScreen from '@/screens/EngineDetailScreen';
 import { EngineDebugScreen } from '@/screens/EngineDebugScreen';
 import { FeedScreen } from '@/screens/FeedScreen';
-import BetaAdminScreen from '@/screens/BetaAdminScreen';
 import LoginScreen from '@/screens/LoginScreen';
 import MarketsScreen from '@/screens/MarketsScreen';
 import OnboardingTradingStyleScreen from '@/screens/OnboardingTradingStyleScreen';
@@ -58,11 +56,8 @@ function OnboardingGate() {
   if (!styleDone && location.pathname !== '/onboarding') {
     return <Navigate to="/onboarding" replace />;
   }
-  if (styleDone && !connectSeen && location.pathname !== '/onboarding/connect') {
-    return <Navigate to="/onboarding/connect" replace />;
-  }
-  const done = styleDone && connectSeen;
-  if (done && (location.pathname === '/onboarding' || location.pathname === '/onboarding/connect')) {
+  // Exchange connection is optional; once finished users can continue directly.
+  if (styleDone && connectSeen && (location.pathname === '/onboarding' || location.pathname === '/onboarding/connect')) {
     return <Navigate to={getFeedRoute()} replace />;
   }
   return <Outlet />;
@@ -110,8 +105,7 @@ export default function App() {
     location.pathname === '/privacy' ||
     location.pathname === '/privacy/' ||
     location.pathname === '/legal' ||
-    location.pathname === '/legal/' ||
-    location.pathname === '/admin/beta';
+    location.pathname === '/legal/';
   const showSplash = !skipSplash && (!splashMinElapsed || authLoading);
 
   useEffect(() => {
@@ -146,55 +140,52 @@ export default function App() {
           <Route path="/auth/callback" element={<AuthCallbackScreen />} />
           <Route path="/auth/reset-password" element={<ResetPasswordScreen />} />
           <Route element={<ProtectedLayout />}>
-            <Route path="/admin/beta" element={<BetaAdminScreen />} />
-            <Route element={<BetaAccessGate />}>
-              <Route path="/onboarding" element={<OnboardingTradingStyleScreen />} />
-              <Route path="/onboarding/connect" element={<OnboardingConnect />} />
-              <Route element={<OnboardingGate />}>
-                <Route element={<SignalEngineProviderShell />}>
-                  <Route element={<AppShell />}>
-                    <Route path={feedRoute} element={<ProtectedRoute><FeedScreen /></ProtectedRoute>} />
-                    <Route path="/markets" element={<MarketsScreen />} />
-                    <Route path="/bots" element={<BotsScreen />} />
-                    <Route path="/risk" element={<RiskControlsScreen />} />
-                    <Route path="/engines/:engineId" element={<EngineDetailScreen />} />
-                    <Route path="/bots/:botId/focus" element={<BotFocusScreen />} />
-                    <Route path="/bots/:botId/settings" element={<BotSettingsScreen />} />
-                    <Route path="/bots/:botId" element={<BotDetailScreen />} />
-                    <Route path="/portfolio" element={<ProtectedRoute><PortfolioScreen /></ProtectedRoute>} />
-                    <Route path="/performance" element={<ProtectedRoute><PerformanceDashboardScreen /></ProtectedRoute>} />
-                    <Route
-                      path="/analytics/strategy-attribution"
-                      element={
-                        <ProtectedRoute>
-                          <ProIntelligenceRoute>
-                            <StrategyAttributionScreen />
-                          </ProIntelligenceRoute>
-                        </ProtectedRoute>
-                      }
-                    />
-                    <Route
-                      path="/replay"
-                      element={
-                        <ProtectedRoute>
-                          <ProIntelligenceRoute>
-                            <TradeReplayScreen />
-                          </ProIntelligenceRoute>
-                        </ProtectedRoute>
-                      }
-                    />
-                    <Route path="/profile" element={<ProtectedRoute><ProfileScreen /></ProtectedRoute>} />
-                    <Route path="/settings/profile" element={<ProtectedRoute><ProfileScreen /></ProtectedRoute>} />
-                    <Route path="/settings/exchange" element={<StepUpProtectedRoute><ProfileScreen /></StepUpProtectedRoute>} />
-                    <Route path="/settings/security" element={<ProtectedRoute><ProfileScreen /></ProtectedRoute>} />
-                    <Route path="/settings/execution" element={<StepUpProtectedRoute><ProfileScreen /></StepUpProtectedRoute>} />
-                    <Route path="/security/step-up" element={<ProtectedRoute><StepUpVerificationScreen /></ProtectedRoute>} />
-                    {import.meta.env.DEV ? <Route path="/engine-debug" element={<EngineDebugScreen />} /> : null}
-                    {import.meta.env.DEV ? <Route path="/scanner-lab" element={<ScannerLabScreen />} /> : null}
-                  </Route>
-                  <Route path="/trade" element={<ProtectedRoute><TradeScreen /></ProtectedRoute>} />
-                  <Route path="/trade/:symbol" element={<ProtectedRoute><TradeScreen /></ProtectedRoute>} />
+            <Route path="/onboarding" element={<OnboardingTradingStyleScreen />} />
+            <Route path="/onboarding/connect" element={<OnboardingConnect />} />
+            <Route element={<OnboardingGate />}>
+              <Route element={<SignalEngineProviderShell />}>
+                <Route element={<AppShell />}>
+                  <Route path={feedRoute} element={<ProtectedRoute><FeedScreen /></ProtectedRoute>} />
+                  <Route path="/markets" element={<MarketsScreen />} />
+                  <Route path="/bots" element={<BotsScreen />} />
+                  <Route path="/risk" element={<RiskControlsScreen />} />
+                  <Route path="/engines/:engineId" element={<EngineDetailScreen />} />
+                  <Route path="/bots/:botId/focus" element={<BotFocusScreen />} />
+                  <Route path="/bots/:botId/settings" element={<BotSettingsScreen />} />
+                  <Route path="/bots/:botId" element={<BotDetailScreen />} />
+                  <Route path="/portfolio" element={<ProtectedRoute><PortfolioScreen /></ProtectedRoute>} />
+                  <Route path="/performance" element={<ProtectedRoute><PerformanceDashboardScreen /></ProtectedRoute>} />
+                  <Route
+                    path="/analytics/strategy-attribution"
+                    element={
+                      <ProtectedRoute>
+                        <ProIntelligenceRoute>
+                          <StrategyAttributionScreen />
+                        </ProIntelligenceRoute>
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route
+                    path="/replay"
+                    element={
+                      <ProtectedRoute>
+                        <ProIntelligenceRoute>
+                          <TradeReplayScreen />
+                        </ProIntelligenceRoute>
+                      </ProtectedRoute>
+                    }
+                  />
+                  <Route path="/profile" element={<ProtectedRoute><ProfileScreen /></ProtectedRoute>} />
+                  <Route path="/settings/profile" element={<ProtectedRoute><ProfileScreen /></ProtectedRoute>} />
+                  <Route path="/settings/exchange" element={<StepUpProtectedRoute><ProfileScreen /></StepUpProtectedRoute>} />
+                  <Route path="/settings/security" element={<ProtectedRoute><ProfileScreen /></ProtectedRoute>} />
+                  <Route path="/settings/execution" element={<StepUpProtectedRoute><ProfileScreen /></StepUpProtectedRoute>} />
+                  <Route path="/security/step-up" element={<ProtectedRoute><StepUpVerificationScreen /></ProtectedRoute>} />
+                  {import.meta.env.DEV ? <Route path="/engine-debug" element={<EngineDebugScreen />} /> : null}
+                  {import.meta.env.DEV ? <Route path="/scanner-lab" element={<ScannerLabScreen />} /> : null}
                 </Route>
+                <Route path="/trade" element={<ProtectedRoute><TradeScreen /></ProtectedRoute>} />
+                <Route path="/trade/:symbol" element={<ProtectedRoute><TradeScreen /></ProtectedRoute>} />
               </Route>
             </Route>
           </Route>

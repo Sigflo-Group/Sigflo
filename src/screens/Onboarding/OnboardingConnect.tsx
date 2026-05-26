@@ -65,21 +65,32 @@ export default function OnboardingConnect() {
         </div>
 
         <h1 className="mt-8 text-center text-2xl font-medium tracking-tight text-zinc-100">
-          Exchange connection coming soon
+          Connect exchange (optional)
         </h1>
         <p className="mx-auto mt-3 max-w-[280px] text-center text-sm leading-6 text-zinc-400">
-          Live exchange linking is not available in this preview. Your API keys are never stored or sent.
+          You can start in paper mode right away and connect Bybit or MEXC when you want live balances.
         </p>
         <p className="mx-auto mt-3 max-w-[280px] text-center text-sm leading-6 text-zinc-500">
-          You can still explore signals and trade with paper positions while you wait.
+          Exchange setup is in Account settings, and you can switch back anytime.
         </p>
 
         <button
           type="button"
-          onClick={goFeed}
-          className="mt-10 flex h-12 w-full items-center justify-center rounded-xl bg-[#00ffc8] text-sm font-medium text-black transition-all hover:brightness-110 active:scale-[0.985]"
+          onClick={() => {
+            markExchangeConnectOnboardingSeen();
+            navigate('/profile', { replace: true });
+          }}
+          className="mt-8 flex h-12 w-full items-center justify-center rounded-xl border border-white/[0.14] bg-white/[0.04] text-sm font-semibold text-white transition hover:bg-white/[0.08] active:scale-[0.985]"
         >
-          Continue to Sigflo
+          Open Account Settings
+        </button>
+
+        <button
+          type="button"
+          onClick={goFeed}
+          className="mt-3 flex h-12 w-full items-center justify-center rounded-xl bg-[#00ffc8] text-sm font-medium text-black transition-all hover:brightness-110 active:scale-[0.985]"
+        >
+          Continue in Paper Trading Mode
         </button>
 
         <p className="mt-8 text-center text-xs leading-5 text-zinc-500">

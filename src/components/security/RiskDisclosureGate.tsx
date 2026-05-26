@@ -110,9 +110,9 @@ export function RiskDisclosureGate({ children }: Props) {
               </p>
             </section>
             <section>
-              <h3 className="text-sigflo-text font-medium mb-1.5">Beta software</h3>
+              <h3 className="text-sigflo-text font-medium mb-1.5">Platform maturity</h3>
               <p>
-                Sigflo is in active development. Features may change and errors can occur. Do not rely solely on Sigflo for critical trading decisions.
+                Sigflo evolves continuously. Features can change and occasional errors may occur. Use Sigflo as a decision-support tool, not your sole source for critical trading decisions.
               </p>
             </section>
             <div className="h-4" />

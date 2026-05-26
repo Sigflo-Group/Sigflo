@@ -1,4 +1,5 @@
 import type { SigfloActivePosition } from '@/types/position';
+import type { PaperTradeOpenInput, PaperTradingSnapshot } from '@/types/paperTrading';
 
 /** Normalize `BTC / USDT`, `BTCUSDT`, `btc-usdt` → `BTCUSDT`. */
 export function normalizePositionPairKey(pair: string): string {
@@ -16,5 +17,7 @@ export type PositionRepository = {
   listActivePositions(): readonly SigfloActivePosition[];
   /** Optional mutable operations (supported by demo repository). */
   closePositionByPair?: (pair: string) => boolean;
-  closeAllPositions?: () => number;
+  closeAllPositions?: (opts?: { markByPair?: Record<string, number> }) => number;
+  openPaperPosition?: (input: PaperTradeOpenInput) => { ok: boolean; position?: SigfloActivePosition; error?: string };
+  getPaperTradingSnapshot?: (markByPair?: Record<string, number>) => PaperTradingSnapshot;
 };

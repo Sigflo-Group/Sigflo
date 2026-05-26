@@ -8,7 +8,7 @@ import { describeAuthError } from '@/lib/supabaseAuthErrors';
 import { isSupabaseConfigured } from '@/lib/supabase';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const BETA_NOTICE_DISMISSED_KEY = 'sigflo:betaNoticeDismissed:v1';
+const WELCOME_NOTICE_DISMISSED_KEY = 'sigflo:welcomeNoticeDismissed:v1';
 
 const inputClass =
   'w-full rounded-xl border border-white/[0.1] bg-[#171A20] px-4 py-3.5 text-base text-[#F5F7FA] outline-none transition placeholder:text-[rgba(245,247,250,0.35)] focus:border-[rgba(0,200,120,0.45)] focus:shadow-[0_0_0_3px_rgba(0,200,120,0.12)] disabled:opacity-50';
@@ -89,9 +89,9 @@ export default function LoginScreen() {
 
   const [googleBusy, setGoogleBusy] = useState(false);
   const [googleError, setGoogleError] = useState<string | null>(null);
-  const [betaNoticeOpen, setBetaNoticeOpen] = useState(() => {
+  const [welcomeNoticeOpen, setWelcomeNoticeOpen] = useState(() => {
     try {
-      return secureStorage.getItem(BETA_NOTICE_DISMISSED_KEY) !== '1';
+      return secureStorage.getItem(WELCOME_NOTICE_DISMISSED_KEY) !== '1';
     } catch {
       return true;
     }
@@ -214,7 +214,7 @@ export default function LoginScreen() {
           <h1 className="text-2xl font-bold tracking-tight text-[#F5F7FA]">Enter Sigflo</h1>
           <p className="mt-2 text-sm leading-relaxed text-[rgba(245,247,250,0.72)]">Your trading workspace</p>
           <p className="mt-3 inline-flex items-center rounded-full border border-[rgba(0,200,120,0.34)] bg-[rgba(0,200,120,0.12)] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#8FFFD4]">
-            Beta phase
+            Open beta
           </p>
         </div>
 
@@ -562,35 +562,35 @@ export default function LoginScreen() {
           </Link>
         </p>
       </div>
-      {betaNoticeOpen ? (
+      {welcomeNoticeOpen ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-5 backdrop-blur-[2px]">
           <div className="w-full max-w-md rounded-2xl border border-[#00C878]/28 bg-[#12161c] p-5 shadow-[0_24px_80px_-28px_rgba(0,200,120,0.55)]">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#8FFFD4]">Sigflo Beta Access</p>
-            <p className="mt-3 text-sm leading-relaxed text-[rgba(245,247,250,0.88)]">Sigflo is currently in beta.</p>
-            <p className="mt-3 text-sm leading-relaxed text-[rgba(245,247,250,0.78)]">
-              We provide AI-assisted signals and market insights - not financial advice.
+            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#8FFFD4]">Welcome to Sigflo</p>
+            <p className="mt-3 text-sm leading-relaxed text-[rgba(245,247,250,0.88)]">
+              Start in Paper Trading Mode with a simulated portfolio and $10,000 virtual funds.
             </p>
             <p className="mt-3 text-sm leading-relaxed text-[rgba(245,247,250,0.78)]">
-              Markets carry risk, and outcomes are never guaranteed.
-              <br />
-              During beta, data and features may be incomplete or inaccurate.
+              Explore AI-assisted signals and market context instantly. Connect an exchange later when you are ready.
+            </p>
+            <p className="mt-3 text-sm leading-relaxed text-[rgba(245,247,250,0.78)]">
+              Trading always carries risk and outcomes are never guaranteed.
             </p>
             <p className="mt-3 text-sm leading-relaxed text-[rgba(245,247,250,0.86)]">
-              Trade thoughtfully. You are fully responsible for your decisions.
+              We provide analysis tools, not financial advice. You stay in control of every decision.
             </p>
             <button
               type="button"
               onClick={() => {
-                setBetaNoticeOpen(false);
+                setWelcomeNoticeOpen(false);
                 try {
-                  secureStorage.setItem(BETA_NOTICE_DISMISSED_KEY, '1');
+                  secureStorage.setItem(WELCOME_NOTICE_DISMISSED_KEY, '1');
                 } catch {
                   // Ignore storage failures (private mode / blocked storage).
                 }
               }}
               className="mt-5 w-full rounded-xl bg-[#00C878] py-3 text-sm font-bold text-[#0F1115] shadow-[0_8px_28px_-8px_rgba(0,200,120,0.45)] transition hover:brightness-105 active:scale-[0.99]"
             >
-              Enter Sigflo
+              Start paper trading
             </button>
             <p className="mt-2 text-center text-[11px] leading-relaxed text-[rgba(245,247,250,0.6)]">
               By continuing, you acknowledge the risks and accept our terms.

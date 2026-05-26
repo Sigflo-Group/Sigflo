@@ -432,12 +432,6 @@ export default function ProfileScreen() {
           ) : null}
           {authMode === 'supabase' && user ? (
             <>
-              <Link
-                to="/admin/beta"
-                className="rounded-lg border border-[rgba(0,255,200,0.22)] bg-[rgba(0,255,200,0.08)] px-3 py-1.5 text-xs font-semibold text-[#8FFFD4] transition hover:bg-[rgba(0,255,200,0.12)]"
-              >
-                Beta approvals
-              </Link>
               <button
                 type="button"
                 onClick={() => {

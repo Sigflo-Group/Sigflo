@@ -6,9 +6,10 @@ import { useAuth } from '@/context/AuthContext';
 import {
   isTradingStyleOnboarded,
   markTradingStyleOnboarded,
+  readTradingStyleChoice,
   type TradingStyleChoice,
 } from '@/lib/tradingStyleOnboarding';
-import { isExchangeConnectOnboardingSeen } from '@/lib/exchangeConnectOnboarding';
+import { markExchangeConnectOnboardingSeen } from '@/lib/exchangeConnectOnboarding';
 
 const OPTIONS: {
   choice: TradingStyleChoice;
@@ -40,10 +41,24 @@ export default function OnboardingTradingStyleScreen() {
   const navigate = useNavigate();
   const { user, authMode } = useAuth();
 
-  const pick = useCallback(
+  const startPaperTrading = useCallback(() => {
+    const existing = readTradingStyleChoice();
+    markTradingStyleOnboarded(existing ?? 'balanced');
+    markExchangeConnectOnboardingSeen();
+    navigate(getFeedRoute(), { replace: true });
+  }, [navigate]);
+
+  const connectExchange = useCallback(() => {
+    const existing = readTradingStyleChoice();
+    markTradingStyleOnboarded(existing ?? 'balanced');
+    navigate('/onboarding/connect', { replace: true });
+  }, [navigate]);
+
+  const pickAndStartPaperTrading = useCallback(
     (choice: TradingStyleChoice) => {
       markTradingStyleOnboarded(choice);
-      navigate('/onboarding/connect', { replace: true });
+      markExchangeConnectOnboardingSeen();
+      navigate(getFeedRoute(), { replace: true });
     },
     [navigate],
   );
@@ -53,11 +68,7 @@ export default function OnboardingTradingStyleScreen() {
   }
 
   if (isTradingStyleOnboarded()) {
-    return isExchangeConnectOnboardingSeen() ? (
-      <Navigate to={getFeedRoute()} replace />
-    ) : (
-      <Navigate to="/onboarding/connect" replace />
-    );
+    return <Navigate to={getFeedRoute()} replace />;
   }
 
   return (
@@ -67,19 +78,45 @@ export default function OnboardingTradingStyleScreen() {
       <div className="relative mx-auto max-w-sm">
         <div className="mb-8 flex flex-col items-center text-center">
           <SigfloLogo size={44} glowing className="mb-5" />
-          <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-[rgba(245,247,250,0.45)]">One quick step</p>
-          <h1 className="mt-2 text-xl font-bold tracking-tight text-[#F5F7FA]">Choose your trading style</h1>
+          <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-[rgba(245,247,250,0.45)]">Welcome to Sigflo</p>
+          <h1 className="mt-2 text-xl font-bold tracking-tight text-[#F5F7FA]">Start with paper trading</h1>
           <p className="mt-2 text-sm leading-relaxed text-[rgba(245,247,250,0.65)]">
-            Sets a default temperament for suggestions. You can change this anytime in Profile.
+            Explore markets instantly in a simulated portfolio. Connect an exchange later whenever you are ready.
           </p>
         </div>
 
-        <div className="space-y-3">
+        <div className="mb-4 rounded-2xl border border-white/[0.08] bg-[#171A20] px-4 py-3 text-left text-[12px] leading-relaxed text-[rgba(245,247,250,0.7)]">
+          <p className="font-semibold text-white/85">Your first path</p>
+          <p className="mt-1">1. Welcome to Sigflo</p>
+          <p>2. Explore markets and AI signals</p>
+          <p>3. Start paper trading with virtual funds</p>
+          <p>4. Connect an exchange later (optional)</p>
+        </div>
+
+        <button
+          type="button"
+          onClick={startPaperTrading}
+          className="mb-3 flex w-full items-center justify-center rounded-xl bg-[#00C878] py-3 text-sm font-bold text-[#0F1115] transition hover:brightness-105 active:scale-[0.99]"
+        >
+          Start Paper Trading
+        </button>
+        <button
+          type="button"
+          onClick={connectExchange}
+          className="mb-6 flex w-full items-center justify-center rounded-xl border border-white/[0.14] bg-white/[0.04] py-3 text-sm font-semibold text-white transition hover:bg-white/[0.08]"
+        >
+          Connect Exchange (optional)
+        </button>
+
+        <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.18em] text-[rgba(245,247,250,0.45)]">
+          Optional style preset
+        </p>
+        <div className="space-y-2.5">
           {OPTIONS.map(({ choice, title, bot, blurb }) => (
             <button
               key={choice}
               type="button"
-              onClick={() => pick(choice)}
+              onClick={() => pickAndStartPaperTrading(choice)}
               className="flex w-full flex-col items-start rounded-2xl border border-white/[0.08] bg-[#171A20] px-4 py-4 text-left shadow-[inset_0_1px_0_0_rgba(255,255,255,0.04)] transition hover:border-[rgba(0,200,120,0.35)] hover:bg-[#1a1e26] active:scale-[0.99]"
             >
               <div className="flex w-full items-center justify-between gap-2">

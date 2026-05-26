@@ -56,7 +56,7 @@ export function AppTopBar() {
                 Sigflo
               </h1>
               <span className="inline-flex h-5 shrink-0 items-center rounded-full border border-[rgba(0,200,120,0.34)] bg-[rgba(0,200,120,0.12)] px-2 text-[9px] font-bold uppercase leading-none tracking-[0.12em] text-[#8FFFD4]">
-                Beta
+                Open beta
               </span>
               {taglineVisible ? (
                 <p className="m-0 min-w-0 truncate border-l border-white/[0.1] pl-2 text-[10px] font-medium leading-none tracking-wide text-sigflo-muted">

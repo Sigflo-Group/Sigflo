@@ -20,7 +20,7 @@ import { countTriggeredPairs } from '@/lib/marketScannerRows';
 import { getAlertPreferences, saveAlertPreferences } from '@/services/alerts/alertPreferences';
 import { signalsToOpportunities } from '@/lib/signalsToOpportunities';
 import { getPositionRepository, sigfloActivePositionFromExchange, sigfloActiveToStripPosition } from '@/services/positions';
-import { DemoPositionRepository, DEMO_POSITIONS_CHANGED_EVENT } from '@/services/positions/demoPositionRepository';
+import { DEMO_POSITIONS_CHANGED_EVENT } from '@/services/positions/demoPositionRepository';
 import { DailyRiskGuardBanner } from '@/components/risk/DailyRiskGuardBanner';
 import { riskGuardStatusLine, useDailyRiskGuard } from '@/services/risk/dailyRiskGuard';
 import { useRiskSettings } from '@/services/risk/riskSettings';
@@ -361,32 +361,23 @@ export default function BotsScreen() {
     if (!plan.entryZone || plan.invalidation == null) return;
     const entryPrice = (plan.entryZone.min + plan.entryZone.max) / 2;
     const pair = opportunity.pair.includes('/') ? opportunity.pair : `${opportunity.pair} / USDT`;
-    const id =
-      typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
-        ? crypto.randomUUID()
-        : `bots-paper-${Date.now()}`;
-    const next: SigfloActivePosition = {
-      id,
+    const repo = getPositionRepository();
+    const opened = repo.openPaperPosition?.({
       pair,
+      market: 'futures',
       direction: opportunity.direction === 'SHORT' ? 'short' : 'long',
       entryPrice,
-      markPrice: entryPrice,
-      size: 1000,
+      notionalUsd: 1000,
       leverage: 1,
-      marginMode: 'cross',
-      unrealizedPnl: 0,
-      unrealizedPnlPct: 0,
       stopPrice: plan.invalidation,
-      liquidationPrice: null,
       targets: plan.targets ?? [],
-      openedAt: Date.now(),
       source: 'bots-paper',
-    };
-    const repo = getPositionRepository();
-    if (repo instanceof DemoPositionRepository) {
-      repo.addPosition(next);
+    });
+    if (opened?.ok === false) {
+      setPaperTradeToast(opened.error ?? 'Paper trade could not be opened');
+      return;
     }
-    setPaperTradeToast('Paper trade opened');
+    setPaperTradeToast('Paper trade opened in simulated portfolio');
     setExpandedOpportunityId(null);
     window.requestAnimationFrame(() => {
       activeSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });

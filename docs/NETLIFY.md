@@ -67,6 +67,10 @@ netlify deploy --prod
 | `VITE_SUPABASE_ANON_KEY` | Auth |
 | `VITE_AUTH_REDIRECT_ORIGIN` | Optional canonical origin for Google OAuth return (e.g. `https://www.sigflo.group`) if apex→www redirects broke sign-in; must match entries in Supabase **Redirect URLs**. |
 | `VITE_BACKEND_API_BASE` | Exchange integrations API (e.g. `https://your-api.onrender.com/api`) if you host `backend/` elsewhere |
+| `VITE_BYBIT_AFFILIATE_CODE` | Optional Bybit referral code for exchange signup links in onboarding/profile |
+| `VITE_MEXC_AFFILIATE_CODE` | Optional MEXC referral code for exchange signup links in onboarding/profile |
+| `VITE_BYBIT_AFFILIATE_SIGNUP_URL` | Optional full Bybit affiliate signup URL override (takes precedence over code) |
+| `VITE_MEXC_AFFILIATE_SIGNUP_URL` | Optional full MEXC affiliate signup URL override (takes precedence over code) |
 | `VITE_BASE` | Only if the app is served under a subpath (must end with `/`; see `vite.config.ts`) |
 
 **Beta admin (in-app approvals)** — serverless only; never `VITE_*` except the existing Supabase URL/anon for JWT verification:

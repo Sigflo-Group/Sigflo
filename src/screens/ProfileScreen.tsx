@@ -10,7 +10,14 @@ import { readTradingStyleChoice } from '@/lib/tradingStyleOnboarding';
 import { supabase } from '@/lib/supabase';
 import { formatFundingBalance } from '@/lib/formatFundingBalance';
 import { getOAuthRedirectToProfile } from '@/lib/oauthRedirectOrigin';
-import { BYBIT_API_KEYS_HREF, BYBIT_DEPOSIT_HREF, MEXC_API_KEYS_HREF, MEXC_DEPOSIT_HREF } from '@/lib/exchangeTransferUrls';
+import {
+  BYBIT_API_KEYS_HREF,
+  BYBIT_DEPOSIT_HREF,
+  BYBIT_SIGN_UP_HREF,
+  MEXC_API_KEYS_HREF,
+  MEXC_DEPOSIT_HREF,
+  MEXC_SIGN_UP_HREF,
+} from '@/lib/exchangeTransferUrls';
 import { sanitizeUserFacingHttpErrorMessage } from '@/lib/httpErrorMessage';
 import { playUiTapSound } from '@/utils/sound';
 import type { ExchangeId, ExchangeSnapshot } from '@/types/integrations';
@@ -551,6 +558,15 @@ export default function ProfileScreen() {
                     </div>
                   ) : (
                     <div className="flex shrink-0 items-center gap-1.5">
+                      <a
+                        href={exchange === 'bybit' ? BYBIT_SIGN_UP_HREF : MEXC_SIGN_UP_HREF}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        title={`Create a new ${exchange.toUpperCase()} account in a new tab`}
+                        className="rounded-lg border border-emerald-400/30 bg-emerald-500/10 px-2 py-1 text-[11px] font-semibold text-emerald-100 transition hover:bg-emerald-500/15"
+                      >
+                        Create account
+                      </a>
                       <a
                         href={exchange === 'bybit' ? BYBIT_API_KEYS_HREF : MEXC_API_KEYS_HREF}
                         target="_blank"

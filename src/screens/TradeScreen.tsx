@@ -3647,8 +3647,9 @@ export function TradeScreen() {
       const pair = symbolToPair(symbol).toUpperCase();
       markByPair[normalizePositionPairKey(pair)] = ticker.lastPrice;
     }
-    if (Number.isFinite(live.lastPrice) && live.lastPrice > 0) {
-      markByPair[normalizePositionPairKey(mergedModel.pair)] = live.lastPrice;
+    const liveLastPrice = live.lastPrice;
+    if (typeof liveLastPrice === 'number' && Number.isFinite(liveLastPrice) && liveLastPrice > 0) {
+      markByPair[normalizePositionPairKey(mergedModel.pair)] = liveLastPrice;
     } else if (Number.isFinite(mergedModel.lastPrice) && mergedModel.lastPrice > 0) {
       markByPair[normalizePositionPairKey(mergedModel.pair)] = mergedModel.lastPrice;
     }

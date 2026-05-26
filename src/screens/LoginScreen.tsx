@@ -593,7 +593,14 @@ export default function LoginScreen() {
               Start paper trading
             </button>
             <p className="mt-2 text-center text-[11px] leading-relaxed text-[rgba(245,247,250,0.6)]">
-              By continuing, you acknowledge the risks and accept our terms.
+              By continuing, you acknowledge the risks and accept our{' '}
+              <Link
+                to="/terms"
+                className="font-semibold text-[#7ee8d3] underline-offset-2 transition hover:text-[#b8fff0] hover:underline"
+              >
+                terms
+              </Link>
+              .
             </p>
           </div>
         </div>

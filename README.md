@@ -43,6 +43,9 @@ Set frontend env values (for local):
 
 - `VITE_BACKEND_API_BASE=http://localhost:8787/api`
 - `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` (Supabase project; enable Google provider under Authentication → Providers)
+- Optional affiliate wiring for exchange account links:
+  - `VITE_BYBIT_AFFILIATE_CODE` and `VITE_MEXC_AFFILIATE_CODE`
+  - or full override URLs: `VITE_BYBIT_AFFILIATE_SIGNUP_URL` and `VITE_MEXC_AFFILIATE_SIGNUP_URL`
 - Optional dev fallback (no Supabase): `VITE_DEV_USER_ID=demo-user` — backend must omit `SUPABASE_JWT_SECRET` and run outside `NODE_ENV=production` to accept `x-user-id`.
 
 In Supabase, add redirect URLs for your app origin (e.g. `http://localhost:3999/profile` when using Netlify Dev; matches `netlify.toml` `[dev] port`).

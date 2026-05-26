@@ -4,6 +4,7 @@ import { Navigate, useNavigate } from 'react-router-dom';
 import { getFeedRoute } from '@/config/appRoutes';
 import { useAuth } from '@/context/AuthContext';
 import { isExchangeConnectOnboardingSeen, markExchangeConnectOnboardingSeen } from '@/lib/exchangeConnectOnboarding';
+import { BYBIT_SIGN_UP_HREF, MEXC_SIGN_UP_HREF } from '@/lib/exchangeTransferUrls';
 import { isTradingStyleOnboarded } from '@/lib/tradingStyleOnboarding';
 
 function ConnectionGlyphIcon({ className }: { className?: string }) {
@@ -92,6 +93,30 @@ export default function OnboardingConnect() {
         >
           Continue in Paper Trading Mode
         </button>
+
+        <div className="mt-5 w-full rounded-xl border border-white/[0.08] bg-white/[0.03] p-3">
+          <p className="text-center text-[11px] font-semibold uppercase tracking-[0.14em] text-zinc-400">
+            Need an exchange account first?
+          </p>
+          <div className="mt-2 grid grid-cols-2 gap-2">
+            <a
+              href={BYBIT_SIGN_UP_HREF}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex h-10 items-center justify-center rounded-lg border border-emerald-400/25 bg-emerald-500/10 text-xs font-semibold text-emerald-100 transition hover:bg-emerald-500/15"
+            >
+              Create Bybit
+            </a>
+            <a
+              href={MEXC_SIGN_UP_HREF}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex h-10 items-center justify-center rounded-lg border border-cyan-400/25 bg-cyan-500/10 text-xs font-semibold text-cyan-100 transition hover:bg-cyan-500/15"
+            >
+              Create MEXC
+            </a>
+          </div>
+        </div>
 
         <p className="mt-8 text-center text-xs leading-5 text-zinc-500">
           No data is sent to any server. Everything runs locally in your browser.

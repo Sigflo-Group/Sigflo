@@ -214,7 +214,7 @@ export default function LoginScreen() {
           <h1 className="text-2xl font-bold tracking-tight text-[#F5F7FA]">Enter Sigflo</h1>
           <p className="mt-2 text-sm leading-relaxed text-[rgba(245,247,250,0.72)]">Your trading workspace</p>
           <p className="mt-3 inline-flex items-center rounded-full border border-[rgba(0,200,120,0.34)] bg-[rgba(0,200,120,0.12)] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#8FFFD4]">
-            Early access
+            Open beta
           </p>
         </div>
 

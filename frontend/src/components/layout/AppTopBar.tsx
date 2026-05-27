@@ -69,15 +69,14 @@ export function AppTopBar() {
         <div className="ml-2 flex shrink-0 items-center gap-1.5">
           <Link
             to={feedActionablePath()}
-            className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-full border border-sigflo-accent/25 bg-sigflo-accentDim px-2 py-0 text-[10px] font-bold uppercase leading-none tracking-wider text-sigflo-accent transition hover:border-sigflo-accent/40 hover:bg-sigflo-accent/14 sm:px-2.5"
+            className="inline-flex h-7 min-w-fit shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border border-sigflo-accent/25 bg-sigflo-accentDim px-2 py-0 text-[10px] font-bold uppercase leading-none tracking-wider text-sigflo-accent transition hover:border-sigflo-accent/40 hover:bg-sigflo-accent/14 sm:px-2.5"
             aria-label="Open feed and view triggered setups"
           >
             <span className="relative flex h-1.5 w-1.5">
               <span className="absolute inline-flex h-full w-full animate-pulse-dot rounded-full bg-sigflo-accent [animation-duration:1.8s]" />
               <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-sigflo-accent" />
             </span>
-            <span className="sm:hidden">{loading ? '…' : triggeredPairCount}</span>
-            <span className="hidden sm:inline">{loading ? 'Syncing...' : `Triggered ${triggeredPairCount}`}</span>
+            <span>{loading ? 'Syncing...' : `Triggered ${triggeredPairCount}`}</span>
           </Link>
           <button
             type="button"

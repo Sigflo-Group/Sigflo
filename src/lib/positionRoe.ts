@@ -2,15 +2,25 @@ type PositionRoeInput = {
   size: number;
   entryPrice: number;
   markPrice?: number;
-  leverage?: number;
-  positionIM?: number;
+  leverage?: number | string;
+  positionIM?: number | string;
 };
 
 const MAX_REASONABLE_LINEAR_LEVERAGE = 200;
 
 function finitePositive(n: unknown): number | null {
-  if (typeof n !== 'number' || !Number.isFinite(n) || n <= 0) return null;
-  return n;
+  if (typeof n === 'number') {
+    if (!Number.isFinite(n) || n <= 0) return null;
+    return n;
+  }
+  if (typeof n === 'string') {
+    const trimmed = n.trim();
+    if (!trimmed) return null;
+    const parsed = Number(trimmed);
+    if (!Number.isFinite(parsed) || parsed <= 0) return null;
+    return parsed;
+  }
+  return null;
 }
 
 /** Entry-based notional for linear contracts; falls back to mark only when entry is unavailable. */

@@ -31,4 +31,15 @@ describe('positionRoe helpers', () => {
     });
     expect(margin).toBeCloseTo(3196.21, 2);
   });
+
+  it('accepts numeric strings so leverage fallback still works', () => {
+    const margin = marginBaseForRoe({
+      size: 1000,
+      entryPrice: 319.621,
+      markPrice: 319.7,
+      leverage: '100',
+      positionIM: '16',
+    });
+    expect(margin).toBeCloseTo(3196.21, 2);
+  });
 });

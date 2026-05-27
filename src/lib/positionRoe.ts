@@ -16,32 +16,28 @@ const ROE_DIVERGENCE_RATIO_MAX = 8;
 const ROE_DIVERGENCE_RATIO_MIN = 1 / ROE_DIVERGENCE_RATIO_MAX;
 const MIN_MOVE_PCT_FOR_DIVERGENCE_CHECK = 0.05;
 
+function parseNumericLike(n: unknown): number | null {
+  if (typeof n === 'number') return Number.isFinite(n) ? n : null;
+  if (typeof n !== 'string') return null;
+  const trimmed = n.trim();
+  if (!trimmed) return null;
+  const compact = trimmed.replace(/,/g, '');
+  const strict = Number(compact);
+  if (Number.isFinite(strict)) return strict;
+  const prefix = compact.match(/^[+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?/i);
+  if (!prefix) return null;
+  const parsed = Number(prefix[0]);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 function finitePositive(n: unknown): number | null {
-  if (typeof n === 'number') {
-    if (!Number.isFinite(n) || n <= 0) return null;
-    return n;
-  }
-  if (typeof n === 'string') {
-    const trimmed = n.trim();
-    if (!trimmed) return null;
-    const parsed = Number(trimmed);
-    if (!Number.isFinite(parsed) || parsed <= 0) return null;
-    return parsed;
-  }
-  return null;
+  const parsed = parseNumericLike(n);
+  if (parsed == null || parsed <= 0) return null;
+  return parsed;
 }
 
 function finiteNumber(n: unknown): number | null {
-  if (typeof n === 'number') {
-    return Number.isFinite(n) ? n : null;
-  }
-  if (typeof n === 'string') {
-    const trimmed = n.trim();
-    if (!trimmed) return null;
-    const parsed = Number(trimmed);
-    return Number.isFinite(parsed) ? parsed : null;
-  }
-  return null;
+  return parseNumericLike(n);
 }
 
 /** Entry-based notional for linear contracts; falls back to mark only when entry is unavailable. */
@@ -68,12 +64,18 @@ export function marginBaseForRoe(input: PositionRoeInput): number | null {
   const marginFromLeverage = lev != null ? notional / lev : null;
   const minPlausibleMargin = notional / MAX_REASONABLE_LINEAR_LEVERAGE;
   const positionIm = finitePositive(input.positionIM);
+  const positionImImplausiblyTiny = positionIm != null && positionIm < minPlausibleMargin * 0.98;
 
-  if (positionIm != null && positionIm >= minPlausibleMargin * 0.98) {
+  if (positionIm != null && !positionImImplausiblyTiny) {
     return positionIm;
   }
   if (marginFromLeverage != null && marginFromLeverage > 0) {
     return marginFromLeverage;
+  }
+  // If IM fails plausibility and no leverage fallback exists, avoid returning the tiny
+  // raw IM value because it can inflate PnL% into nonsense territory.
+  if (positionImImplausiblyTiny) {
+    return notional;
   }
   if (positionIm != null) {
     return positionIm;

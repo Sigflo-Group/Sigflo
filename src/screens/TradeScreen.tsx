@@ -116,6 +116,7 @@ import {
   resolveTradeAnchorPrice,
 } from '@/lib/tradeViewFromSignal';
 import { syntheticFromExchangePosition, syntheticFromSpotHolding } from '@/lib/exchangePositionSynthetic';
+import { entryNotionalUsd, marginBaseForRoe } from '@/lib/positionRoe';
 import { formatBybitTradeErrorMessage, resolveBybitTradeError } from '@/lib/bybitUserFacingError';
 import { formatLinearPriceStringForBybit, linearTpSlStringsForOpen } from '@/lib/bybitLinearTpSl';
 import { DEFAULT_BYBIT_TPSL_TRIGGER, type BybitTpSlTriggerBy } from '@/lib/bybitTpSlTrigger';
@@ -1201,18 +1202,16 @@ export function TradeScreen() {
           : pos.markPrice != null && pos.markPrice > 0
             ? pos.markPrice
             : entry;
-      const notional = Math.abs(pos.size) * (entry > 0 ? entry : manageCtx.entryPrice);
+      const notional = entryNotionalUsd({ size: pos.size, entryPrice: entry, markPrice: markPx });
       const usd = notional > 0 ? notional : manageCtx.positionUsd;
       const { pnlUsd } = managePnlFromPrices(pos.side, entry, markPx, usd);
-      // Show return on margin so the % reflects actual capital at risk (matches what the exchange shows).
-      // positionIM is the initial margin in USD sent by Bybit; fall back to notional/leverage.
-      const lev = pos.leverage ?? manageCtx.leverage;
-      const marginBase =
-        pos.positionIM != null && pos.positionIM > 0
-          ? pos.positionIM
-          : lev && lev > 1 && notional > 0
-            ? notional / lev
-            : null;
+      const marginBase = marginBaseForRoe({
+        size: pos.size,
+        entryPrice: entry,
+        markPrice: markPx,
+        leverage: pos.leverage ?? manageCtx.leverage,
+        positionIM: pos.positionIM,
+      });
       const pnlPct = marginBase != null ? (pnlUsd / marginBase) * 100 : (pnlUsd / usd) * 100;
       return { pnlUsd, pnlPct };
     }

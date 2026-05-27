@@ -6,7 +6,15 @@ type PositionRoeInput = {
   positionIM?: number | string;
 };
 
+type PositionLivePnlInput = PositionRoeInput & {
+  side: 'long' | 'short';
+  unrealizedPnl?: number;
+};
+
 const MAX_REASONABLE_LINEAR_LEVERAGE = 200;
+const ROE_DIVERGENCE_RATIO_MAX = 8;
+const ROE_DIVERGENCE_RATIO_MIN = 1 / ROE_DIVERGENCE_RATIO_MAX;
+const MIN_MOVE_PCT_FOR_DIVERGENCE_CHECK = 0.05;
 
 function finitePositive(n: unknown): number | null {
   if (typeof n === 'number') {
@@ -19,6 +27,19 @@ function finitePositive(n: unknown): number | null {
     const parsed = Number(trimmed);
     if (!Number.isFinite(parsed) || parsed <= 0) return null;
     return parsed;
+  }
+  return null;
+}
+
+function finiteNumber(n: unknown): number | null {
+  if (typeof n === 'number') {
+    return Number.isFinite(n) ? n : null;
+  }
+  if (typeof n === 'string') {
+    const trimmed = n.trim();
+    if (!trimmed) return null;
+    const parsed = Number(trimmed);
+    return Number.isFinite(parsed) ? parsed : null;
   }
   return null;
 }
@@ -58,4 +79,38 @@ export function marginBaseForRoe(input: PositionRoeInput): number | null {
     return positionIm;
   }
   return notional;
+}
+
+/**
+ * Compute live PnL% with guardrails:
+ * - primary path: pnl / marginBaseForRoe
+ * - fallback path: leverage-adjusted price move (%), which is resilient to contract-size mismatches
+ * If both are available but diverge by an extreme ratio, prefer leverage-based move.
+ */
+export function livePnlPercent(input: PositionLivePnlInput): number {
+  const pnlUsd = finiteNumber(input.unrealizedPnl) ?? 0;
+  const margin = marginBaseForRoe(input);
+  const marginPct = margin != null && margin > 0 ? (pnlUsd / margin) * 100 : null;
+
+  const entry = finitePositive(input.entryPrice);
+  const mark = finitePositive(input.markPrice);
+  const levRaw = finitePositive(input.leverage);
+  const lev = levRaw != null ? Math.min(MAX_REASONABLE_LINEAR_LEVERAGE, Math.max(1, levRaw)) : null;
+  const leveragedMovePct =
+    entry != null && mark != null && lev != null
+      ? (((input.side === 'short' ? entry - mark : mark - entry) / entry) * lev * 100)
+      : null;
+
+  if (leveragedMovePct == null) return marginPct ?? 0;
+  if (marginPct == null || !Number.isFinite(marginPct)) return leveragedMovePct;
+
+  const absLevMove = Math.abs(leveragedMovePct);
+  if (absLevMove < MIN_MOVE_PCT_FOR_DIVERGENCE_CHECK) return marginPct;
+
+  const absMargin = Math.abs(marginPct);
+  const ratio = absMargin / absLevMove;
+  if (ratio > ROE_DIVERGENCE_RATIO_MAX || ratio < ROE_DIVERGENCE_RATIO_MIN) {
+    return leveragedMovePct;
+  }
+  return marginPct;
 }

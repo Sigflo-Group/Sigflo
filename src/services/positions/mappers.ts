@@ -2,7 +2,7 @@ import type { SimulatedActivePosition } from '@/types/activePosition';
 import type { PositionItem } from '@/types/integrations';
 import type { Position } from '@/types/botsPositionsStrip';
 import type { SigfloActivePosition } from '@/types/position';
-import { marginBaseForRoe } from '@/lib/positionRoe';
+import { livePnlPercent } from '@/lib/positionRoe';
 import { normalizePositionPairKey } from '@/services/positions/positionRepository';
 import type { MarketMode } from '@/types/trade';
 
@@ -37,17 +37,17 @@ export function sigfloActivePositionFromExchange(
   const mark =
     p.markPrice != null && Number.isFinite(p.markPrice) && p.markPrice > 0 ? p.markPrice : liveMark;
   const lev = p.leverage != null && p.leverage > 0 ? p.leverage : 1;
-  const margin =
-    marginBaseForRoe({
-      size: p.size,
-      entryPrice: p.entryPrice,
-      markPrice: mark,
-      leverage: lev,
-      positionIM: p.positionIM,
-    }) ?? 0;
   const pnlUsd =
     p.unrealizedPnl != null && Number.isFinite(p.unrealizedPnl) ? p.unrealizedPnl : 0;
-  const pnlPct = margin > 0 ? (pnlUsd / margin) * 100 : 0;
+  const pnlPct = livePnlPercent({
+    side: p.side,
+    unrealizedPnl: pnlUsd,
+    size: p.size,
+    entryPrice: p.entryPrice,
+    markPrice: mark,
+    leverage: lev,
+    positionIM: p.positionIM,
+  });
   const targets: number[] = [];
   if (p.takeProfitPrice != null && Number.isFinite(p.takeProfitPrice) && p.takeProfitPrice > 0) {
     targets.push(p.takeProfitPrice);

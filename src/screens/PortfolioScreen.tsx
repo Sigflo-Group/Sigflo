@@ -17,7 +17,7 @@ import {
   utcDayStartMs,
 } from '@/lib/portfolioBotAttribution';
 import { derivePositionAiExitStatus, positionAiExitMeta } from '@/lib/portfolioPositionAi';
-import { entryNotionalUsd, marginBaseForRoe } from '@/lib/positionRoe';
+import { entryNotionalUsd, livePnlPercent } from '@/lib/positionRoe';
 import { positionBiasForLinearSymbol } from '@/lib/positionBiasStat';
 import { positionMicroInsight } from '@/lib/positionMicroInsight';
 import { symbolToPair } from '@/lib/marketScannerRows';
@@ -507,15 +507,15 @@ export default function PortfolioScreen() {
               {positions.map((p) => {
                 const current = p.markPrice ?? p.entryPrice;
                 const pnl = p.unrealizedPnl ?? 0;
-                const margin =
-                  marginBaseForRoe({
-                    size: p.size,
-                    entryPrice: p.entryPrice,
-                    markPrice: current,
-                    leverage: p.leverage,
-                    positionIM: p.positionIM,
-                  }) ?? 0;
-                const pnlPct = margin > 0 ? (pnl / margin) * 100 : 0;
+                const pnlPct = livePnlPercent({
+                  side: p.side,
+                  unrealizedPnl: pnl,
+                  size: p.size,
+                  entryPrice: p.entryPrice,
+                  markPrice: current,
+                  leverage: p.leverage,
+                  positionIM: p.positionIM,
+                });
                 const up = pnl >= 0;
                 const realizedPnl = realizedPnlByExchangeSymbol.get(`${p.exchange}:${p.symbol}`) ?? 0;
                 const realizedUp = realizedPnl >= 0;

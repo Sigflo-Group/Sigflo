@@ -14,6 +14,7 @@ The root `src/` directory is the source of truth. `frontend/src/` is a Docker-on
 
 - Run `npm run sync:frontend-src` to mirror `src/` into `frontend/src/`.
 - This replaces `frontend/src/` so it matches root `src/` exactly.
+- Use `npm run docker:up` (or `npm run docker:up:build`) so sync always runs before Docker starts.
 
 ### AI env vars for local Netlify Dev
 

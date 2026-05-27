@@ -57,6 +57,7 @@ import { roundUsdAmount, coerceUsdField } from '@/lib/tradeMath';
 import { useCanGoBack } from '@/hooks/useCanGoBack';
 import { useExitAutomation } from '@/hooks/useExitAutomation';
 import { useAppAnnouncementsEnabled } from '@/hooks/useAppAnnouncementsEnabled';
+import { usePaperTrading } from '@/hooks/usePaperTrading';
 import { emitGlobalAnnouncement } from '@/lib/globalAnnouncements';
 import { useAccountSnapshot } from '@/hooks/useAccountSnapshot';
 import { useSignalEngine } from '@/hooks/useSignalEngine';
@@ -834,6 +835,10 @@ export function TradeScreen() {
     };
   }, [accountSnapshots]);
 
+  const paperSnapshot = usePaperTrading();
+  const paperCashUsd = useMemo(() => paperSnapshot?.cashUsd ?? 10_000, [paperSnapshot]);
+  const [forcePaperMode, setForcePaperMode] = useState(false);
+
   const tradeBalanceHelper = useMemo(() => {
     if (!tradeBalance) return undefined;
     if (tradeBalance.exchange === 'mexc') {
@@ -860,17 +865,18 @@ export function TradeScreen() {
   }, [tradeBalance]);
 
   const displayBalanceUsd = useMemo((): number | null => {
-    if (linkedUtaRawMaxUsd == null) return null;
-    return roundUsdAmount(linkedUtaRawMaxUsd);
-  }, [linkedUtaRawMaxUsd]);
-
-  const balanceForModel = useMemo(() => {
-    if (!tradeBalance) return 0;
-    if (linkedUtaRawMaxUsd != null && linkedUtaRawMaxUsd > 0) {
+    if (linkedUtaRawMaxUsd != null && linkedUtaRawMaxUsd > 0 && !forcePaperMode) {
       return roundUsdAmount(linkedUtaRawMaxUsd);
     }
-    return 0;
-  }, [tradeBalance, linkedUtaRawMaxUsd]);
+    return paperCashUsd;
+  }, [linkedUtaRawMaxUsd, forcePaperMode, paperCashUsd]);
+
+  const balanceForModel = useMemo(() => {
+    if (tradeBalance && linkedUtaRawMaxUsd != null && linkedUtaRawMaxUsd > 0 && !forcePaperMode) {
+      return roundUsdAmount(linkedUtaRawMaxUsd);
+    }
+    return paperCashUsd;
+  }, [tradeBalance, linkedUtaRawMaxUsd, forcePaperMode, paperCashUsd]);
 
   const [tradePriceAnchor, setTradePriceAnchor] = useState<number | null>(null);
   useEffect(() => {
@@ -1023,7 +1029,7 @@ export function TradeScreen() {
     Boolean(mexcSnap && market === 'futures');
   /** User opt-in from Risk controls — when false, Sigflo does not submit opens or TP/SL updates (closes use their own path). */
   const liveOrderSubmitEnabled = useRealExecution && riskSettings.allowLiveExecution;
-  const paperModeActive = !isManageMode && !liveOrderSubmitEnabled;
+  const paperModeActive = forcePaperMode || (!isManageMode && !liveOrderSubmitEnabled);
   const exchangePositionForSymbol = useMemo((): PositionItem | null => {
     const snap = bybitSnap ?? mexcSnap;
     if (!snap?.positions?.length) return null;
@@ -1163,15 +1169,14 @@ export function TradeScreen() {
     const next = { ...mergedModel };
     if (Number.isFinite(stopParsed) && stopParsed > 0) next.stop = stopParsed;
     if (Number.isFinite(targetParsed) && targetParsed > 0) next.target = targetParsed;
-    if (tradeBalance && linkedUtaRawMaxUsd != null && linkedUtaRawMaxUsd > 0) {
+    if (tradeBalance && linkedUtaRawMaxUsd != null && linkedUtaRawMaxUsd > 0 && !forcePaperMode) {
       next.balanceUsd = roundUsdAmount(linkedUtaRawMaxUsd);
     }
     if (!Number.isFinite(next.balanceUsd) || next.balanceUsd < 0) {
-      const fb = mergedModel.balanceUsd;
-      next.balanceUsd = Number.isFinite(fb) && fb > 0 ? fb : 0;
+      next.balanceUsd = forcePaperMode || !tradeBalance ? paperCashUsd : 0;
     }
     return next;
-  }, [mergedModel, stopParsed, targetParsed, tradeBalance, linkedUtaRawMaxUsd]);
+  }, [mergedModel, stopParsed, targetParsed, tradeBalance, linkedUtaRawMaxUsd, forcePaperMode, paperCashUsd]);
 
   // live.lastPrice updates on every WS trade/ticker event (immediateUiOnTick: true).
   // manageFastMark carries the WS mark price, but mark price only changes in ticker delta messages
@@ -4253,6 +4258,35 @@ export function TradeScreen() {
                     </span>
                   </div>
                 )}
+                {tradeBalance && !forcePaperMode ? (
+                  <button
+                    type="button"
+                    onClick={() => setForcePaperMode(true)}
+                    className="flex shrink-0 items-center gap-1 rounded-xl border border-violet-400/25 bg-violet-500/[0.08] px-2 py-1.5 text-[9px] font-bold uppercase tracking-[0.1em] text-violet-100 transition hover:bg-violet-500/[0.14]"
+                    aria-label="Switch to paper mode"
+                    title="Switch to paper mode"
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+                      <rect x="3" y="3" width="18" height="18" rx="2" strokeLinejoin="round" />
+                      <path d="M9 12l2 2 4-4" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                    Paper
+                  </button>
+                ) : null}
+                {forcePaperMode ? (
+                  <button
+                    type="button"
+                    onClick={() => setForcePaperMode(false)}
+                    className="flex shrink-0 items-center gap-1 rounded-xl border border-cyan-400/25 bg-cyan-500/[0.08] px-2 py-1.5 text-[9px] font-bold uppercase tracking-[0.1em] text-cyan-100 transition hover:bg-cyan-500/[0.14]"
+                    aria-label="Switch to live mode"
+                    title="Switch to live mode"
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+                      <path d="M12 3v3m0 12v3M3 12h3m12 0h3M5.64 5.64l2.12 2.12m8.48 8.48l2.12 2.12M5.64 18.36l2.12-2.12m8.48-8.48l2.12-2.12" strokeLinecap="round" />
+                    </svg>
+                    Live
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   onClick={() => {
@@ -4993,13 +5027,15 @@ export function TradeScreen() {
           metrics={metrics}
           estFeeUsd={estFeeUsd}
           balanceLabel={
-            tradeBalance?.exchange === 'mexc'
-              ? 'Available (USDT)'
-              : tradeBalance?.availableToTrade != null
-                ? 'Available (UTA)'
-                : tradeBalance?.totalWalletBalance != null
-                  ? 'UTA wallet balance'
-                  : 'Wallet Balance'
+            forcePaperMode || !tradeBalance
+              ? 'Simulated Cash (Paper)'
+              : tradeBalance?.exchange === 'mexc'
+                ? 'Available (USDT)'
+                : tradeBalance?.availableToTrade != null
+                  ? 'Available (UTA)'
+                  : tradeBalance?.totalWalletBalance != null
+                    ? 'UTA wallet balance'
+                    : 'Wallet Balance'
           }
           balanceHelper={tradeBalanceHelper}
           displayBalanceUsd={displayBalanceUsd}

@@ -16,6 +16,8 @@ export function evaluateBreakoutTiming(args: {
   rsiNow: number;
   rsiSlope: number;
   hasPreviousTrigger: boolean;
+  /** Previous lifecycle state — continuation must not re-arm a fully expired signal. */
+  previousState: string | null;
 }): {
   timingScore: number;
   triggerHit: boolean;
@@ -31,17 +33,40 @@ export function evaluateBreakoutTiming(args: {
     nearRetest &&
     (dir > 0 ? args.close >= args.triggerLevel : args.close <= args.triggerLevel);
 
-  const triggerHit = crossedNow || retestHold;
+  // Continuation: once an initial trigger has fired and the lifecycle has had time to
+  // advance (hasPreviousTrigger implies state >= triggered), allow a re-trigger when
+  // price is making continued directional progress with healthy but non-overbought RSI.
+  // This prevents a one-shot trigger from decaying without re-arming in trending markets.
+  // Guard: never re-arm a fully expired signal — that requires a fresh breakout.
+  const continuationMomentum =
+    args.hasPreviousTrigger &&
+    args.previousState !== 'expired' &&
+    !nearRetest &&
+    (args.side === 'long'
+      ? args.close > args.prevClose &&
+        args.close > args.triggerLevel &&
+        args.rsiNow >= 50 && args.rsiNow <= 70 &&
+        args.rsiSlope > 0
+      : args.close < args.prevClose &&
+        args.close < args.triggerLevel &&
+        args.rsiNow <= 50 && args.rsiNow >= 30 &&
+        args.rsiSlope < 0);
+
+  const triggerHit = crossedNow || retestHold || continuationMomentum;
   const triggerType: ScannerTriggerType = crossedNow
     ? 'breakout_first_close'
     : retestHold
       ? 'breakout_retest_hold'
-      : 'unknown';
+      : continuationMomentum
+        ? 'trend_continuation_resume'
+        : 'unknown';
   const triggerReason = crossedNow
     ? 'First close through the breakout level.'
     : retestHold
       ? 'Retest held around the breakout level.'
-      : 'Breakout pressure building but trigger not confirmed.';
+      : continuationMomentum
+        ? 'Trend continuation with momentum still healthy.'
+        : 'Breakout pressure building but trigger not confirmed.';
 
   const sizedCandleAtr = args.atrNow > 0 ? args.candleRange / args.atrNow : 0;
   const sizePenalty = sizedCandleAtr > 1.6 ? (sizedCandleAtr - 1.6) * 10 : 0;
@@ -56,6 +81,7 @@ export function evaluateBreakoutTiming(args: {
   const positiveFactors: string[] = [];
   if (crossedNow) positiveFactors.push('first_breakout_close');
   if (retestHold) positiveFactors.push('clean_retest_hold');
+  if (continuationMomentum) positiveFactors.push('trend_continuation_resume');
   if (room > 0.6) positiveFactors.push('room_to_target_open');
   if (volume > 0.62) positiveFactors.push('volume_supportive');
   return { timingScore, triggerHit, triggerType, triggerReason, positiveFactors };

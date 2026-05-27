@@ -6,6 +6,7 @@ export type ScannerTriggerType =
   | 'reclaim_first_close'
   | 'pullback_bounce_confirmed'
   | 'trend_continuation_resume'
+  | 'mean_reversion_cooling'
   | 'unknown';
 
 export interface ScannerPenaltyWeights {
@@ -46,12 +47,12 @@ export interface ScannerLifecycleConfig {
 export const SCANNER_LIFECYCLE_CONFIG: ScannerLifecycleConfig = {
   historyLimit: 10,
   readyTimingMin: 58,
-  triggeredActionabilityMin: 64,
-  triggeredFreshnessMin: 55,
-  extendedAfterCandles: 3,
+  triggeredActionabilityMin: 58,
+  triggeredFreshnessMin: 45,
+  extendedAfterCandles: 8,
   expiredAfterCandles: 5,
   expiredViabilityFloor: 40,
-  timingDropFromPeakToExtend: 14,
+  timingDropFromPeakToExtend: 18,
   atrExtensionWarning: 0.9,
   atrExtensionHard: 1.5,
   percentExtensionWarning: 0.8,

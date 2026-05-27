@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
   CandlestickSeries,
   ColorType,
   CrosshairMode,
   LineStyle,
+  TrackingModeExitMode,
   createChart,
   type IChartApi,
   type IPriceLine,
@@ -30,6 +31,8 @@ export type TradeMiniChartProps = {
 };
 
 const CHART_HEIGHT = 168;
+/** Vertical hit band for dragging stop / targets — keep narrow so pan/zoom reaches the chart canvas elsewhere. */
+const LEVEL_DRAG_BAND_PX = 26;
 
 const COL_ENTRY = 'rgba(0, 255, 200, 0.42)';
 const COL_STOP = 'rgba(220, 90, 90, 0.82)';
@@ -101,6 +104,9 @@ export function TradeMiniChart({
   const [chartGen, setChartGen] = useState(0);
   const [coordTick, setCoordTick] = useState(0);
   const [floatLabel, setFloatLabel] = useState<string | null>(null);
+  const [levelBands, setLevelBands] = useState<
+    { key: string; top: number; height: number; kind: 'stop' | number; initialPrice: number }[]
+  >([]);
   const dragKindRef = useRef<'stop' | number | null>(null);
 
   const clearPriceLines = useCallback(() => {
@@ -108,9 +114,7 @@ export function TradeMiniChart({
     for (const fn of lineDisposersRef.current) {
       try {
         fn();
-      } catch {
-        /* ignore */
-      }
+      } catch (e) { console.error("[Caught Error]", e); }
     }
     lineDisposersRef.current = [];
     void series;
@@ -125,9 +129,7 @@ export function TradeMiniChart({
       lineDisposersRef.current.push(() => {
         try {
           series.removePriceLine(ln);
-        } catch {
-          /* ignore */
-        }
+        } catch (e) { console.error("[Caught Error]", e); }
       });
     };
 
@@ -212,8 +214,18 @@ export function TradeMiniChart({
         secondsVisible: false,
         rightOffset: 2,
       },
-      handleScroll: false,
-      handleScale: false,
+      handleScroll: {
+        mouseWheel: true,
+        pressedMouseMove: true,
+        horzTouchDrag: true,
+        vertTouchDrag: true,
+      },
+      handleScale: {
+        mouseWheel: true,
+        pinch: true,
+        axisPressedMouseMove: { time: true, price: true },
+      },
+      trackingMode: { exitMode: TrackingModeExitMode.OnTouchEnd },
     });
 
     const series = chart.addSeries(CandlestickSeries, {
@@ -289,47 +301,58 @@ export function TradeMiniChart({
     applyPriceLines();
   }, [applyPriceLines, entryPrice, stopPrice, targets?.join(','), liquidationPrice, chartGen]);
 
-  void coordTick;
+  const targetsKey = targets?.join(',') ?? '';
 
-  const onOverlayPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (!interactiveLevels) return;
+  useLayoutEffect(() => {
     const series = seriesRef.current;
-    const host = hostRef.current;
-    if (!series || !host) return;
-    if (!onPlannedStopChange && !onPlannedTargetsChange) return;
-
-    const yPane = clientYToSeriesCoordinateY(series, e.clientY);
-    if (yPane == null) return;
-    const hit = 12;
-    const stp = stopPrice;
-    if (stp != null && Number.isFinite(stp) && stp > 0 && onPlannedStopChange) {
-      const ys = series.priceToCoordinate(stp);
-      const yn = ys != null ? Number(ys) : NaN;
-      if (Number.isFinite(yn) && Math.abs(yPane - yn) <= hit) {
-        dragKindRef.current = 'stop';
-        e.currentTarget.setPointerCapture(e.pointerId);
-        setFloatLabel(fmtDragPx(stp));
-        return;
+    if (!series || !interactiveLevels || chartGen === 0) {
+      setLevelBands([]);
+      return;
+    }
+    const h = LEVEL_DRAG_BAND_PX;
+    const next: { key: string; top: number; height: number; kind: 'stop' | number; initialPrice: number }[] = [];
+    if (stopPrice != null && Number.isFinite(stopPrice) && stopPrice > 0 && onPlannedStopChange) {
+      const y = series.priceToCoordinate(stopPrice);
+      if (y != null && Number.isFinite(Number(y))) {
+        const cy = Number(y);
+        next.push({
+          key: 'stop',
+          top: Math.max(0, Math.min(CHART_HEIGHT - h, cy - h / 2)),
+          height: h,
+          kind: 'stop',
+          initialPrice: stopPrice,
+        });
       }
     }
-    const tg = targets ?? [];
-    if (onPlannedTargetsChange) {
-      for (let i = 0; i < tg.length; i++) {
-        const t = tg[i]!;
+    if (onPlannedTargetsChange && targets?.length) {
+      for (let i = 0; i < targets.length; i++) {
+        const t = targets[i]!;
         if (!Number.isFinite(t) || t <= 0) continue;
-        const yt = series.priceToCoordinate(t);
-        const ytn = yt != null ? Number(yt) : NaN;
-        if (Number.isFinite(ytn) && Math.abs(yPane - ytn) <= hit) {
-          dragKindRef.current = i;
-          e.currentTarget.setPointerCapture(e.pointerId);
-          setFloatLabel(fmtDragPx(t));
-          return;
+        const y = series.priceToCoordinate(t);
+        if (y != null && Number.isFinite(Number(y))) {
+          const cy = Number(y);
+          next.push({
+            key: `t-${i}`,
+            top: Math.max(0, Math.min(CHART_HEIGHT - h, cy - h / 2)),
+            height: h,
+            kind: i,
+            initialPrice: t,
+          });
         }
       }
     }
-  };
+    setLevelBands(next);
+  }, [interactiveLevels, chartGen, coordTick, stopPrice, targetsKey, onPlannedStopChange, onPlannedTargetsChange]);
 
-  const onOverlayPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+  const onBandPointerDown =
+    (kind: 'stop' | number, initialPrice: number) => (e: React.PointerEvent<HTMLDivElement>) => {
+      if (!interactiveLevels) return;
+      dragKindRef.current = kind;
+      e.currentTarget.setPointerCapture(e.pointerId);
+      setFloatLabel(fmtDragPx(initialPrice));
+    };
+
+  const onBandPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
     const kind = dragKindRef.current;
     if (kind === null) return;
     const series = seriesRef.current;
@@ -357,9 +380,7 @@ export function TradeMiniChart({
     setFloatLabel(null);
     try {
       e.currentTarget.releasePointerCapture(e.pointerId);
-    } catch {
-      /* ignore */
-    }
+    } catch (e) { console.error("[Caught Error]", e); }
     onLevelsDragEnd?.();
   };
 
@@ -367,7 +388,7 @@ export function TradeMiniChart({
     <div className="w-full">
       <p className="mb-2 text-[10px] font-medium uppercase tracking-wide text-zinc-500">15m · last 50 bars</p>
       <div
-        className={`relative overflow-hidden rounded-xl border bg-[#050505]/40 ${
+        className={`relative touch-pan-y overflow-hidden rounded-xl border bg-[#050505]/40 ${
           planGeometryWarning ? 'border-amber-500/35 ring-1 ring-amber-500/25' : 'border-white/[0.08]'
         }`}
       >
@@ -384,16 +405,20 @@ export function TradeMiniChart({
           className="h-[168px] w-full"
           aria-label={`Mini price chart for ${pair}, ${direction === 'LONG' ? 'long' : 'short'} setup`}
         />
-        {interactiveLevels && chartGen > 0 ? (
-          <div
-            className="absolute inset-0 z-10 h-[168px] cursor-ns-resize touch-none"
-            onPointerDown={onOverlayPointerDown}
-            onPointerMove={onOverlayPointerMove}
-            onPointerUp={endDrag}
-            onPointerCancel={endDrag}
-            aria-hidden
-          />
-        ) : null}
+        {interactiveLevels && chartGen > 0 && levelBands.length > 0
+          ? levelBands.map((b) => (
+              <div
+                key={b.key}
+                className="absolute left-0 right-0 z-10 cursor-ns-resize touch-none"
+                style={{ top: b.top, height: b.height }}
+                onPointerDown={onBandPointerDown(b.kind, b.initialPrice)}
+                onPointerMove={onBandPointerMove}
+                onPointerUp={endDrag}
+                onPointerCancel={endDrag}
+                aria-hidden
+              />
+            ))
+          : null}
       </div>
     </div>
   );

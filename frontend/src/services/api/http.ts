@@ -35,15 +35,21 @@ function cdnBlockedMessage(status: number): string {
   return `HTTP ${status} — CDN blocked this request (e.g. CloudFront/WAF) before your API. Fix: set Netlify (or build) env VITE_BACKEND_API_BASE to your API origin (e.g. https://YOUR-SERVICE.up.railway.app with no /api suffix), redeploy, and ensure that host does not return HTML for /api/* — or proxy /api on the same domain as the SPA.`;
 }
 
+const REQUEST_TIMEOUT_MS = 15_000;
+
 export async function apiJson<T>(path: string, init?: RequestInit): Promise<T> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
+    'Cache-Control': 'no-cache',
     ...(init?.headers as Record<string, string> | undefined),
   };
 
   if (supabase) {
-    const { data } = await supabase.auth.getSession();
-    const token = data.session?.access_token;
+    const sessionResult = await Promise.race([
+      supabase.auth.getSession(),
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), 5_000)),
+    ]);
+    const token = sessionResult?.data?.session?.access_token;
     if (token) {
       headers.Authorization = `Bearer ${token}`;
     }
@@ -53,10 +59,23 @@ export async function apiJson<T>(path: string, init?: RequestInit): Promise<T> {
     headers['x-user-id'] = DEV_USER_ID;
   }
 
-  const res = await fetch(`${API_BASE}${path}`, {
-    ...init,
-    headers,
-  });
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}${path}`, {
+      ...init,
+      headers,
+      signal: controller.signal,
+    });
+  } catch (e) {
+    if (e instanceof DOMException && e.name === 'AbortError') {
+      throw new Error('Request timed out. Check that the backend is running and reachable.');
+    }
+    throw e;
+  } finally {
+    clearTimeout(timeoutId);
+  }
   if (!res.ok) {
     const ct = res.headers.get('content-type') ?? '';
     let message = `Request failed: HTTP ${res.status}`;
@@ -81,6 +100,6 @@ export async function apiJson<T>(path: string, init?: RequestInit): Promise<T> {
     }
     throw new Error(sanitizeUserFacingHttpErrorMessage(message));
   }
-  if (res.status === 204) return undefined as T;
+  if (res.status === 204 || res.status === 304) return undefined as T;
   return (await res.json()) as T;
 }

@@ -1,4 +1,7 @@
+import { secureStorage } from '@/lib/storage';
 import { useEffect, useRef } from 'react';
+import { isActionableExitAiPopupMessage } from '@/lib/exitAiPopupGate';
+import { isActionableExitAiPopupActivity } from '@/lib/aiExitAutomation';
 import { emitGlobalAnnouncement } from '@/lib/globalAnnouncements';
 import type { ExitAutomationActivityEntry, ExitAutomationActivityKind } from '@/types/aiExitAutomation';
 
@@ -13,7 +16,7 @@ const POPUP_KINDS: ReadonlySet<ExitAutomationActivityKind> = new Set([
 
 function readActivityLog(): ExitAutomationActivityEntry[] {
   try {
-    const raw = window.localStorage.getItem(TRADE_ACTIVITY_KEY);
+    const raw = secureStorage.getItem(TRADE_ACTIVITY_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw) as unknown;
     if (!Array.isArray(parsed)) return [];
@@ -49,9 +52,7 @@ function persistSeenSet(ids: Set<string>) {
     const arr = [...ids];
     const trimmed = arr.slice(-300);
     window.sessionStorage.setItem(SEEN_CACHE_KEY, JSON.stringify(trimmed));
-  } catch {
-    /* ignore */
-  }
+  } catch (e) { console.error("[Caught Error]", e); }
 }
 
 export function ExitAiDecisionBridge() {
@@ -68,6 +69,8 @@ export function ExitAiDecisionBridge() {
       let dirty = false;
       for (const e of readActivityLog()) {
         if (!POPUP_KINDS.has(e.kind)) continue;
+        if (!isActionableExitAiPopupMessage(e)) continue;
+        if (!isActionableExitAiPopupActivity(e)) continue;
         if (seen.has(e.id)) continue;
         // Do not replay very old events after reload.
         if (e.ts < now - 10 * 60_000) {

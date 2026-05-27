@@ -8,6 +8,13 @@ import {
   runScannerLabEngineEvaluations,
   type DetectorEvaluation,
 } from '@/lib/detectors';
+import { useSignalEngine } from '@/hooks/useSignalEngine';
+import {
+  BREAKOUT_RANGE_TIGHTNESS_LABEL,
+  BREAKOUT_RANGE_TIGHTNESS_TOOLTIP,
+  humanizeTraderCopy,
+  SCANNER_NEEDS_TIGHTER_RANGE,
+} from '@/lib/marketConditionsCopy';
 import { calculateSetupScore, getSetupScoreLabel } from '@/lib/setupScore';
 import {
   createPlaybackSession,
@@ -40,7 +47,7 @@ function nextNeedFromReasons(reasons: string[]): string {
   if (text.includes('volume')) return 'Needs volume expansion to trigger.';
   if (text.includes('pullback depth')) return 'Waiting for pullback depth to complete.';
   if (text.includes('rsi')) return 'Needs RSI alignment before trigger.';
-  if (text.includes('range') || text.includes('compressed')) return 'Needs tighter range compression.';
+  if (text.includes('range') || text.includes('compressed')) return SCANNER_NEEDS_TIGHTER_RANGE;
   if (text.includes('distance to breakout')) return 'Needs price closer to breakout zone.';
   if (text.includes('momentum')) return 'Needs stronger momentum confirmation.';
   if (text.includes('resistance')) return 'Needs cleaner resistance interaction.';
@@ -62,6 +69,7 @@ function statusFromEvaluation(r: DetectorEvaluation, score: number | null) {
 
 export function ScannerLabScreen() {
   const navigate = useNavigate();
+  const { proIntelligenceMode } = useSignalEngine();
   const [scenario, setScenario] = useState<ScenarioKey>('breakout');
   const [isPlaying, setIsPlaying] = useState(false);
   const [speedMs, setSpeedMs] = useState(700);
@@ -338,7 +346,7 @@ export function ScannerLabScreen() {
         <h2 className="text-sm font-semibold text-white">How to use this lab</h2>
         <p className="text-xs text-sigflo-muted">1) Pick a scenario. 2) Press Step or Play. 3) Watch detector status, setup score, and signal history.</p>
         <p className="text-xs text-sigflo-muted">
-          Rules match the production engine (`@/engine/detectors`): long/short pairs and fixed thresholds. Window needs at least {MIN_ENGINE_BARS} bars before setups can fire.
+          Rules match the production engine (`src/lib/signalDetectors.ts`): long/short pairs and fixed thresholds. Window needs at least {MIN_ENGINE_BARS} bars before setups can fire.
         </p>
       </Card>
 
@@ -391,10 +399,11 @@ export function ScannerLabScreen() {
       <Card className="space-y-2 p-4">
         <h2 className="text-sm font-semibold text-white">Engine parity</h2>
         <p className="text-xs text-sigflo-muted">
-          Playback uses <code className="rounded bg-white/10 px-1 py-0.5 text-[10px]">@/engine/detectors</code> with{' '}
-          <code className="rounded bg-white/10 px-1 py-0.5 text-[10px]">pickBestDirectionalPair</code> — same stack as{' '}
-          <code className="rounded bg-white/10 px-1 py-0.5 text-[10px]">runScannerPipeline</code>. Per-bar toggles were removed
-          so the lab cannot drift from production thresholds.
+          Playback calls{' '}
+          <code className="rounded bg-white/10 px-1 py-0.5 text-[10px]">runAllDetectorsForLab</code> from{' '}
+          <code className="rounded bg-white/10 px-1 py-0.5 text-[10px]">src/lib/signalDetectors.ts</code> — the same
+          six production detectors (including RSI guards and regime-aware thresholds) used by the live signal engine.
+          No separate stub file; drift is structurally impossible.
         </p>
       </Card>
 
@@ -485,8 +494,12 @@ export function ScannerLabScreen() {
                 {row.trend === 'rising' ? '↑' : row.trend === 'weakening' ? '↓' : '→'}
               </p>
               {row.setupType === 'breakout' ? (
-                <p className="mt-1 text-[11px] text-sigflo-muted">
-                  Compression: {String(row.facts?.compressionRatio ?? '-')} / threshold {String(row.facts?.compressionThreshold ?? '-')}
+                <p
+                  className="mt-1 text-[11px] text-sigflo-muted"
+                  title={proIntelligenceMode ? BREAKOUT_RANGE_TIGHTNESS_TOOLTIP : undefined}
+                >
+                  {BREAKOUT_RANGE_TIGHTNESS_LABEL}: {String(row.facts?.compressionRatio ?? '-')} / threshold{' '}
+                  {String(row.facts?.compressionThreshold ?? '-')}
                 </p>
               ) : null}
               <div className="mt-1 text-[11px] text-sigflo-muted">
@@ -495,7 +508,7 @@ export function ScannerLabScreen() {
                     <p>Reason:</p>
                     {row.reasons.map((reason, idx) => (
                       <p key={`${row.setupType}-reason-${idx}`} className="leading-relaxed">
-                        "{reason}"
+                        "{humanizeTraderCopy(reason)}"
                       </p>
                     ))}
                   </>
@@ -508,7 +521,7 @@ export function ScannerLabScreen() {
                     </p>
                     {row.reasons.map((reason, idx) => (
                       <p key={`${row.setupType}-reason-${idx}`} className="leading-relaxed">
-                        • {reason}
+                        • {humanizeTraderCopy(reason)}
                       </p>
                     ))}
                   </>

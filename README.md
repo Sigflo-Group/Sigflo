@@ -8,6 +8,13 @@ Smart Trader
   - This keeps `/api/ai/suggest` working exactly like production.
 - Direct Vite run (UI only): `npm run dev:vite`
 
+### Frontend Docker copy sync
+
+The root `src/` directory is the source of truth. `frontend/src/` is a Docker-only copy.
+
+- Run `npm run sync:frontend-src` to mirror `src/` into `frontend/src/`.
+- This replaces `frontend/src/` so it matches root `src/` exactly.
+
 ### AI env vars for local Netlify Dev
 
 Set these in your local environment (or a local `.env` loaded by Netlify CLI):

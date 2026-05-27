@@ -14,6 +14,14 @@ interface ImportMetaEnv {
    * Use when users hit apex then Netlify sends them to www — implicit hash tokens can be lost.
    */
   readonly VITE_AUTH_REDIRECT_ORIGIN?: string;
+  /** Optional Bybit affiliate/referral code used to prefill signup links. */
+  readonly VITE_BYBIT_AFFILIATE_CODE?: string;
+  /** Optional MEXC affiliate/referral code used to prefill signup links. */
+  readonly VITE_MEXC_AFFILIATE_CODE?: string;
+  /** Optional full Bybit affiliate signup URL override (takes precedence over code). */
+  readonly VITE_BYBIT_AFFILIATE_SIGNUP_URL?: string;
+  /** Optional full MEXC affiliate signup URL override (takes precedence over code). */
+  readonly VITE_MEXC_AFFILIATE_SIGNUP_URL?: string;
   /** Dev only: set to `app` to mimic `app.sigflo.group` routing (feed at `/`, landing at `/landing`). */
   readonly VITE_APP_HOST?: string;
 }

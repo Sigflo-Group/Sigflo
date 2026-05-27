@@ -106,15 +106,13 @@ export function ActivePositionsPanel({
                   Manage
                 </button>
               ) : null}
-              {!demoOnlyLayer ? (
-                <button
-                  type="button"
-                  onClick={onRequestCloseAllModal}
-                  className="rounded-md border border-rose-500/35 bg-rose-500/[0.08] px-2 py-1 text-[8px] font-bold uppercase tracking-wide text-rose-200/95 transition hover:bg-rose-500/16 sm:text-[9px]"
-                >
-                  Close all
-                </button>
-              ) : null}
+              <button
+                type="button"
+                onClick={onRequestCloseAllModal}
+                className="rounded-md border border-rose-500/35 bg-rose-500/[0.08] px-2 py-1 text-[8px] font-bold uppercase tracking-wide text-rose-200/95 transition hover:bg-rose-500/16 sm:text-[9px]"
+              >
+                {demoOnlyLayer ? 'Close demo' : 'Close all'}
+              </button>
             </div>
           </div>
 

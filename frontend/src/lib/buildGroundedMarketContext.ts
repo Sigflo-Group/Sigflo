@@ -32,11 +32,10 @@ function buildFactsRecord(signal: CryptoSignal): Record<string, number | string>
 }
 
 function allowedIndicatorsFromFacts(signal: CryptoSignal): string[] {
-  const terms: string[] = [];
+  const terms: string[] = ['relative volume'];
   const f = signal.facts;
   if (f?.rsi != null && Number.isFinite(f.rsi)) terms.push('RSI');
   if (f?.emaTrend) terms.push('EMA trend');
-  if (f?.volumeRatio != null && Number.isFinite(f.volumeRatio)) terms.push('relative volume');
   if (
     f?.distanceToBreakoutAtr != null ||
     f?.pullbackDepthAtr != null ||
@@ -77,6 +76,12 @@ export function buildGroundedMarketContext(input: {
   if (signal.plannedEntry != null && finite(signal.plannedEntry)) pushLevel(levelSet, signal.plannedEntry);
   if (signal.plannedStop != null && finite(signal.plannedStop)) pushLevel(levelSet, signal.plannedStop);
   if (signal.plannedTarget != null && finite(signal.plannedTarget)) pushLevel(levelSet, signal.plannedTarget);
+  if (recentCandles) {
+    for (const c of recentCandles) {
+      if (finite(c.high)) pushLevel(levelSet, c.high);
+      if (finite(c.low)) pushLevel(levelSet, c.low);
+    }
+  }
 
   const allowedPriceLevels = [...levelSet].sort((a, b) => a - b);
 

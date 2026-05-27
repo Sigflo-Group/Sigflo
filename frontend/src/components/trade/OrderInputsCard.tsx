@@ -723,7 +723,7 @@ export function OrderInputsCard(props: {
                   title="Collateral available for new orders in your Bybit unified trading account"
                 >
                   <span className="block text-[8px] font-semibold uppercase tracking-[0.12em] text-sigflo-muted">
-                    Available (UTA)
+                    Available to trade
                   </span>
                   <span className="block tabular-nums text-[11px] text-sigflo-text">{fmtUsd2(balanceShown)}</span>
                   <span className="block text-[8px] leading-tight text-sigflo-muted/80">For new orders</span>
@@ -743,9 +743,9 @@ export function OrderInputsCard(props: {
                     className="min-w-0 rounded-lg border border-white/[0.1] bg-black/25 px-2 py-1.5 text-left"
                     title="Total UTA equity per Bybit (includes unrealized PnL on real positions)"
                   >
-                    <span className="block text-[8px] font-semibold uppercase tracking-[0.12em] text-sigflo-muted">Equity (UTA)</span>
+                    <span className="block text-[8px] font-semibold uppercase tracking-[0.12em] text-sigflo-muted">Total account value</span>
                     <span className="block tabular-nums text-[11px] text-cyan-200/95">{fmtUsd2(utaEquityUsd)}</span>
-                    <span className="block text-[8px] leading-tight text-sigflo-muted/80">Incl. unrealized (Bybit)</span>
+                    <span className="block text-[8px] leading-tight text-sigflo-muted/80">Includes open PnL</span>
                   </div>
                 ) : null}
               </div>
@@ -764,7 +764,7 @@ export function OrderInputsCard(props: {
                 !Number.isFinite(utaEquityUsd) ||
                 Math.abs(utaWalletBalanceUsd - utaEquityUsd) > 0.02) ? (
                 <span className="mt-0.5 block text-right text-[9px] tabular-nums text-sigflo-muted/75">
-                  Wallet balance (UTA, Bybit): {fmtUsd2(utaWalletBalanceUsd)}
+                  Wallet balance: {fmtUsd2(utaWalletBalanceUsd)}
                 </span>
               ) : null}
               <span className="mt-1 block text-[9px] text-sigflo-muted/80">{balanceHelper}</span>
@@ -800,7 +800,7 @@ export function OrderInputsCard(props: {
                 className="mt-0.5 block max-w-[11rem] text-[8px] leading-tight text-sigflo-muted/75 sm:max-w-none"
                 title="Separate deposit wallet — not included in Available / In use above until you transfer to UTA"
               >
-                Not in unified trading — use Transfer to move funds to UTA for orders
+                Not in your trading balance yet - use Transfer before placing orders
               </span>
             </div>
           ) : null}
@@ -968,7 +968,7 @@ export function OrderInputsCard(props: {
             <div className="rounded-xl border border-white/[0.08] bg-black/30 px-2.5 py-2 ring-1 ring-white/[0.04]">
               <p className="text-[9px] font-semibold uppercase tracking-[0.14em] text-sigflo-muted">TP / SL trigger</p>
               <p className="mt-0.5 text-[8px] leading-snug text-sigflo-muted/80">
-                Bybit: which price crosses your levels first (same as MEXC Last / Fair / Index).
+                Choose which price triggers TP/SL first.
               </p>
               <div className="mt-1.5 inline-flex flex-wrap rounded-md border border-white/[0.08] bg-black/35 p-0.5">
                 {BYBIT_TPSL_TRIGGER_VALUES.map((t) => {

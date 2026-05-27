@@ -1,9 +1,12 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { secureStorage } from '@/lib/storage';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   DEFAULT_AUTOMATION_SAFEGUARDS,
   appendActivityEntry,
+  isActionableExitAiPopupActivity,
   parseActivityLogJson,
 } from '@/lib/aiExitAutomation';
+import { isActionableExitAiPopupMessage } from '@/lib/exitAiPopupGate';
 import { emitGlobalAnnouncement } from '@/lib/globalAnnouncements';
 import { DEFAULT_CUSTOM_STRATEGY_THRESHOLDS, sanitizeExitStrategyThresholds } from '@/lib/exitGuidance';
 import type {
@@ -26,22 +29,23 @@ const EXIT_AI_POPUP_KINDS: ReadonlySet<ExitAutomationActivityKind> = new Set([
   'safeguard',
   'assisted_ready',
 ]);
+const EXIT_AI_POPUP_COOLDOWN_MS = 20_000;
 
 function loadMode(): ExitAiMode {
-  const v = window.localStorage.getItem(LS_MODE);
+  const v = secureStorage.getItem(LS_MODE);
   if (v === 'manual' || v === 'assisted' || v === 'auto') return v;
   return 'manual';
 }
 
 function loadStrategy(): ExitStrategyPreset {
-  const v = window.localStorage.getItem(LS_STRATEGY);
+  const v = secureStorage.getItem(LS_STRATEGY);
   if (v === 'protect_profit' || v === 'trend_follow' || v === 'tight_risk' || v === 'custom') return v;
   return 'protect_profit';
 }
 
 function loadSafeguards(): AutomationSafeguards {
   try {
-    const raw = window.localStorage.getItem(LS_SAFEGUARDS);
+    const raw = secureStorage.getItem(LS_SAFEGUARDS);
     if (!raw) return { ...DEFAULT_AUTOMATION_SAFEGUARDS };
     const p = JSON.parse(raw) as Partial<AutomationSafeguards>;
     return {
@@ -63,7 +67,7 @@ function loadSafeguards(): AutomationSafeguards {
 
 function loadCustomStrategyThresholds(): ExitStrategyThresholds {
   try {
-    const raw = window.localStorage.getItem(LS_CUSTOM_THRESHOLDS);
+    const raw = secureStorage.getItem(LS_CUSTOM_THRESHOLDS);
     if (!raw) return { ...DEFAULT_CUSTOM_STRATEGY_THRESHOLDS };
     const p = JSON.parse(raw) as Partial<ExitStrategyThresholds>;
     return sanitizeExitStrategyThresholds(p);
@@ -83,25 +87,26 @@ export function useExitAutomation(scopeKey: string) {
   const [customStrategyThresholds, setCustomStrategyThresholds] =
     useState<ExitStrategyThresholds>(loadCustomStrategyThresholds);
   const [activity, setActivity] = useState<ExitAutomationActivityEntry[]>([]);
+  const popupLastEmittedAtRef = useRef<Partial<Record<ExitAutomationActivityKind, number>>>({});
 
   useEffect(() => {
-    setActivity(parseActivityLogJson(window.localStorage.getItem(activityStorageKey(scopeKey))));
+    setActivity(parseActivityLogJson(secureStorage.getItem(activityStorageKey(scopeKey))));
   }, [scopeKey]);
 
   useEffect(() => {
-    window.localStorage.setItem(LS_MODE, mode);
+    secureStorage.setItem(LS_MODE, mode);
   }, [mode]);
 
   useEffect(() => {
-    window.localStorage.setItem(LS_STRATEGY, strategy);
+    secureStorage.setItem(LS_STRATEGY, strategy);
   }, [strategy]);
 
   useEffect(() => {
-    window.localStorage.setItem(LS_SAFEGUARDS, JSON.stringify(safeguards));
+    secureStorage.setItem(LS_SAFEGUARDS, JSON.stringify(safeguards));
   }, [safeguards]);
 
   useEffect(() => {
-    window.localStorage.setItem(LS_CUSTOM_THRESHOLDS, JSON.stringify(customStrategyThresholds));
+    secureStorage.setItem(LS_CUSTOM_THRESHOLDS, JSON.stringify(customStrategyThresholds));
   }, [customStrategyThresholds]);
 
   const mergeCustomStrategyThresholds = useCallback((patch: Partial<ExitStrategyThresholds>) => {
@@ -113,7 +118,7 @@ export function useExitAutomation(scopeKey: string) {
   }, []);
 
   const persistActivity = useCallback((next: ExitAutomationActivityEntry[]) => {
-    window.localStorage.setItem(activityStorageKey(scopeKey), JSON.stringify(next));
+    secureStorage.setItem(activityStorageKey(scopeKey), JSON.stringify(next));
   }, [scopeKey]);
 
   const pushActivity = useCallback(
@@ -122,7 +127,16 @@ export function useExitAutomation(scopeKey: string) {
         const next = appendActivityEntry(prev, entry);
         persistActivity(next);
         const added = next[next.length - 1];
-        if (added && EXIT_AI_POPUP_KINDS.has(added.kind)) {
+        if (
+          added &&
+          EXIT_AI_POPUP_KINDS.has(added.kind) &&
+          isActionableExitAiPopupMessage(added) &&
+          isActionableExitAiPopupActivity(added)
+        ) {
+          const now = Date.now();
+          const last = popupLastEmittedAtRef.current[added.kind] ?? 0;
+          if (now - last < EXIT_AI_POPUP_COOLDOWN_MS) return next;
+          popupLastEmittedAtRef.current[added.kind] = now;
           queueMicrotask(() => {
             emitGlobalAnnouncement({
               id: added.id,
@@ -140,7 +154,7 @@ export function useExitAutomation(scopeKey: string) {
 
   const clearActivity = useCallback(() => {
     setActivity([]);
-    window.localStorage.removeItem(activityStorageKey(scopeKey));
+    secureStorage.removeItem(activityStorageKey(scopeKey));
   }, [scopeKey]);
 
   return useMemo(

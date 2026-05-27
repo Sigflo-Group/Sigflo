@@ -44,7 +44,7 @@ const HEADLINES = {
 const SUBTEXT = {
   breakout: [
     'Range tightening after multiple tests.',
-    'Volatility compressing, expansion likely.',
+    'Range is tightening; a larger move may be next.',
     'Resistance keeps getting tested with little pullback.',
   ],
   reversal: [
@@ -54,7 +54,7 @@ const SUBTEXT = {
   ],
   momentum: ['Trend structure intact.', 'Follow-through is holding.', 'Continuation pressure remains steady.'],
   risk: [
-    'Volatility is increasing and conditions are unstable.',
+    'Market activity is picking up and conditions feel less stable.',
     'Price swings are widening around key levels.',
     'Exposure is high; keep risk controlled.',
   ],
@@ -88,11 +88,16 @@ function stateClass(state: OpportunityDecisionCardProps['state']): string {
   return 'border-white/12 bg-white/[0.03] text-zinc-400';
 }
 
-function confidence(score: number): { label: 'Weak' | 'Moderate' | 'Strong'; pct: number } {
+function confidence(score: number): {
+  label: 'No Trade' | 'Developing' | 'Moderate' | 'Strong' | 'High Conviction';
+  pct: number;
+} {
   const pct = Math.max(0, Math.min(100, score));
+  if (pct >= 85) return { label: 'High Conviction', pct };
   if (pct >= 75) return { label: 'Strong', pct };
   if (pct >= 60) return { label: 'Moderate', pct };
-  return { label: 'Weak', pct };
+  if (pct >= 45) return { label: 'Developing', pct };
+  return { label: 'No Trade', pct };
 }
 
 function fmt(n: number): string {

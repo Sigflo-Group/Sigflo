@@ -781,6 +781,27 @@
   }
 }
 
+.sigflo-mini-progress {
+  -webkit-appearance: none;
+  appearance: none;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.sigflo-mini-progress::-webkit-progress-bar {
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 9999px;
+}
+
+.sigflo-mini-progress::-webkit-progress-value {
+  background: rgba(34, 211, 238, 0.78);
+  border-radius: 9999px;
+}
+
+.sigflo-mini-progress::-moz-progress-bar {
+  background: rgba(34, 211, 238, 0.78);
+  border-radius: 9999px;
+}
+
 @keyframes sigflo-trigger-card-in {
   0% {
     transform: translateY(0) scale(1);

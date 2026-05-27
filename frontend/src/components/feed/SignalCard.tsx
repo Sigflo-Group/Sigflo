@@ -11,19 +11,13 @@ import {
   uiSignalStateFromMarketStatus,
   uiSignalStateLabel,
 } from '@/lib/signalState';
+import { interpretSignal } from '@/lib/signalInterpretation';
+import { MarketPostureBar } from '@/components/shared/MarketPostureBar';
 import { TriggeredFireMark } from '@/components/ui/TriggeredFireMark';
+import { useSignalEngine } from '@/hooks/useSignalEngine';
+import { submitSignalReaction } from '@/services/api/feedbackClient';
 import type { CryptoSignal } from '@/types/signal';
 import type { Candle } from '@/types/market';
-
-function confidenceLabel(score: number): string {
-  if (score >= 70) return 'Strong';
-  if (score >= 55) return 'Medium';
-  return 'Weak';
-}
-
-function riskShort(tag: string): string {
-  return tag.replace(' Risk', '');
-}
 
 function isFreshPosted(postedAgo: string): boolean {
   const v = postedAgo.trim().toLowerCase();
@@ -85,7 +79,10 @@ export function SignalCard({
   intervalLabel?: string;
 }) {
   const navigate = useNavigate();
+  const { registerSignalFollowed } = useSignalEngine();
   const [tick, setTick] = useState(0);
+  const [reaction, setReaction] = useState<'helpful' | 'not_helpful' | null>(null);
+  const [reactionBusy, setReactionBusy] = useState(false);
   useEffect(() => {
     const id = window.setInterval(() => setTick((v) => v + 1), 1000);
     return () => window.clearInterval(id);
@@ -95,6 +92,7 @@ export function SignalCard({
   const marketStatus = deriveMarketStatus(signal);
   const uiState = uiSignalStateFromMarketStatus(marketStatus);
   const uiStateStyle = uiSignalStateClasses(uiState);
+  const interp = useMemo(() => interpretSignal(signal, marketStatus), [signal, marketStatus]);
   const isTriggered = uiState === 'triggered';
   const justTriggered = useTriggeredMotion(isTriggered, 900);
   const isFreshTriggered = isTriggered && isFreshPosted(signal.postedAgo);
@@ -131,14 +129,9 @@ export function SignalCard({
   const chartH = 84;
   const line = sparkPath(miniSeries, chartW, chartH);
   const area = `${line} L${chartW},${chartH} L0,${chartH} Z`;
-  const riskColor =
-    signal.riskTag === 'High Risk'
-      ? 'text-rose-400'
-      : signal.riskTag === 'Low Risk'
-        ? 'text-emerald-400'
-        : 'text-sigflo-muted';
 
   const openTrade = () => {
+    registerSignalFollowed(signal);
     navigate(`/trade?${buildTradeQueryString(signal, { marketStatus: deriveMarketStatus(signal) })}`);
   };
 
@@ -215,31 +208,96 @@ export function SignalCard({
           )}
         </div>
 
-        {/* Entry + confidence + risk */}
-        <div className="mt-7 flex items-end justify-between gap-3 text-xs">
-          <span className={`text-sigflo-muted ${isTriggered ? 'sigflo-trigger-entry-active' : ''}`}>
-            Entry:{' '}
-            <span className="animate-entry-pulse text-base font-bold tabular-nums tracking-tight text-white">
-              {formatQuoteNumber(entryValue)}
-            </span>
-          </span>
-          <div className="flex items-center gap-4 text-right">
-            <span className="text-sigflo-muted">
-              Confidence: <span className="font-semibold text-sigflo-accent">{confidenceLabel(signal.setupScore)}</span>
-            </span>
-            <span className="text-sigflo-muted">
-              Risk: <span className={`font-semibold ${riskColor}`}>{riskShort(signal.riskTag)}</span>
-            </span>
+        {/* Reactions */}
+        <div className="mt-3 flex items-center gap-2">
+          <span className="text-[9px] font-semibold uppercase tracking-[0.12em] text-sigflo-muted/60">Was this signal helpful?</span>
+          <div className="flex gap-1">
+            <button
+              type="button"
+              disabled={reactionBusy}
+              onClick={(e) => {
+                e.stopPropagation();
+                if (reactionBusy) return;
+                const next = reaction === 'helpful' ? null : 'helpful';
+                setReaction(next);
+                if (next) {
+                  setReactionBusy(true);
+                  submitSignalReaction({
+                    signalId: signal.id,
+                    pair: signal.pair,
+                    side: signal.side,
+                    setupType: signal.setupType,
+                    setupScore: signal.setupScore,
+                    riskTag: signal.riskTag ?? null,
+                    reaction: next,
+                  }).finally(() => setReactionBusy(false));
+                }
+              }}
+              className={`rounded-lg border px-2 py-1 text-[11px] font-semibold transition ${
+                reaction === 'helpful'
+                  ? 'border-emerald-500/50 bg-emerald-500/15 text-emerald-300'
+                  : 'border-white/[0.08] bg-white/[0.04] text-sigflo-muted hover:border-white/[0.18] hover:text-sigflo-text'
+              }`}
+            >
+              👍 Helpful
+            </button>
+            <button
+              type="button"
+              disabled={reactionBusy}
+              onClick={(e) => {
+                e.stopPropagation();
+                if (reactionBusy) return;
+                const next = reaction === 'not_helpful' ? null : 'not_helpful';
+                setReaction(next);
+                if (next) {
+                  setReactionBusy(true);
+                  submitSignalReaction({
+                    signalId: signal.id,
+                    pair: signal.pair,
+                    side: signal.side,
+                    setupType: signal.setupType,
+                    setupScore: signal.setupScore,
+                    riskTag: signal.riskTag ?? null,
+                    reaction: next,
+                  }).finally(() => setReactionBusy(false));
+                }
+              }}
+              className={`rounded-lg border px-2 py-1 text-[11px] font-semibold transition ${
+                reaction === 'not_helpful'
+                  ? 'border-rose-500/50 bg-rose-500/15 text-rose-300'
+                  : 'border-white/[0.08] bg-white/[0.04] text-sigflo-muted hover:border-white/[0.18] hover:text-sigflo-text'
+              }`}
+            >
+              👎 Not helpful
+            </button>
           </div>
         </div>
 
+        {/* Entry price */}
+        <div className={`mt-6 text-xs text-sigflo-muted ${isTriggered ? 'sigflo-trigger-entry-active' : ''}`}>
+          Entry:{' '}
+          <span className="animate-entry-pulse text-base font-bold tabular-nums tracking-tight text-white">
+            {formatQuoteNumber(entryValue)}
+          </span>
+        </div>
+
+        {/* Posture interpretation — replaces raw confidence/risk numbers */}
+        <div className="mt-3">
+          <MarketPostureBar signal={signal} status={marketStatus} interp={interp} variant="headline" />
+        </div>
+
         {/* CTA */}
-        <button
-          type="button"
-          className="mt-4 w-full rounded-xl border border-sigflo-accent/22 bg-[#0f1c18] py-2.5 text-sm font-bold text-sigflo-accent transition hover:border-sigflo-accent/35 hover:bg-[#132a22]"
+        <div
+          className="mt-4 w-full rounded-xl border border-sigflo-accent/22 bg-[#0f1c18] py-2.5 text-center text-sm font-bold text-sigflo-accent transition hover:border-sigflo-accent/35 hover:bg-[#132a22]"
+          aria-hidden
         >
           Open Signal
-        </button>
+        </div>
+
+        {/* Disclaimer micro-copy */}
+        <p className="mt-2.5 text-center text-[9px] leading-tight text-sigflo-muted/45">
+          Pattern detected · Not a trade recommendation
+        </p>
       </div>
     </article>
   );

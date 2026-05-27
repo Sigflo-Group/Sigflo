@@ -43,6 +43,27 @@ describe('positionRoe helpers', () => {
     expect(margin).toBeCloseTo(3196.21, 2);
   });
 
+  it('parses leverage strings with suffixes used by some exchanges', () => {
+    const margin = marginBaseForRoe({
+      size: 1000,
+      entryPrice: 319.621,
+      markPrice: 319.7,
+      leverage: '100x',
+      positionIM: '16 USDT',
+    });
+    expect(margin).toBeCloseTo(3196.21, 2);
+  });
+
+  it('does not use tiny IM when leverage is unavailable', () => {
+    const margin = marginBaseForRoe({
+      size: 1000,
+      entryPrice: 319.621,
+      markPrice: 319.7,
+      positionIM: 16,
+    });
+    expect(margin).toBeCloseTo(319621, 0);
+  });
+
   it('falls back to leverage-adjusted move when margin path diverges too far', () => {
     const pct = livePnlPercent({
       side: 'long',
@@ -69,5 +90,17 @@ describe('positionRoe helpers', () => {
       positionIM: 3200,
     });
     expect(pct).toBeCloseTo(3.89, 1);
+  });
+
+  it('avoids blown-up pct when IM is tiny and leverage is missing', () => {
+    const pct = livePnlPercent({
+      side: 'long',
+      unrealizedPnl: 124.56,
+      size: 1000,
+      entryPrice: 319.621,
+      markPrice: 319.7,
+      positionIM: 16,
+    });
+    expect(pct).toBeCloseTo(0.039, 2);
   });
 });

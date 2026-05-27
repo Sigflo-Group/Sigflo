@@ -8,6 +8,7 @@ import { useFeedMiniCharts } from '@/hooks/useFeedMiniCharts';
 import { usePaperTrading } from '@/hooks/usePaperTrading';
 import type { TradeChartInterval } from '@/hooks/useLiveTradeMarket';
 import { useSignalEngine } from '@/hooks/useSignalEngine';
+import { getManualTrades } from '@/lib/tradeSourceFilter';
 import { formatQuoteNumber } from '@/lib/formatQuote';
 import {
   attributeBotNameForSymbol,
@@ -269,10 +270,12 @@ export default function PortfolioScreen() {
     [connected, snapshots],
   );
 
+  const manualClosedTrades = useMemo(() => getManualTrades(closedTrades), [closedTrades]);
+
   const dayStartMs = useMemo(() => utcDayStartMs(), []);
   const closedToday = useMemo(
-    () => closedTradesSinceUtc(closedTrades, dayStartMs),
-    [closedTrades, dayStartMs],
+    () => closedTradesSinceUtc(manualClosedTrades, dayStartMs),
+    [manualClosedTrades, dayStartMs],
   );
   const todayPnl = useMemo(
     () => (connected ? closedToday.reduce((s, t) => s + t.closedPnl, 0) : 0),
@@ -292,8 +295,8 @@ export default function PortfolioScreen() {
   }, [statusMap, liveBots]);
 
   const botDayStats = useMemo(
-    () => buildBotDayStats(mergedBots, closedToday),
-    [mergedBots, closedToday],
+    () => buildBotDayStats(mergedBots, closedTradesSinceUtc(closedTrades, dayStartMs)),
+    [mergedBots, closedTrades, dayStartMs],
   );
 
   const overviewSparkSeries = useMemo(() => {
@@ -319,20 +322,20 @@ export default function PortfolioScreen() {
   }, [overviewSparkSeries]);
 
   const historyRows = useMemo(() => {
-    const sorted = [...closedTrades].sort(
+    const sorted = [...manualClosedTrades].sort(
       (a, b) => new Date(b.closedAt).getTime() - new Date(a.closedAt).getTime(),
     );
     return sorted.slice(0, 10);
-  }, [closedTrades]);
+  }, [manualClosedTrades]);
 
   const realizedPnlByExchangeSymbol = useMemo(() => {
     const map = new Map<string, number>();
-    for (const t of closedTrades) {
+    for (const t of manualClosedTrades) {
       const key = `${t.exchange}:${t.symbol}`;
       map.set(key, (map.get(key) ?? 0) + t.closedPnl);
     }
     return map;
-  }, [closedTrades]);
+  }, [manualClosedTrades]);
 
   const displayNet = connected
     ? netWorth

@@ -507,7 +507,8 @@ export default function PortfolioScreen() {
                 const current = p.markPrice ?? p.entryPrice;
                 const pnl = p.unrealizedPnl ?? 0;
                 const lev = p.leverage != null && p.leverage > 0 ? p.leverage : 1;
-                const posNotional = Math.abs(p.size) * (current > 0 ? current : p.entryPrice);
+                const notionalPrice = p.entryPrice > 0 ? p.entryPrice : current;
+                const posNotional = Math.abs(p.size) * Math.max(notionalPrice, 0);
                 const margin =
                   p.positionIM != null && p.positionIM > 0
                     ? p.positionIM

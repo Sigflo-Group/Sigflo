@@ -13,5 +13,7 @@ export function isFeedWelcomeDismissed(): boolean {
 export function dismissFeedWelcome(): void {
   try {
     secureStorage.setItem(KEY, '1');
-  } catch { }
+  } catch {
+    // Ignore storage failures (private mode / blocked storage).
+  }
 }

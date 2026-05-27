@@ -2,8 +2,10 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type MutableRefO
 import { BybitWsClient } from '@/lib/bybitWsClient';
 import { LIVE_MARKET_CHART_THROTTLE_MS, LIVE_MARKET_UI_THROTTLE_MS } from '@/lib/liveMarketTickConstants';
 import { fetchKlines, fetchTickers } from '@/services/bybit/client';
+import { fetchMexcKlines, fetchMexcTicker } from '@/services/mexc/publicClient';
 import type { Candle } from '@/types/market';
 import type { TradeChartCandle } from '@/types/trade';
+import type { ExchangeId } from '@/types/integrations';
 
 export type TradeChartInterval = '1' | '5' | '15' | '60' | '240' | 'D' | 'W';
 const SUPPORTED_INTERVALS: TradeChartInterval[] = ['1', '5', '15', '60', '240', 'D', 'W'];
@@ -46,6 +48,18 @@ export type LiveTradeMarketResult = LiveTradeState & {
   tickSnapshotRef: MutableRefObject<LiveTradeTickSnapshot | null>;
 };
 
+const MEXC_PRICE_POLL_MS = 3_000;
+const MEXC_CANDLE_REFRESH_MS = 180_000;
+
+type LiveTradeMarketOptions = {
+  /** Optional quote UI throttle override for high-responsiveness views (e.g. manage-mode PnL). */
+  uiThrottleMs?: number;
+  /** When true, quote UI fields are pushed immediately on incoming ticks/public trades. */
+  immediateUiOnTick?: boolean;
+  /** Exchange source for market data. Defaults to 'bybit' (uses Bybit public API + WS). Pass 'mexc' to use MEXC public REST polling instead. */
+  exchange?: ExchangeId;
+};
+
 function upsertCandle(store: Candle[], next: Candle): Candle[] {
   const out = [...store];
   const last = out.at(-1);
@@ -80,7 +94,11 @@ function toTradeCandles(candles: Candle[]): TradeChartCandle[] {
   }));
 }
 
-export function useLiveTradeMarket(symbol: string, interval: TradeChartInterval): LiveTradeMarketResult {
+export function useLiveTradeMarket(
+  symbol: string,
+  interval: TradeChartInterval,
+  options?: LiveTradeMarketOptions,
+): LiveTradeMarketResult {
   const [state, setState] = useState<LiveTradeState>({
     loadingInterval: true,
     mode: 'OFFLINE',
@@ -124,7 +142,8 @@ export function useLiveTradeMarket(symbol: string, interval: TradeChartInterval)
       if (!snap) return;
 
       const now = performance.now();
-      const uiDue = pendingUiRef.current && now - lastUiPush >= LIVE_MARKET_UI_THROTTLE_MS;
+      const uiThrottleMs = Math.max(16, options?.uiThrottleMs ?? LIVE_MARKET_UI_THROTTLE_MS);
+      const uiDue = pendingUiRef.current && now - lastUiPush >= uiThrottleMs;
       const chartImmediate = chartImmediateRef.current;
       chartImmediateRef.current = false;
       const chartDue =
@@ -178,9 +197,10 @@ export function useLiveTradeMarket(symbol: string, interval: TradeChartInterval)
       stopped = true;
       window.cancelAnimationFrame(raf);
     };
-  }, [symbol, interval]);
+  }, [symbol, interval, options?.uiThrottleMs]);
 
   useEffect(() => {
+    const isMexc = options?.exchange === 'mexc';
     let cancelled = false;
     readyRef.current = false;
     candlesRef.current = { '1': [], '5': [], '15': [], '60': [], '240': [], D: [], W: [] };
@@ -205,6 +225,135 @@ export function useLiveTradeMarket(symbol: string, interval: TradeChartInterval)
       lastUpdateTs: undefined,
       dataSymbol: symbol,
     }));
+
+    const applyTickerToCandles = (price: number) => {
+      const active = candlesRef.current[interval];
+      if (active.length > 0) {
+        const last = active[active.length - 1];
+        active[active.length - 1] = {
+          ...last,
+          close: price,
+          high: Math.max(last.high, price),
+          low: Math.min(last.low, price),
+        };
+      }
+    };
+
+    // ── MEXC path: REST bootstrap + polling ─────────────────────────────────
+    if (isMexc) {
+      async function mexcBootstrap() {
+        try {
+          const [c1, c5, c15, c60, c240, cD, cW, ticker] = await Promise.all([
+            fetchMexcKlines(symbol, '1', 200),
+            fetchMexcKlines(symbol, '5', 140),
+            fetchMexcKlines(symbol, '15', 140),
+            fetchMexcKlines(symbol, '60', 140),
+            fetchMexcKlines(symbol, '240', 140),
+            fetchMexcKlines(symbol, 'D', 140),
+            fetchMexcKlines(symbol, 'W', 140),
+            fetchMexcTicker(symbol),
+          ]);
+          if (cancelled) return;
+          candlesRef.current = { '1': c1, '5': c5, '15': c15, '60': c60, '240': c240, D: cD, W: cW };
+          if (!ticker) {
+            setState((prev) => ({ ...prev, loadingInterval: false, dataSymbol: symbol, mode: 'OFFLINE', connection: 'disconnected' }));
+            return;
+          }
+          readyRef.current = true;
+          const snap: LiveTradeTickSnapshot = {
+            lastPrice: ticker.lastPrice,
+            ...(ticker.markPrice != null ? { markPrice: ticker.markPrice } : {}),
+            ...(ticker.indexPrice != null ? { indexPrice: ticker.indexPrice } : {}),
+            change24hPct: ticker.change24hPct,
+            high24h: ticker.high24h,
+            low24h: ticker.low24h,
+            volume24h: toBillions(ticker.turnover24hUsd),
+            lastUpdateTs: Date.now(),
+          };
+          tickSnapshotRef.current = snap;
+          lastPriceRef.current = ticker.lastPrice;
+          const active = candlesRef.current[interval];
+          setState((prev) => ({
+            ...prev,
+            dataSymbol: symbol,
+            lastPrice: snap.lastPrice,
+            ...(snap.markPrice != null ? { markPrice: snap.markPrice } : {}),
+            ...(snap.indexPrice != null ? { indexPrice: snap.indexPrice } : {}),
+            change24hPct: snap.change24hPct,
+            high24h: snap.high24h,
+            low24h: snap.low24h,
+            volume24h: snap.volume24h,
+            priceSeries: normalizeSeries(active),
+            chartCandles: toTradeCandles(active),
+            loadingInterval: false,
+            lastUpdateTs: snap.lastUpdateTs,
+            mode: 'REST',
+            connection: 'connected',
+          }));
+        } catch {
+          if (cancelled) return;
+          setState((prev) => ({ ...prev, loadingInterval: false, dataSymbol: symbol, mode: 'OFFLINE', connection: 'disconnected' }));
+        }
+      }
+
+      async function mexcPollTicker() {
+        if (cancelled) return;
+        try {
+          const ticker = await fetchMexcTicker(symbol);
+          if (!ticker || cancelled) return;
+          const prev = tickSnapshotRef.current;
+          const snap: LiveTradeTickSnapshot = {
+            lastPrice: ticker.lastPrice,
+            ...(ticker.markPrice != null ? { markPrice: ticker.markPrice } : prev?.markPrice != null ? { markPrice: prev.markPrice } : {}),
+            ...(ticker.indexPrice != null ? { indexPrice: ticker.indexPrice } : prev?.indexPrice != null ? { indexPrice: prev.indexPrice } : {}),
+            change24hPct: ticker.change24hPct,
+            high24h: ticker.high24h,
+            low24h: ticker.low24h,
+            volume24h: toBillions(ticker.turnover24hUsd),
+            lastUpdateTs: Date.now(),
+          };
+          tickSnapshotRef.current = snap;
+          lastPriceRef.current = ticker.lastPrice;
+          applyTickerToCandles(ticker.lastPrice);
+          pendingUiRef.current = true;
+          pendingChartRef.current = true;
+        } catch {
+          // transient network error — ignore, try again next poll
+        }
+      }
+
+      async function mexcRefreshCandles() {
+        if (cancelled) return;
+        try {
+          const [c1, c5, c15, c60, c240, cD, cW] = await Promise.all([
+            fetchMexcKlines(symbol, '1', 200),
+            fetchMexcKlines(symbol, '5', 140),
+            fetchMexcKlines(symbol, '15', 140),
+            fetchMexcKlines(symbol, '60', 140),
+            fetchMexcKlines(symbol, '240', 140),
+            fetchMexcKlines(symbol, 'D', 140),
+            fetchMexcKlines(symbol, 'W', 140),
+          ]);
+          if (cancelled) return;
+          candlesRef.current = { '1': c1, '5': c5, '15': c15, '60': c60, '240': c240, D: cD, W: cW };
+          chartImmediateRef.current = true;
+          pendingChartRef.current = true;
+        } catch {
+          // ignore — stale candles are better than nothing
+        }
+      }
+
+      void mexcBootstrap();
+      const pollTimer = setInterval(() => void mexcPollTicker(), MEXC_PRICE_POLL_MS);
+      const refreshTimer = setInterval(() => void mexcRefreshCandles(), MEXC_CANDLE_REFRESH_MS);
+      return () => {
+        cancelled = true;
+        clearInterval(pollTimer);
+        clearInterval(refreshTimer);
+      };
+    }
+
+    // ── Bybit path: REST bootstrap + WebSocket ───────────────────────────────
 
     async function bootstrap(reason: 'startup' | 'reconnect') {
       try {
@@ -291,19 +440,6 @@ export function useLiveTradeMarket(symbol: string, interval: TradeChartInterval)
       }
     }
 
-    const applyTickerToCandles = (price: number) => {
-      const active = candlesRef.current[interval];
-      if (active.length > 0) {
-        const last = active[active.length - 1];
-        active[active.length - 1] = {
-          ...last,
-          close: price,
-          high: Math.max(last.high, price),
-          low: Math.min(last.low, price),
-        };
-      }
-    };
-
     const ws = new BybitWsClient({
       klineSymbols: [symbol],
       klineIntervals: SUPPORTED_INTERVALS,
@@ -356,6 +492,22 @@ export function useLiveTradeMarket(symbol: string, interval: TradeChartInterval)
         applyTickerToCandles(price);
         pendingUiRef.current = true;
         pendingChartRef.current = true;
+        if (options?.immediateUiOnTick) {
+          setState((prev) => ({
+            ...prev,
+            dataSymbol: symbol,
+            lastPrice: snap.lastPrice,
+            ...(snap.markPrice != null ? { markPrice: snap.markPrice } : {}),
+            ...(snap.indexPrice != null ? { indexPrice: snap.indexPrice } : {}),
+            change24hPct: snap.change24hPct,
+            high24h: snap.high24h,
+            low24h: snap.low24h,
+            volume24h: snap.volume24h,
+            lastUpdateTs: snap.lastUpdateTs,
+            mode: readyRef.current ? 'WS' : prev.mode,
+          }));
+          pendingUiRef.current = false;
+        }
       },
       onPublicTrade: (tr) => {
         if (tr.symbol !== symbol) return;
@@ -371,6 +523,25 @@ export function useLiveTradeMarket(symbol: string, interval: TradeChartInterval)
         applyTickerToCandles(price);
         pendingUiRef.current = true;
         pendingChartRef.current = true;
+        if (options?.immediateUiOnTick) {
+          const snap = tickSnapshotRef.current;
+          if (snap) {
+            setState((prev) => ({
+              ...prev,
+              dataSymbol: symbol,
+              lastPrice: snap.lastPrice,
+              ...(snap.markPrice != null ? { markPrice: snap.markPrice } : {}),
+              ...(snap.indexPrice != null ? { indexPrice: snap.indexPrice } : {}),
+              change24hPct: snap.change24hPct,
+              high24h: snap.high24h,
+              low24h: snap.low24h,
+              volume24h: snap.volume24h,
+              lastUpdateTs: snap.lastUpdateTs,
+              mode: readyRef.current ? 'WS' : prev.mode,
+            }));
+            pendingUiRef.current = false;
+          }
+        }
       },
       onKline: (k) => {
         if (k.symbol !== symbol) return;
@@ -411,7 +582,7 @@ export function useLiveTradeMarket(symbol: string, interval: TradeChartInterval)
       cancelled = true;
       ws.disconnect();
     };
-  }, [symbol, interval]);
+  }, [symbol, interval, options?.immediateUiOnTick, options?.exchange]);
 
   useEffect(() => {
     const active = candlesRef.current[interval];

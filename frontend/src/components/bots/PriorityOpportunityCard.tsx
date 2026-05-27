@@ -17,13 +17,11 @@ function glowClass(state: OpportunityCardModel['state']): string {
 export function PriorityOpportunityCard({
   opportunity,
   onReview,
-  onExplain,
   alertHighlight = false,
   reviewLocked = false,
 }: {
   opportunity: OpportunityCardModel;
   onReview?: (id: string) => void;
-  onExplain?: (id: string) => void;
   alertHighlight?: boolean;
   /** Daily risk guard: no navigation into new trade review. */
   reviewLocked?: boolean;
@@ -98,16 +96,7 @@ export function PriorityOpportunityCard({
         >
           {reviewLocked ? 'Review locked' : 'Review trade'}
         </button>
-        <button
-          type="button"
-          onClick={() => {
-            playUiTapSound();
-            onExplain?.(opportunity.id);
-          }}
-          className="text-xs font-semibold text-zinc-300 transition hover:text-zinc-100"
-        >
-          Why this setup
-        </button>
+
         <span className="ml-auto text-[10px] text-zinc-500">{formatFreshness(opportunity.freshnessSec)}</span>
       </div>
     </article>

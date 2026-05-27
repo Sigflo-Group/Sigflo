@@ -1,3 +1,4 @@
+import { secureStorage } from '@/lib/storage';
 import {
   createContext,
   useCallback,
@@ -37,7 +38,7 @@ export function TradingControlModeProvider({ children }: { children: ReactNode }
   const setMode = useCallback((next: TradingControlMode) => {
     if (modeRef.current === next) return;
     modeRef.current = next;
-    window.localStorage.setItem(TRADING_CONTROL_MODE_STORAGE_KEY, next);
+    secureStorage.setItem(TRADING_CONTROL_MODE_STORAGE_KEY, next);
     setModeState(next);
     window.clearTimeout(feedbackTimerRef.current);
     setFeedback(tradingModeSwitchToast(next));

@@ -74,9 +74,10 @@ export function AccountSnapshotProvider({
       const errs: string[] = [];
 
       if (snapRes.status === 'fulfilled') {
-        setItems(snapRes.value);
-        snapshots = snapRes.value;
-        syncBiasFlipNotifyOpenSymbolsFromSnapshots(snapRes.value, biasNotifyGen);
+        const safeItems = Array.isArray(snapRes.value) ? snapRes.value : [];
+        setItems(safeItems);
+        snapshots = safeItems;
+        syncBiasFlipNotifyOpenSymbolsFromSnapshots(safeItems, biasNotifyGen);
       } else {
         setItems([]);
         syncBiasFlipNotifyOpenSymbolsFromSnapshots([], biasNotifyGen);

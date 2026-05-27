@@ -83,8 +83,10 @@ export async function fetchKlines(symbol: string, interval: KlineInterval, limit
     `/v5/market/kline?category=linear&symbol=${encodeURIComponent(symbol)}&interval=${interval}&limit=${limit}`,
   );
   if (data.retCode !== 0) throw new Error(data.retMsg || 'Bybit kline failed');
-  // Bybit returns newest first.
-  return (data.result?.list ?? [])
+  // Bybit returns newest first; the first entry is the current forming bar.
+  // After reversing, the last entry is the forming bar — mark it isClosed: false so the
+  // detector pipeline can strip it and avoid running indicators against a partial candle.
+  const raw = (data.result?.list ?? [])
     .map((r) => ({
       ts: Number(r[0]),
       open: Number(r[1]),
@@ -94,4 +96,5 @@ export async function fetchKlines(symbol: string, interval: KlineInterval, limit
       volume: Number(r[5]),
     }))
     .reverse();
+  return raw.map((c, i) => ({ ...c, isClosed: i < raw.length - 1 }));
 }

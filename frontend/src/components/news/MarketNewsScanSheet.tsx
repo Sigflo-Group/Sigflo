@@ -192,8 +192,8 @@ export function MarketNewsScanSheet({ open, onClose, focusAsset = null, marketRe
               <section>
                 <h3 className="text-[10px] font-bold uppercase tracking-[0.16em] text-sigflo-muted">What&apos;s moving it</h3>
                 <ul className="mt-2 list-none space-y-2">
-                  {s.keyDrivers.map((line, i) => (
-                    <li key={i} className="flex gap-2 text-[12px] leading-snug text-white/90">
+                  {s.keyDrivers.map((line) => (
+                    <li key={line} className="flex gap-2 text-[12px] leading-snug text-white/90">
                       <span className="shrink-0 font-bold text-cyan-300/70">·</span>
                       <span>{line}</span>
                     </li>
@@ -227,8 +227,8 @@ export function MarketNewsScanSheet({ open, onClose, focusAsset = null, marketRe
                 <section>
                   <h3 className="text-[10px] font-bold uppercase tracking-[0.16em] text-sigflo-muted">What to watch next</h3>
                   <ul className="mt-2 list-none space-y-1.5">
-                    {s.whatToWatchNext.map((line, i) => (
-                      <li key={i} className="flex gap-2 text-[12px] leading-snug text-white/85">
+                    {s.whatToWatchNext.map((line) => (
+                      <li key={line} className="flex gap-2 text-[12px] leading-snug text-white/85">
                         <span className="shrink-0 text-cyan-300/60">→</span>
                         <span>{line}</span>
                       </li>

@@ -567,9 +567,7 @@ export function PriceChartCard({
       runProgrammaticViewport(() => {
         try {
           chart.priceScale('right').setAutoScale(true);
-        } catch {
-          /* ignore */
-        }
+        } catch (e) { console.error("[Caught Error]", e); }
       });
 
       requestAnimationFrame(() => {
@@ -596,9 +594,7 @@ export function PriceChartCard({
             runProgrammaticViewport(() => {
               tss.setVisibleLogicalRange({ from: lLo, to: lHi });
             });
-          } catch {
-            /* LC may reject degenerate ranges */
-          }
+          } catch (e) { console.error("[Caught Error]", e); }
           if (u < 1) requestAnimationFrame(tick);
           else skipScrollToRealTimeRef.current = true;
         };
@@ -786,14 +782,15 @@ export function PriceChartCard({
    * often read stale `clientHeight`. ResizeObserver + rAF resizes after layout and through the transition. */
   useLayoutEffect(() => {
     const el = chartContainerRef.current;
-    const chart = chartRef.current;
-    if (!el || !chart) return;
+    if (!el || !chartRef.current) return;
 
     let raf = 0;
     const fit = () => {
       if (raf !== 0) cancelAnimationFrame(raf);
       raf = window.requestAnimationFrame(() => {
         raf = 0;
+        const chart = chartRef.current;
+        if (!chart) return;
         const w = Math.max(1, Math.round(el.clientWidth));
         const h = Math.max(1, Math.round(el.clientHeight));
         chart.resize(w, h);
@@ -1955,7 +1952,7 @@ export function PriceChartCard({
           */}
           <div
             ref={bindChartPlotEl}
-            className={`absolute inset-x-0 bottom-0 z-[1] bg-[#0c0c0f] ${headerDockedInPlotPanel ? 'top-0' : 'top-px'}`}
+            className={`touch-none absolute inset-x-0 bottom-0 z-[1] bg-[#0c0c0f] ${headerDockedInPlotPanel ? 'top-0' : 'top-px'}`}
           />
           {usePremiumTradeZones ? (
             <div

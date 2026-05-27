@@ -13,5 +13,7 @@ export function isFirstTradeGuideDismissed(): boolean {
 export function dismissFirstTradeGuide(): void {
   try {
     secureStorage.setItem(KEY, '1');
-  } catch { }
+  } catch {
+    // Ignore storage failures (private mode / blocked storage).
+  }
 }

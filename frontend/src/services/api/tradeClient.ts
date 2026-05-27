@@ -139,6 +139,34 @@ export async function postBybitLinearTradingStop(body: {
   });
 }
 
+export type MexcLinearOrderResponse = {
+  ok: true;
+  exchange: string;
+  orderId: string;
+  orderLinkId: null;
+  note?: string;
+};
+
+export async function postMexcLinearOrder(body: {
+  symbol: string;
+  side: 'Buy' | 'Sell';
+  orderType?: 'Market' | 'Limit';
+  qty: string;
+  reduceOnly?: boolean;
+  price?: string;
+  leverage?: number;
+  takeProfit?: string;
+  stopLoss?: string;
+}): Promise<MexcLinearOrderResponse> {
+  return apiJson<MexcLinearOrderResponse>('/trade/mexc/linear-order', {
+    method: 'POST',
+    body: JSON.stringify({
+      orderType: 'Market',
+      ...body,
+    }),
+  });
+}
+
 export async function postBybitSpotOrder(body: {
   symbol: string;
   side: 'Buy' | 'Sell';

@@ -1,3 +1,4 @@
+import { secureStorage } from '@/lib/storage';
 import { useMemo, useState } from 'react';
 import { baseBots } from '@/lib/bots';
 import type { BotStatus } from '@/lib/bots';
@@ -7,7 +8,7 @@ const STORAGE_KEY = 'sigflo.botStatusMap.v1';
 function readStoredMap(): Record<string, BotStatus> {
   if (typeof window === 'undefined') return {};
   try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
+    const raw = secureStorage.getItem(STORAGE_KEY);
     if (!raw) return {};
     const parsed = JSON.parse(raw) as Record<string, BotStatus>;
     return parsed ?? {};
@@ -28,7 +29,7 @@ export function useBotStatuses() {
   const setBotStatus = (botId: string, next: BotStatus) => {
     setStatusMap((prev) => {
       const updated = { ...prev, [botId]: next };
-      if (typeof window !== 'undefined') window.localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+      if (typeof window !== 'undefined') secureStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
       return updated;
     });
   };

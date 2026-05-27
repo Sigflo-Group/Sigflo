@@ -141,6 +141,7 @@ import { fetchLinearMaxLeverage } from '@/services/bybit/client';
 import { signalsToOpportunities } from '@/lib/signalsToOpportunities';
 import {
   getPositionRepository,
+  normalizePositionPairKey,
   sigfloActivePositionFromExchange,
   simulatedFromSigfloActive,
 } from '@/services/positions';
@@ -1021,6 +1022,7 @@ export function TradeScreen() {
     Boolean(mexcSnap && market === 'futures');
   /** User opt-in from Risk controls — when false, Sigflo does not submit opens or TP/SL updates (closes use their own path). */
   const liveOrderSubmitEnabled = useRealExecution && riskSettings.allowLiveExecution;
+  const paperModeActive = !isManageMode && !liveOrderSubmitEnabled;
   const exchangePositionForSymbol = useMemo((): PositionItem | null => {
     const snap = bybitSnap ?? mexcSnap;
     if (!snap?.positions?.length) return null;
@@ -3221,16 +3223,38 @@ export function TradeScreen() {
         }
       }
 
+      if (!isManageMode) {
+        const repo = getPositionRepository();
+        const open = repo.openPaperPosition?.({
+          pair: mergedModel.pair,
+          market,
+          direction: nextSide,
+          entryPrice: entryMark,
+          notionalUsd: applyOpenOrderNotionalBuffer(metrics.positionSizeUsd, { minNotionalUsd: minOrderUsd }),
+          leverage: market === 'spot' ? 1 : Math.min(leverage, futuresLevCap),
+          stopPrice: Number.isFinite(stopParsed) && stopParsed > 0 ? stopParsed : null,
+          targets: Number.isFinite(targetParsed) && targetParsed > 0 ? [targetParsed] : [],
+          source: 'demo',
+        });
+        if (open?.ok) {
+          flashTradeToast('Paper trade opened — simulated portfolio updated.');
+          return true;
+        }
+        flashTradeToast(open?.error ?? 'Paper trade unavailable right now.');
+        return false;
+      }
       if (useRealExecution && !riskSettings.allowLiveExecution) {
         flashTradeToast('Live execution is locked — enable it in Risk controls when you are ready to send orders.', 5200, {
           label: 'Risk controls',
           href: '/risk',
         });
-      } else if (mexcSnap && market !== 'futures') {
-        flashTradeToast('MEXC only supports futures — switch to Futures mode to place live orders.');
-      } else {
-        flashTradeToast('Connect an exchange in Account to place real orders.');
+        return false;
       }
+      if (mexcSnap && market !== 'futures') {
+        flashTradeToast('MEXC only supports futures — switch to Futures mode to place live orders.');
+        return false;
+      }
+      flashTradeToast('Connect an exchange in Account to place real orders.');
       return false;
     },
     [
@@ -3617,13 +3641,25 @@ export function TradeScreen() {
 
   const onCloseAllDemoPositionsConfirm = useCallback(() => {
     const repo = getPositionRepository();
-    const closed = typeof repo.closeAllPositions === 'function' ? repo.closeAllPositions() : 0;
+    const markByPair: Record<string, number> = {};
+    for (const [symbol, ticker] of Object.entries(liveTickersBySymbol)) {
+      if (!(ticker != null && Number.isFinite(ticker.lastPrice) && ticker.lastPrice > 0)) continue;
+      const pair = symbolToPair(symbol).toUpperCase();
+      markByPair[normalizePositionPairKey(pair)] = ticker.lastPrice;
+    }
+    const liveLastPrice = live.lastPrice;
+    if (typeof liveLastPrice === 'number' && Number.isFinite(liveLastPrice) && liveLastPrice > 0) {
+      markByPair[normalizePositionPairKey(mergedModel.pair)] = liveLastPrice;
+    } else if (Number.isFinite(mergedModel.lastPrice) && mergedModel.lastPrice > 0) {
+      markByPair[normalizePositionPairKey(mergedModel.pair)] = mergedModel.lastPrice;
+    }
+    const closed = typeof repo.closeAllPositions === 'function' ? repo.closeAllPositions({ markByPair }) : 0;
     if (closed > 0) {
-      flashTradeToast(`Closed ${closed} demo position${closed === 1 ? '' : 's'}.`);
+      flashTradeToast(`Closed ${closed} simulated position${closed === 1 ? '' : 's'}.`);
       return;
     }
-    flashTradeToast('No active demo positions to close.');
-  }, [flashTradeToast]);
+    flashTradeToast('No active simulated positions to close.');
+  }, [flashTradeToast, live.lastPrice, liveTickersBySymbol, mergedModel.lastPrice, mergedModel.pair]);
 
   const onRequestActiveCloseAllModal = useCallback(() => {
     if (hasActiveTradePosition && !isExchangeBackedOpenLeg) {
@@ -4448,6 +4484,11 @@ export function TradeScreen() {
         >
           <div className="flex flex-col gap-1">
             {!isManageMode && !isBotsReviewCockpit ? <MarketToggle value={market} onChange={setMarket} /> : null}
+            {paperModeActive ? (
+              <div className="rounded-lg border border-violet-400/25 bg-violet-500/[0.08] px-2.5 py-1.5 text-[10px] font-semibold tracking-wide text-violet-100">
+                Paper Trading Mode · Simulated Portfolio
+              </div>
+            ) : null}
             {!isManageMode && hideFreshSetupTradeHint && hasActiveTradePosition ? (
               <p className="rounded-lg border border-white/[0.06] bg-white/[0.03] px-2 py-1.5 text-[9px] leading-snug text-zinc-400">
                 Review position · Managing exits · Suggestion only · Live changes require confirmation

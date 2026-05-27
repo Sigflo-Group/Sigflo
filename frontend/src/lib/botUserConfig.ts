@@ -1,3 +1,4 @@
+import { secureStorage } from '@/lib/storage';
 import { baseBots, type BotAgent } from '@/lib/bots';
 
 const STORAGE_KEY = 'sigflo.botUserConfig.v1';
@@ -193,7 +194,7 @@ function coerceStoredEntry(botId: string, raw: unknown): BotUserConfig | null {
 export function loadBotUserConfigMap(): Record<string, BotUserConfig> {
   if (typeof window === 'undefined') return {};
   try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
+    const raw = secureStorage.getItem(STORAGE_KEY);
     if (!raw) return {};
     const parsed = JSON.parse(raw) as Record<string, unknown>;
     if (!parsed || typeof parsed !== 'object') return {};
@@ -210,7 +211,7 @@ export function loadBotUserConfigMap(): Record<string, BotUserConfig> {
 
 export function persistBotUserConfigMap(map: Record<string, BotUserConfig>) {
   if (typeof window === 'undefined') return;
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(map));
+  secureStorage.setItem(STORAGE_KEY, JSON.stringify(map));
 }
 
 export function mergeBotConfigPatch(

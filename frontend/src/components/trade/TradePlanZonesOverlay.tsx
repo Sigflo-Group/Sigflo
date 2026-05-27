@@ -138,9 +138,7 @@ export function TradePlanZonesOverlay({
         plotBottom = Math.max(8, panr.bottom - pr.top - 2);
       }
     }
-  } catch {
-    /* keep fallback */
-  }
+  } catch (e) { console.error("[Caught Error]", e); }
   /** Pixels between the exact stop price and the start of the danger fill so the stop line stays visible on top of the chart. */
   const STOP_ZONE_GAP_PX = 6;
 

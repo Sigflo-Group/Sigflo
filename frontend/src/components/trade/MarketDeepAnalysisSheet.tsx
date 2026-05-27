@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { humanizeTraderCopy } from '@/lib/marketConditionsCopy';
 import { parseDeepAnalysisSections } from '@/lib/parseDeepAnalysisMarkdown';
 import { requestDeepMarketAnalysis, type DeepAnalysisResponse } from '@/services/ai/client';
 import type { GroundedMarketContext } from '@/types/aiGrounded';
@@ -153,8 +154,10 @@ export function MarketDeepAnalysisSheet({
             <div className="space-y-3">
               {quickRead ? (
                 <>
-                  <p className="text-[13px] font-semibold leading-snug text-white/95">{quickRead.headline}</p>
-                  <p className="whitespace-pre-line text-[13px] leading-relaxed text-sigflo-muted">{quickRead.body}</p>
+                  <p className="text-[13px] font-semibold leading-snug text-white/95">{humanizeTraderCopy(quickRead.headline)}</p>
+                  <p className="whitespace-pre-line text-[13px] leading-relaxed text-sigflo-muted">
+                    {humanizeTraderCopy(quickRead.body)}
+                  </p>
                 </>
               ) : (
                 <p className="text-[13px] leading-relaxed text-sigflo-muted">
@@ -214,7 +217,7 @@ export function MarketDeepAnalysisSheet({
 
               {deep ? (
                 <article className="space-y-6 border-t border-white/[0.06] pt-4">
-                  <h2 className="text-[15px] font-semibold leading-snug text-white/95">{deep.headline}</h2>
+                  <h2 className="text-[15px] font-semibold leading-snug text-white/95">{humanizeTraderCopy(deep.headline)}</h2>
                   {sections.length > 0 ? (
                     sections.map((sec, idx) => (
                       <section key={`${idx}-${sec.heading}`} className="space-y-2">
@@ -224,14 +227,16 @@ export function MarketDeepAnalysisSheet({
                         <div className="text-[13px] leading-[1.65] text-white/[0.82] [&_strong]:font-semibold [&_strong]:text-white/92">
                           {sec.text.split(/\n\n+/).map((para, i) => (
                             <p key={`${sec.heading}-${i}`} className="mb-3 last:mb-0">
-                              {para}
+                              {humanizeTraderCopy(para)}
                             </p>
                           ))}
                         </div>
                       </section>
                     ))
                   ) : (
-                    <p className="whitespace-pre-wrap text-[13px] leading-[1.65] text-white/[0.82]">{deep.body}</p>
+                    <p className="whitespace-pre-wrap text-[13px] leading-[1.65] text-white/[0.82]">
+                      {humanizeTraderCopy(deep.body)}
+                    </p>
                   )}
                 </article>
               ) : null}

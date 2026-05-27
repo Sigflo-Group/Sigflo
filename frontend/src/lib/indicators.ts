@@ -57,13 +57,13 @@ export function rollingAvg(values: number[], period: number): number[] {
 }
 
 export function recentSwingHigh(candles: Candle[], lookback: number): number {
-  const s = candles.slice(-lookback);
-  if (s.length === 0) return 0;
-  return s.reduce((m, c) => Math.max(m, c.high), s[0].high);
+  if (candles.length === 0) return 0;
+  const s = candles.slice(-Math.min(lookback, candles.length));
+  return s.reduce((m, c) => Math.max(m, c.high), s[0]!.high);
 }
 
 export function recentSwingLow(candles: Candle[], lookback: number): number {
-  const s = candles.slice(-lookback);
-  if (s.length === 0) return 0;
-  return s.reduce((m, c) => Math.min(m, c.low), s[0].low);
+  if (candles.length === 0) return 0;
+  const s = candles.slice(-Math.min(lookback, candles.length));
+  return s.reduce((m, c) => Math.min(m, c.low), s[0]!.low);
 }

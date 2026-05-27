@@ -4,6 +4,7 @@ import { Navigate, useNavigate } from 'react-router-dom';
 import { getFeedRoute } from '@/config/appRoutes';
 import { useAuth } from '@/context/AuthContext';
 import { isExchangeConnectOnboardingSeen, markExchangeConnectOnboardingSeen } from '@/lib/exchangeConnectOnboarding';
+import { BYBIT_SIGN_UP_HREF, MEXC_SIGN_UP_HREF } from '@/lib/exchangeTransferUrls';
 import { isTradingStyleOnboarded } from '@/lib/tradingStyleOnboarding';
 
 function ConnectionGlyphIcon({ className }: { className?: string }) {
@@ -65,22 +66,57 @@ export default function OnboardingConnect() {
         </div>
 
         <h1 className="mt-8 text-center text-2xl font-medium tracking-tight text-zinc-100">
-          Exchange connection coming soon
+          Connect exchange (optional)
         </h1>
         <p className="mx-auto mt-3 max-w-[280px] text-center text-sm leading-6 text-zinc-400">
-          Live exchange linking is not available in this preview. Your API keys are never stored or sent.
+          You can start in paper mode right away and connect Bybit or MEXC when you want live balances.
         </p>
         <p className="mx-auto mt-3 max-w-[280px] text-center text-sm leading-6 text-zinc-500">
-          You can still explore signals and trade with paper positions while you wait.
+          Exchange setup is in Account settings, and you can switch back anytime.
         </p>
 
         <button
           type="button"
-          onClick={goFeed}
-          className="mt-10 flex h-12 w-full items-center justify-center rounded-xl bg-[#00ffc8] text-sm font-medium text-black transition-all hover:brightness-110 active:scale-[0.985]"
+          onClick={() => {
+            markExchangeConnectOnboardingSeen();
+            navigate('/profile', { replace: true });
+          }}
+          className="mt-8 flex h-12 w-full items-center justify-center rounded-xl border border-white/[0.14] bg-white/[0.04] text-sm font-semibold text-white transition hover:bg-white/[0.08] active:scale-[0.985]"
         >
-          Continue to Sigflo
+          Open Account Settings
         </button>
+
+        <button
+          type="button"
+          onClick={goFeed}
+          className="mt-3 flex h-12 w-full items-center justify-center rounded-xl bg-[#00ffc8] text-sm font-medium text-black transition-all hover:brightness-110 active:scale-[0.985]"
+        >
+          Continue in Paper Trading Mode
+        </button>
+
+        <div className="mt-5 w-full rounded-xl border border-white/[0.08] bg-white/[0.03] p-3">
+          <p className="text-center text-[11px] font-semibold uppercase tracking-[0.14em] text-zinc-400">
+            Need an exchange account first?
+          </p>
+          <div className="mt-2 grid grid-cols-2 gap-2">
+            <a
+              href={BYBIT_SIGN_UP_HREF}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex h-10 items-center justify-center rounded-lg border border-emerald-400/25 bg-emerald-500/10 text-xs font-semibold text-emerald-100 transition hover:bg-emerald-500/15"
+            >
+              Create Bybit
+            </a>
+            <a
+              href={MEXC_SIGN_UP_HREF}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex h-10 items-center justify-center rounded-lg border border-cyan-400/25 bg-cyan-500/10 text-xs font-semibold text-cyan-100 transition hover:bg-cyan-500/15"
+            >
+              Create MEXC
+            </a>
+          </div>
+        </div>
 
         <p className="mt-8 text-center text-xs leading-5 text-zinc-500">
           No data is sent to any server. Everything runs locally in your browser.

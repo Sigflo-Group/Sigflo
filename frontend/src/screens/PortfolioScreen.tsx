@@ -5,6 +5,7 @@ import { useAccountSnapshot } from '@/hooks/useAccountSnapshot';
 import { useBotStatuses } from '@/hooks/useBotStatuses';
 import { useBotUserConfig } from '@/hooks/useBotUserConfig';
 import { useFeedMiniCharts } from '@/hooks/useFeedMiniCharts';
+import { usePaperTrading } from '@/hooks/usePaperTrading';
 import type { TradeChartInterval } from '@/hooks/useLiveTradeMarket';
 import { useSignalEngine } from '@/hooks/useSignalEngine';
 import { formatQuoteNumber } from '@/lib/formatQuote';
@@ -22,6 +23,7 @@ import { symbolToPair } from '@/lib/marketScannerRows';
 import { buildPortfolioPositionTradeQuery } from '@/lib/tradeNavigation';
 import { deriveBotsFromSignals } from '@/lib/bots';
 import { BYBIT_APP_ASSETS_HOME_HREF } from '@/lib/exchangeTransferUrls';
+import { normalizePositionPairKey } from '@/services/positions';
 import type { ExchangeSnapshot, PositionItem } from '@/types/integrations';
 import type { Candle } from '@/types/market';
 
@@ -258,6 +260,17 @@ export default function PortfolioScreen() {
     refreshMs: 45_000,
     fastRefreshMs: 12_000,
   });
+  const paperMarkByPair = useMemo(() => {
+    const out: Record<string, number> = {};
+    for (const [symbol, ticker] of Object.entries(liveTickersBySymbol)) {
+      if (!(ticker != null && Number.isFinite(ticker.lastPrice) && ticker.lastPrice > 0)) continue;
+      out[normalizePositionPairKey(symbolToPair(symbol))] = ticker.lastPrice;
+    }
+    return out;
+  }, [liveTickersBySymbol]);
+  const paperSnapshot = usePaperTrading(paperMarkByPair);
+  const paperPositions = paperSnapshot?.positions ?? [];
+  const paperOrderRows = useMemo(() => (paperSnapshot?.orders ?? []).slice(0, 10), [paperSnapshot?.orders]);
 
   const netWorth = useMemo(
     () => (connected ? totalPortfolioEquityUsd(snapshots) : 0),
@@ -329,9 +342,17 @@ export default function PortfolioScreen() {
     return map;
   }, [closedTrades]);
 
-  const displayNet = connected ? netWorth : null;
-  const displayToday = connected ? todayPnl : null;
-  const displayTodayPct = connected ? todayPct : null;
+  const displayNet = connected
+    ? netWorth
+    : paperSnapshot?.equityUsd ?? paperSnapshot?.startingBalanceUsd ?? 10_000;
+  const displayPnl = connected ? todayPnl : paperSnapshot?.unrealizedPnlUsd ?? 0;
+  const displayPnlPct = connected
+    ? todayPct
+    : displayNet > 0
+      ? (displayPnl / displayNet) * 100
+      : 0;
+  const displayPnlLabel = connected ? 'today' : 'unrealized';
+  const activePositionCount = connected ? positions.length : paperPositions.length;
 
   return (
     <div
@@ -341,31 +362,39 @@ export default function PortfolioScreen() {
       <div className="mx-auto w-full max-w-lg space-y-6 px-4">
         {/* 1. Overview */}
         <CardShell glow className="relative overflow-hidden">
-          <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/40">Total balance</p>
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/40">Total balance</p>
+            {!connected ? (
+              <span className="rounded-full border border-violet-400/25 bg-violet-500/[0.08] px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.14em] text-violet-100">
+                Paper Trading Mode
+              </span>
+            ) : null}
+          </div>
           {loading && connected ? (
             <p className="mt-2 font-mono text-3xl font-bold text-white/40">…</p>
-          ) : displayNet != null ? (
-            <p className="mt-2 font-mono text-3xl font-bold tracking-tight text-white">${formatUsd2(displayNet)}</p>
           ) : (
-            <p className="mt-2 font-mono text-3xl font-bold tracking-tight text-white/50">$—</p>
+            <p className="mt-2 font-mono text-3xl font-bold tracking-tight text-white">${formatUsd2(displayNet)}</p>
           )}
 
-          {displayToday != null && displayTodayPct != null ? (
-            <div className="mt-3 flex flex-wrap items-baseline gap-2">
-              <p
-                className={`text-lg font-bold tabular-nums ${displayToday >= 0 ? '' : 'text-rose-300'}`}
-                style={{ color: displayToday >= 0 ? ACCENT : undefined }}
-              >
-                {fmtSignedUsd(displayToday)}
-              </p>
-              <p
-                className={`text-sm font-semibold tabular-nums ${displayToday >= 0 ? 'text-emerald-200/90' : 'text-rose-200/90'}`}
-              >
-                {fmtSignedPct(displayTodayPct)} today
-              </p>
-            </div>
+          <div className="mt-3 flex flex-wrap items-baseline gap-2">
+            <p
+              className={`text-lg font-bold tabular-nums ${displayPnl >= 0 ? '' : 'text-rose-300'}`}
+              style={{ color: displayPnl >= 0 ? ACCENT : undefined }}
+            >
+              {fmtSignedUsd(displayPnl)}
+            </p>
+            <p
+              className={`text-sm font-semibold tabular-nums ${displayPnl >= 0 ? 'text-emerald-200/90' : 'text-rose-200/90'}`}
+            >
+              {fmtSignedPct(displayPnlPct)} {displayPnlLabel}
+            </p>
+          </div>
+          {!connected ? (
+            <p className="mt-1 text-[11px] text-white/45">
+              Simulated cash ${formatUsd2(paperSnapshot?.cashUsd ?? 10_000)} · Start exploring with virtual funds.
+            </p>
           ) : (
-            <p className="mt-3 text-sm text-white/45">Connect your exchange to track daily PnL.</p>
+            <p className="mt-1 text-[11px] text-white/45">Connected exchange equity and PnL are synced live.</p>
           )}
 
           <div className="mt-4 overflow-hidden rounded-xl bg-[#08090d] px-1 py-1 ring-1 ring-white/[0.04]">
@@ -395,15 +424,12 @@ export default function PortfolioScreen() {
           </div>
 
           <p className="mt-4 text-center text-[12px] font-medium text-white/55">
-            {positions.length} active position{positions.length === 1 ? '' : 's'} · {managingBotsCount} bot
+            {activePositionCount} active position{activePositionCount === 1 ? '' : 's'} · {managingBotsCount} bot
             {managingBotsCount === 1 ? '' : 's'} managing trades
           </p>
           {!connected ? (
             <p className="mt-2 text-center text-[11px] text-white/40">
-              <Link to="/profile" className="font-semibold underline decoration-white/25 underline-offset-2" style={{ color: ACCENT }}>
-                Link account
-              </Link>{' '}
-              for live balances.
+              You can keep trading in paper mode, or connect an exchange anytime from Account.
             </p>
           ) : null}
         </CardShell>
@@ -411,16 +437,54 @@ export default function PortfolioScreen() {
         {/* 2. Active positions */}
         <section className="space-y-3">
           <SectionTitle>Active positions</SectionTitle>
-          {!connected ? (
+          {!connected && paperPositions.length === 0 ? (
             <CardShell>
               <p className="text-sm text-white/55">
-                No exchange linked — connect in{' '}
-                <Link to="/profile" className="font-semibold" style={{ color: ACCENT }}>
-                  Account
-                </Link>
-                .
+                No simulated positions yet. Open a paper trade from Trade or Bots to start tracking performance.
               </p>
             </CardShell>
+          ) : null}
+          {!connected && paperPositions.length > 0 ? (
+            <div className="space-y-3">
+              {paperPositions.map((position) => {
+                const up = position.unrealizedPnl >= 0;
+                const pairKey = normalizePositionPairKey(position.pair);
+                const pairLabelText = pairKey.endsWith('USDT')
+                  ? `${pairKey.slice(0, -4)} / USDT`
+                  : pairKey.endsWith('USDC')
+                    ? `${pairKey.slice(0, -4)} / USDC`
+                    : position.pair;
+                return (
+                  <CardShell key={position.id} className={`!p-3 border-white/[0.07] ${up ? 'ring-1 ring-violet-300/15' : 'ring-1 ring-rose-500/10'}`}>
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <p className="text-base font-bold tracking-tight text-white">{pairLabelText}</p>
+                        <p className="mt-0.5 text-[10px] font-medium uppercase tracking-wider text-violet-200/80">Simulated position</p>
+                        <p className={`mt-1 font-mono text-2xl font-bold tabular-nums ${up ? 'text-violet-100' : 'text-rose-300'}`}>
+                          {fmtSignedUsd(position.unrealizedPnl)}
+                        </p>
+                        <p className={`mt-0.5 font-mono text-sm font-semibold tabular-nums ${up ? 'text-violet-200/80' : 'text-rose-200/90'}`}>
+                          {fmtSignedPct(position.unrealizedPnlPct)} unrealized
+                        </p>
+                        <p className="mt-1 text-[11px] text-white/45">
+                          {formatQuoteNumber(position.entryPrice)} → {formatQuoteNumber(position.markPrice)}
+                        </p>
+                      </div>
+                      <span className="rounded-md border border-violet-400/30 bg-violet-500/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-violet-100">
+                        PAPER
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => navigate(`/trade?pair=${encodeURIComponent(pairKey)}&source=position`)}
+                      className="mt-3 w-full rounded-xl border border-white/[0.12] bg-white/[0.04] py-2 text-[11px] font-bold text-white transition hover:bg-white/[0.07]"
+                    >
+                      Manage in Trade
+                    </button>
+                  </CardShell>
+                );
+              })}
+            </div>
           ) : null}
           {connected && loading ? <p className="text-sm text-white/45">Syncing positions…</p> : null}
           {connected && !loading && positions.length === 0 ? (
@@ -708,7 +772,35 @@ export default function PortfolioScreen() {
           <SectionTitle>History</SectionTitle>
           <CardShell className="p-0 overflow-hidden">
             {!connected ? (
-              <p className="p-4 text-sm text-white/45">Connect an exchange to see realized trades.</p>
+              paperOrderRows.length === 0 ? (
+                <p className="p-4 text-sm text-white/45">No simulated orders yet. Open a paper trade to begin.</p>
+              ) : (
+                <ul className="divide-y divide-white/[0.05]">
+                  {paperOrderRows.map((order) => {
+                    const up = (order.realizedPnlUsd ?? 0) >= 0;
+                    return (
+                      <li key={order.id} className="px-4 py-3.5">
+                        <div className="flex items-center justify-between gap-2">
+                          <div>
+                            <p className="font-semibold text-white">{order.pair}</p>
+                            <p className="mt-0.5 text-[11px] text-white/40">
+                              {order.type === 'open' ? 'Opened' : 'Closed'} · {order.side.toUpperCase()} · Paper
+                            </p>
+                          </div>
+                          <div className="text-right">
+                            <p className="font-mono text-sm text-white/80">${formatUsd2(order.notionalUsd)}</p>
+                            {order.realizedPnlUsd != null ? (
+                              <p className={`text-[10px] ${up ? 'text-emerald-200/90' : 'text-rose-200/90'}`}>
+                                {fmtSignedUsd(order.realizedPnlUsd)}
+                              </p>
+                            ) : null}
+                          </div>
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )
             ) : loading ? (
               <p className="p-4 text-sm text-white/45">Loading history…</p>
             ) : historyRows.length === 0 ? (
@@ -745,15 +837,26 @@ export default function PortfolioScreen() {
               </ul>
             )}
             <div className="border-t border-white/[0.06] p-3">
-              <a
-                href={BYBIT_APP_ASSETS_HOME_HREF}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex w-full items-center justify-center rounded-xl py-2.5 text-[11px] font-semibold transition hover:bg-white/[0.04]"
-                style={{ color: ACCENT }}
-              >
-                Full ledger on Bybit →
-              </a>
+              {connected ? (
+                <a
+                  href={BYBIT_APP_ASSETS_HOME_HREF}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex w-full items-center justify-center rounded-xl py-2.5 text-[11px] font-semibold transition hover:bg-white/[0.04]"
+                  style={{ color: ACCENT }}
+                >
+                  Full ledger on Bybit →
+                </a>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => navigate('/trade')}
+                  className="flex w-full items-center justify-center rounded-xl py-2.5 text-[11px] font-semibold transition hover:bg-white/[0.04]"
+                  style={{ color: ACCENT }}
+                >
+                  Open Trade workspace →
+                </button>
+              )}
             </div>
           </CardShell>
         </section>
@@ -761,6 +864,10 @@ export default function PortfolioScreen() {
         {connected && positions.length > 0 ? (
           <p className="pb-4 text-center text-[11px] leading-relaxed text-white/35">
             Open PnL: {fmtSignedUsd(unrealized)} unrealized across book.
+          </p>
+        ) : !connected && paperPositions.length > 0 ? (
+          <p className="pb-4 text-center text-[11px] leading-relaxed text-white/35">
+            Open PnL: {fmtSignedUsd(paperSnapshot?.unrealizedPnlUsd ?? 0)} across simulated positions.
           </p>
         ) : null}
       </div>

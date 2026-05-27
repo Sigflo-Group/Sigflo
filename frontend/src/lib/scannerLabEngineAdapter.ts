@@ -1,14 +1,12 @@
+import { calculateSetupScore } from '@/lib/setupScore';
 import {
-  detectBreakdownPressure,
-  detectBreakoutPressure,
-  detectOverextendedShort,
-  detectOverextendedWarning,
-  detectPullbackContinuation,
-  detectPullbackContinuationShort,
-  pickBestDirectionalPair,
-} from '@/engine/detectors';
+  runAllDetectorsForLab,
+  type DetectorOutput,
+  type LabDetectorResults,
+  type MarketRegime,
+} from '@/lib/signalDetectors';
 import { deriveIndicatorSnapshot } from '@/engine/indicators';
-import type { Candle as EngineCandle, IndicatorSnapshot, SignalCandidate as EngineSignalCandidate } from '@/engine/types';
+import type { Candle as EngineCandle, IndicatorSnapshot } from '@/engine/types';
 import type { PlaybackCandle } from '@/types/market';
 import type { SetupScoreBreakdown, SignalSide } from '@/types/signal';
 
@@ -26,7 +24,7 @@ export type DerivedIndicators = {
   pullbackDepth: number;
 };
 
-/** Lab-shaped candidate (playback / UI); rules come from `@/engine/detectors`. */
+/** Lab-shaped candidate that the ScannerLabScreen renders per detector row. */
 export type SignalCandidate = {
   setupType: SetupType;
   directionBias: SignalSide;
@@ -45,7 +43,7 @@ export type DetectorEvaluation = {
   candidate?: SignalCandidate;
 };
 
-/** Kept on playback config for API stability; engine uses fixed production thresholds. */
+/** Kept on playback config for API stability; ignored — engine uses fixed production thresholds. */
 export type DetectorOptions = {
   useVolumeFilter: boolean;
   useRsiFilter: boolean;
@@ -58,7 +56,7 @@ export const DEFAULT_DETECTOR_OPTIONS: DetectorOptions = {
   compressionThreshold: 1.4,
 };
 
-/** Same minimum bar count as `src/engine/detectors.ts` detectors. */
+/** Same minimum bar count as production detectors. */
 export const MIN_ENGINE_BARS = 60;
 
 export function playbackCandlesToEngine(candles: PlaybackCandle[]): EngineCandle[] {
@@ -87,32 +85,42 @@ export function engineSnapshotToDerivedIndicators(snap: IndicatorSnapshot): Deri
   };
 }
 
-function explanationFactsToRecord(facts: EngineSignalCandidate['explanationFacts']): Record<string, number | string | boolean> {
+// ---------------------------------------------------------------------------
+// Production detector → lab evaluation mapping
+// ---------------------------------------------------------------------------
+
+function productionOutputToCandidate(output: DetectorOutput): SignalCandidate {
   return {
-    emaTrend: facts.emaTrend,
-    rsi: facts.rsi,
-    rsiSlope: facts.rsiSlope,
-    volumeRatio: facts.volumeRatio,
-    breakoutDistanceAtr: facts.breakoutDistanceAtr,
-    pullbackDepthAtr: facts.pullbackDepthAtr,
-    extensionAtr: facts.extensionAtr,
+    setupType: output.setupType,
+    directionBias: output.side,
+    scoreBreakdown: output.breakdown,
+    setupScore: calculateSetupScore(output.breakdown),
+    tags: [...output.setupTags],
+    explanationFacts: {
+      emaTrend: output.facts.emaTrend ?? 'neutral',
+      rsi: output.facts.rsi ?? 50,
+      volumeRatio: output.facts.volumeRatio ?? 1,
+      breakoutDistanceAtr: output.facts.distanceToBreakoutAtr ?? 0,
+      pullbackDepthAtr: output.facts.pullbackDepthAtr ?? 0,
+      extensionAtr: output.facts.extensionAtr ?? 0,
+      confidence: output.facts.confidence ?? 0,
+    },
   };
 }
 
-function engineToLabCandidate(e: EngineSignalCandidate): SignalCandidate {
-  return {
-    setupType: e.setupType,
-    directionBias: e.directionBias,
-    scoreBreakdown: e.scoreBreakdown,
-    setupScore: e.setupScore,
-    tags: [...e.tags],
-    explanationFacts: explanationFactsToRecord(e.explanationFacts),
-  };
+/** Pick the higher-scoring of two production detector outputs. */
+function bestOutput(
+  a: DetectorOutput | null,
+  b: DetectorOutput | null,
+): DetectorOutput | null {
+  if (!a) return b;
+  if (!b) return a;
+  return calculateSetupScore(a.breakdown) >= calculateSetupScore(b.breakdown) ? a : b;
 }
 
-function evaluationFromEngine(
+function evaluationFromOutput(
   setupType: SetupType,
-  engineResult: EngineSignalCandidate | null,
+  output: DetectorOutput | null,
   lastClosed: boolean,
   barCount: number,
 ): DetectorEvaluation {
@@ -124,34 +132,41 @@ function evaluationFromEngine(
     };
   }
   if (!lastClosed) {
-    return {
-      triggered: false,
-      setupType,
-      reasons: ['Last candle is not closed'],
-    };
+    return { triggered: false, setupType, reasons: ['Last candle is not closed'] };
   }
-  if (!engineResult) {
+  if (!output) {
     return {
       triggered: false,
       setupType,
       reasons: ['Engine: long/short pair did not qualify on this bar'],
     };
   }
-  const labCand = engineToLabCandidate(engineResult);
+  const candidate = productionOutputToCandidate(output);
   return {
     triggered: true,
     setupType,
-    reasons: [`${engineResult.biasLabel} — closed bar (engine)`],
-    scoreBreakdown: labCand.scoreBreakdown,
-    explanationFacts: labCand.explanationFacts,
-    candidate: labCand,
+    reasons: [`${output.biasLabel} — closed bar (engine)`],
+    scoreBreakdown: output.breakdown,
+    explanationFacts: candidate.explanationFacts,
+    candidate,
   };
 }
 
+// ---------------------------------------------------------------------------
+// Public API
+// ---------------------------------------------------------------------------
+
 /**
- * Indicators + three detector rows using the same rules as `runScannerPipeline` / live Bybit path.
+ * Runs the six production detectors (from src/lib/signalDetectors.ts) against
+ * the visible candle window and returns per-row evaluations for the Scanner Lab.
+ * Regime defaults to 'neutral' for playback context; pass a real regime to
+ * match live scanner sensitivity exactly.
  */
-export function runScannerLabEngineEvaluations(symbol: string, visible: PlaybackCandle[]): {
+export function runScannerLabEngineEvaluations(
+  _symbol: string,
+  visible: PlaybackCandle[],
+  regime: MarketRegime = 'neutral',
+): {
   indicators: DerivedIndicators;
   evaluations: DetectorEvaluation[];
 } {
@@ -160,30 +175,28 @@ export function runScannerLabEngineEvaluations(symbol: string, visible: Playback
   const indicators = engineSnapshotToDerivedIndicators(snap);
   const last = visible.at(-1);
   const lastClosed = Boolean(last?.isClosed);
-
-  const di = {
-    symbol,
-    candles: engineCandles,
-    indicators: snap,
-    lastCandleClosed: lastClosed,
-  };
-
-  const breakout = pickBestDirectionalPair(detectBreakoutPressure(di), detectBreakdownPressure(di));
-  const pullback = pickBestDirectionalPair(detectPullbackContinuation(di), detectPullbackContinuationShort(di));
-  const overextended = pickBestDirectionalPair(detectOverextendedWarning(di), detectOverextendedShort(di));
-
   const n = visible.length;
+
+  // Run all six production detectors in one call — no separate stub file needed.
+  const results: LabDetectorResults = lastClosed && n >= MIN_ENGINE_BARS
+    ? runAllDetectorsForLab(engineCandles, regime)
+    : { breakoutLong: null, breakdownShort: null, pullbackLong: null, pullbackShort: null, overextendedLong: null, overextendedShort: null };
+
+  const breakout = bestOutput(results.breakoutLong, results.breakdownShort);
+  const pullback = bestOutput(results.pullbackLong, results.pullbackShort);
+  const overextended = bestOutput(results.overextendedLong, results.overextendedShort);
+
   return {
     indicators,
     evaluations: [
-      evaluationFromEngine('breakout', breakout, lastClosed, n),
-      evaluationFromEngine('pullback', pullback, lastClosed, n),
-      evaluationFromEngine('overextended', overextended, lastClosed, n),
+      evaluationFromOutput('breakout', breakout, lastClosed, n),
+      evaluationFromOutput('pullback', pullback, lastClosed, n),
+      evaluationFromOutput('overextended', overextended, lastClosed, n),
     ],
   };
 }
 
-/** Snapshot for any window length (charts / seed panel); detectors still need {@link MIN_ENGINE_BARS}. */
+/** Snapshot for any window length (charts / seed panel). */
 export function deriveIndicators(candles: PlaybackCandle[]): DerivedIndicators {
   return engineSnapshotToDerivedIndicators(deriveIndicatorSnapshot(playbackCandlesToEngine(candles)));
 }

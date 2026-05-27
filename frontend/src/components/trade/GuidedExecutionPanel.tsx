@@ -229,9 +229,7 @@ function SlideToConfirm({
 
     try {
       knob.setPointerCapture(pid);
-    } catch {
-      /* Some WebKit builds: rely on window listeners */
-    }
+    } catch (e) { console.error("[Caught Error]", e); }
 
     setDragging(true);
 
@@ -258,9 +256,7 @@ function SlideToConfirm({
       window.removeEventListener('pointercancel', onEnd);
       try {
         knob.releasePointerCapture(pid);
-      } catch {
-        /* ignore */
-      }
+      } catch (e) { console.error("[Caught Error]", e); }
       if (progressRef.current >= threshold) {
         setProgress(1);
         onConfirm();

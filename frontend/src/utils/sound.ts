@@ -4,6 +4,7 @@ let audioCtx: AudioContext | null = null;
 
 /** Primary `ui-tap`; fallback keeps existing deploys if only `ui-button-tap` is present. */
 const UI_TAP_PATHS = ['/sounds/ui-tap.wav', '/sounds/ui-button-tap.wav'] as const;
+const UI_TAP_FALLBACK_WAV = '/sounds/ui-button-tap.wav';
 const BUTTON_TAP_VOLUME = 0.2;
 
 /** Short / Long (or Sell / Buy) instant entry buttons — subtle click MP3. */
@@ -11,7 +12,6 @@ const SIDE_ENTRY_MP3 = '/sounds/ui-side-entry.mp3';
 const SIDE_ENTRY_VOLUME = 0.26;
 
 const SETUP_READY_WAV = '/sounds/setup-ready.wav';
-const ALERT_WAV = '/sounds/alert.wav';
 
 const TAP_MIN_INTERVAL_MS = 160;
 const SIDE_ENTRY_MIN_INTERVAL_MS = 140;
@@ -25,7 +25,6 @@ let activeSignificantAudio: HTMLAudioElement | null = null;
 let stopGeneratedSignificant: (() => void) | null = null;
 
 const setupReadyWavOk: { v: boolean | null } = { v: null };
-const alertWavOk: { v: boolean | null } = { v: null };
 
 function shouldSkipForMotion(): boolean {
   if (typeof window === 'undefined') return true;
@@ -75,17 +74,13 @@ function silenceSignificantOutputs(): void {
     try {
       activeSignificantAudio.pause();
       activeSignificantAudio.currentTime = 0;
-    } catch {
-      /* ignore */
-    }
+    } catch (e) { console.error("[Caught Error]", e); }
     activeSignificantAudio = null;
   }
   if (stopGeneratedSignificant) {
     try {
       stopGeneratedSignificant();
-    } catch {
-      /* ignore */
-    }
+    } catch (e) { console.error("[Caught Error]", e); }
     stopGeneratedSignificant = null;
   }
 }
@@ -108,7 +103,7 @@ function getCtx(): AudioContext | null {
 function playSetupReadyGenerated(): void {
   const ctx = getCtx();
   if (!ctx) return;
-  void ctx.resume().catch(() => {});
+  void ctx.resume().catch((e) => { console.error("[Caught Promise Error]", e); });
   const now = ctx.currentTime;
   try {
     const gOut = ctx.createGain();
@@ -138,9 +133,7 @@ function playSetupReadyGenerated(): void {
     stopGeneratedSignificant = () => {
       try {
         gOut.disconnect();
-      } catch {
-        /* ignore */
-      }
+      } catch (e) { console.error("[Caught Error]", e); }
     };
     window.setTimeout(() => {
       if (stopGeneratedSignificant) {
@@ -148,58 +141,7 @@ function playSetupReadyGenerated(): void {
         stopGeneratedSignificant = null;
       }
     }, Math.ceil((stopAt - now) * 1000) + 40);
-  } catch {
-    /* ignore */
-  }
-}
-
-function playAlertGenerated(): void {
-  const ctx = getCtx();
-  if (!ctx) return;
-  void ctx.resume().catch(() => {});
-  const now = ctx.currentTime;
-  try {
-    const gOut = ctx.createGain();
-    gOut.gain.setValueAtTime(0.0001, now);
-    gOut.gain.exponentialRampToValueAtTime(0.085, now + 0.05);
-    gOut.gain.exponentialRampToValueAtTime(0.0001, now + 0.38);
-    gOut.connect(ctx.destination);
-
-    const mk = (freq: number, detune: number, peak: number, t0: number, dur: number) => {
-      const osc = ctx.createOscillator();
-      const g = ctx.createGain();
-      osc.type = 'sine';
-      osc.frequency.setValueAtTime(freq, t0);
-      osc.detune.setValueAtTime(detune, t0);
-      g.gain.setValueAtTime(0.0001, t0);
-      g.gain.exponentialRampToValueAtTime(peak, t0 + 0.035);
-      g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
-      osc.connect(g);
-      g.connect(gOut);
-      osc.start(t0);
-      osc.stop(t0 + dur + 0.03);
-    };
-
-    mk(392, 0, 0.11, now, 0.16);
-    mk(523.25, 3, 0.08, now + 0.08, 0.18);
-
-    const stopAt = now + 0.4;
-    stopGeneratedSignificant = () => {
-      try {
-        gOut.disconnect();
-      } catch {
-        /* ignore */
-      }
-    };
-    window.setTimeout(() => {
-      if (stopGeneratedSignificant) {
-        stopGeneratedSignificant();
-        stopGeneratedSignificant = null;
-      }
-    }, Math.ceil((stopAt - now) * 1000) + 50);
-  } catch {
-    /* ignore */
-  }
+  } catch (e) { console.error("[Caught Error]", e); }
 }
 
 function tryPlaySignificantWav(
@@ -245,10 +187,8 @@ export function playSideEntryClickSound(): void {
   try {
     const audio = new Audio(SIDE_ENTRY_MP3);
     audio.volume = Math.min(1, Math.max(0, SIDE_ENTRY_VOLUME));
-    void audio.play().catch(() => {});
-  } catch {
-    /* ignore */
-  }
+    void audio.play().catch((e) => { console.error("[Caught Promise Error]", e); });
+  } catch (e) { console.error("[Caught Error]", e); }
 }
 
 export function playTapSound(): void {
@@ -287,11 +227,17 @@ export function playSetupReadySound(): void {
 export function playAlertSound(): void {
   if (!getAlertPreferences().channels.includes('sound')) return;
   if (!canPlaySignificantNow()) return;
-  beginSignificantPlayback();
-  tryPlaySignificantWav(ALERT_WAV, 0.34, alertWavOk, () => {
-    silenceSignificantOutputs();
-    playAlertGenerated();
-  });
+  lastSignificantAt = Date.now();
+  try {
+    const audio = new Audio(UI_TAP_FALLBACK_WAV);
+    audio.volume = 0.34;
+    activeSignificantAudio = audio;
+    void audio.play().finally(() => {
+      if (activeSignificantAudio === audio) activeSignificantAudio = null;
+    });
+  } catch {
+    playUiTapSound();
+  }
 }
 
 /** @deprecated Prefer `playSetupReadySound()`. */

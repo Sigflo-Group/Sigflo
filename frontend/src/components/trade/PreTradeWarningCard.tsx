@@ -1,3 +1,4 @@
+import { humanizeTraderCopy } from '@/lib/marketConditionsCopy';
 import type { RiskLevel } from '@/types/trade';
 
 function actionHint(
@@ -54,7 +55,7 @@ export function PreTradeWarningCard(props: {
         <span className="shrink-0 text-[10px] font-semibold tabular-nums text-sigflo-muted">Score {tradeScore}</span>
       </div>
 
-      <p className="text-xs leading-relaxed text-sigflo-muted">{primaryMessage}</p>
+      <p className="text-xs leading-relaxed text-sigflo-muted">{humanizeTraderCopy(primaryMessage)}</p>
 
       {setupTradeConflictMessage ? (
         <p className="text-[11px] font-medium leading-snug text-amber-200/90">{setupTradeConflictMessage}</p>
@@ -71,7 +72,7 @@ export function PreTradeWarningCard(props: {
       {warnings.length > 0 ? (
         <ul className="list-inside list-disc space-y-1 text-[11px] leading-snug text-sigflo-muted/95">
           {warnings.map((w) => (
-            <li key={w}>{w}</li>
+            <li key={w}>{humanizeTraderCopy(w)}</li>
           ))}
         </ul>
       ) : null}

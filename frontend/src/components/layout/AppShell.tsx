@@ -2,6 +2,8 @@ import { Outlet, useLocation } from 'react-router-dom';
 import { AppTopBar } from '@/components/layout/AppTopBar';
 import { BottomTabNav } from '@/components/layout/BottomTabNav';
 import { BotFocusLayoutProvider, isBotFocusCockpitPath, useBotFocusLayout } from '@/context/botFocusLayoutContext';
+import { FeedbackProvider } from '@/context/FeedbackContext';
+import { FeedbackModal } from '@/components/feedback/FeedbackModal';
 
 function AppShellMain() {
   const { pathname } = useLocation();
@@ -30,7 +32,7 @@ function AppShellMain() {
       />
       <main
         className={`relative flex-1 transition-[padding] duration-300 ease-out ${
-          hideTabBar ? 'pb-0' : 'pb-[calc(6rem+env(safe-area-inset-bottom))]'
+          hideTabBar ? 'pb-0' : 'pb-[calc(7rem+env(safe-area-inset-bottom))]'
         } ${botFocusScrollChain ? 'flex min-h-0 flex-col overflow-hidden' : ''}`}
       >
         <div
@@ -45,6 +47,7 @@ function AppShellMain() {
         </div>
       </main>
       {hideTabBar ? null : <BottomTabNav />}
+      <FeedbackModal />
     </div>
   );
 }
@@ -52,7 +55,9 @@ function AppShellMain() {
 export function AppShell() {
   return (
     <BotFocusLayoutProvider>
-      <AppShellMain />
+      <FeedbackProvider>
+        <AppShellMain />
+      </FeedbackProvider>
     </BotFocusLayoutProvider>
   );
 }

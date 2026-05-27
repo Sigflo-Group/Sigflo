@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { useAccountSnapshot } from '@/hooks/useAccountSnapshot';
@@ -27,8 +27,39 @@ const EXCHANGE_API_DOCS_HREF: Record<ExchangeId, string> = {
   bybit: 'https://bybit-exchange.github.io/docs/v5/intro',
   mexc: 'https://mexcdevelop.github.io/apidocs/spot_v3_en/',
 };
+const EXCHANGE_CONNECT_DRAFT_STORAGE_KEY = '__SIGFLO_PROFILE_EXCHANGE_CONNECT_DRAFT_V1__';
 
 type RiskMode = 'Conservative' | 'Balanced' | 'Aggressive';
+type ExchangeFormState = {
+  exchange: ExchangeId;
+  apiKey: string;
+  apiSecret: string;
+  passphrase: string;
+};
+
+function readExchangeConnectDraft(): ExchangeId | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = window.sessionStorage.getItem(EXCHANGE_CONNECT_DRAFT_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { exchange?: unknown } | null;
+    if (parsed?.exchange === 'bybit' || parsed?.exchange === 'mexc') {
+      return parsed.exchange;
+    }
+  } catch {
+    // Corrupt draft state should not block Profile rendering.
+  }
+  return null;
+}
+
+function persistExchangeConnectDraft(exchange: ExchangeId | null): void {
+  if (typeof window === 'undefined') return;
+  if (!exchange) {
+    window.sessionStorage.removeItem(EXCHANGE_CONNECT_DRAFT_STORAGE_KEY);
+    return;
+  }
+  window.sessionStorage.setItem(EXCHANGE_CONNECT_DRAFT_STORAGE_KEY, JSON.stringify({ exchange }));
+}
 
 export default function ProfileScreen() {
   const navigate = useNavigate();
@@ -38,12 +69,11 @@ export default function ProfileScreen() {
   const [highRiskAlerts, setHighRiskAlerts] = useState(false);
   const [dailyBriefing, setDailyBriefing] = useState(true);
   const [riskMode, setRiskMode] = useState<RiskMode>('Balanced');
-  const [exchangeForm, setExchangeForm] = useState<{
-    exchange: ExchangeId;
-    apiKey: string;
-    apiSecret: string;
-    passphrase: string;
-  } | null>(null);
+  const [exchangeForm, setExchangeForm] = useState<ExchangeFormState | null>(() => {
+    const draftExchange = readExchangeConnectDraft();
+    if (!draftExchange) return null;
+    return { exchange: draftExchange, apiKey: '', apiSecret: '', passphrase: '' };
+  });
   const [connectError, setConnectError] = useState<string | null>(null);
   const [connectBusy, setConnectBusy] = useState(false);
   const [connectPanelFlash, setConnectPanelFlash] = useState(false);
@@ -60,6 +90,19 @@ export default function ProfileScreen() {
   const connectPanelFlashTimerRef = useRef<number | null>(null);
   const [totpCopyFlash, setTotpCopyFlash] = useState(false);
   const totpCopyFlashTimerRef = useRef<number | null>(null);
+  const focusConnectPanel = useCallback((behavior: ScrollBehavior = 'smooth') => {
+    window.requestAnimationFrame(() => {
+      connectPanelRef.current?.scrollIntoView({ behavior, block: 'center' });
+      window.setTimeout(() => connectApiKeyInputRef.current?.focus(), 120);
+    });
+  }, []);
+  const openConnectPanel = useCallback((exchange: ExchangeId) => {
+    setConnectError(null);
+    setExchangeForm({ exchange, apiKey: '', apiSecret: '', passphrase: '' });
+  }, []);
+  const closeConnectPanel = useCallback(() => {
+    setExchangeForm(null);
+  }, []);
   useEffect(() => {
     return () => {
       if (totpCopyFlashTimerRef.current != null) window.clearTimeout(totpCopyFlashTimerRef.current);
@@ -67,18 +110,18 @@ export default function ProfileScreen() {
     };
   }, []);
   useEffect(() => {
-    if (!exchangeForm) return;
+    persistExchangeConnectDraft(exchangeForm?.exchange ?? null);
+  }, [exchangeForm?.exchange]);
+  useEffect(() => {
+    if (!exchangeForm?.exchange) return;
     setConnectPanelFlash(true);
     if (connectPanelFlashTimerRef.current != null) window.clearTimeout(connectPanelFlashTimerRef.current);
     connectPanelFlashTimerRef.current = window.setTimeout(() => {
       setConnectPanelFlash(false);
       connectPanelFlashTimerRef.current = null;
     }, 1600);
-    window.requestAnimationFrame(() => {
-      connectPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      window.setTimeout(() => connectApiKeyInputRef.current?.focus(), 120);
-    });
-  }, [exchangeForm]);
+    focusConnectPanel();
+  }, [exchangeForm?.exchange, focusConnectPanel]);
   const [totpSetup, setTotpSetup] = useState<{
     factorId: string;
     challengeId: string | null;
@@ -532,8 +575,7 @@ export default function ProfileScreen() {
                       <button
                         type="button"
                         onClick={() => {
-                          setConnectError(null);
-                          setExchangeForm({ exchange, apiKey: '', apiSecret: '', passphrase: '' });
+                          openConnectPanel(exchange);
                         }}
                         className="rounded-lg border border-white/[0.14] bg-white/[0.04] px-2 py-1 text-[11px] font-semibold text-sigflo-text transition hover:bg-white/[0.08]"
                       >
@@ -589,8 +631,7 @@ export default function ProfileScreen() {
                         type="button"
                         disabled={!canUseExchangeApi}
                         onClick={() => {
-                          setConnectError(null);
-                          setExchangeForm({ exchange, apiKey: '', apiSecret: '', passphrase: '' });
+                          openConnectPanel(exchange);
                         }}
                         className="rounded-lg border border-cyan-400/30 bg-cyan-500/10 px-2 py-1 text-[11px] font-semibold text-cyan-100 transition hover:bg-cyan-500/15 disabled:cursor-not-allowed disabled:opacity-40"
                       >
@@ -646,6 +687,20 @@ export default function ProfileScreen() {
                 Verify session
               </button>
             ) : null}
+          </div>
+        ) : null}
+        {exchangeForm ? (
+          <div className="mt-2.5 flex items-center justify-between gap-2 rounded-lg border border-cyan-400/25 bg-cyan-500/[0.08] px-2.5 py-2">
+            <p className="text-[11px] text-cyan-100/90">
+              Connection panel for {exchangeForm.exchange.toUpperCase()} is open below.
+            </p>
+            <button
+              type="button"
+              onClick={() => focusConnectPanel()}
+              className="shrink-0 rounded-lg border border-cyan-300/45 bg-cyan-500/10 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-cyan-100 transition hover:bg-cyan-500/20"
+            >
+              Jump to panel
+            </button>
           </div>
         ) : null}
       </section>
@@ -721,7 +776,7 @@ export default function ProfileScreen() {
                     passphrase: exchangeForm.passphrase || undefined,
                   });
                   await refreshSnapshots();
-                  setExchangeForm(null);
+                  closeConnectPanel();
                 } catch (e) {
                   setConnectError(
                     e instanceof Error ? sanitizeUserFacingHttpErrorMessage(e.message) : 'Connection failed.',
@@ -736,7 +791,7 @@ export default function ProfileScreen() {
             </button>
             <button
               type="button"
-              onClick={() => setExchangeForm(null)}
+              onClick={closeConnectPanel}
               className="rounded-lg border border-white/[0.12] bg-white/[0.04] px-2.5 py-1.5 text-xs font-semibold text-sigflo-text"
             >
               Cancel

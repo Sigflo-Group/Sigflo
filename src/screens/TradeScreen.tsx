@@ -1624,22 +1624,10 @@ export function TradeScreen() {
     ? { pnlUsd: throttledOpenPnl.pnlUsd, movePct: throttledOpenPnl.movePct }
     : liveUnrealizedPre;
 
-  /**
-   * Match Portfolio behavior first: when an exchange leg is open, prefer the snapshot `unrealizedPnl`
-   * (same field Portfolio renders) for display-facing PnL labels. Keep live throttled path as fallback.
-   */
-  const portfolioAlignedLiveUnrealized = useMemo(() => {
-    if (!hasActiveTradePosition) return liveUnrealized;
-    const snapshotPnl = exchangePositionForSymbol?.unrealizedPnl;
-    if (!(snapshotPnl != null && Number.isFinite(snapshotPnl))) return liveUnrealized;
-    const notional = primaryChartOpenPosition?.positionNotionalUsd ?? 0;
-    const movePct =
-      Number.isFinite(notional) && Math.abs(notional) > 1e-9 ? (snapshotPnl / notional) * 100 : liveUnrealized.movePct;
-    return {
-      pnlUsd: snapshotPnl,
-      movePct,
-    };
-  }, [exchangePositionForSymbol?.unrealizedPnl, hasActiveTradePosition, liveUnrealized, primaryChartOpenPosition?.positionNotionalUsd]);
+  // Use the live RAF-throttled value throughout: position card and scenario strip share the
+  // same source so they never diverge. The exchange snapshot is only polled every ~12 s and
+  // would otherwise cause the scenario strip to lag the position card for several seconds.
+  const portfolioAlignedLiveUnrealized = liveUnrealized;
 
   const adjustRiskSnapshot = useMemo((): AdjustRiskPositionSnapshot | null => {
     if (!chartModelForPlot) return null;
@@ -3849,7 +3837,11 @@ export function TradeScreen() {
       Number.isFinite(portfolioAlignedLiveUnrealized.movePct)
     ) {
       const pnl = portfolioAlignedLiveUnrealized.pnlUsd;
-      const pct = portfolioAlignedLiveUnrealized.movePct;
+      // Show ROE (leverage-adjusted) for futures; raw price-move % for spot.
+      const posLev = primaryChartOpenPosition?.leverage ?? 1;
+      const pct = market === 'futures' && posLev > 1
+        ? portfolioAlignedLiveUnrealized.movePct * posLev
+        : portfolioAlignedLiveUnrealized.movePct;
       const sign = pnl >= 0 ? '+' : '−';
       const tone = pnl > 0 ? 'positive' : pnl < 0 ? 'negative' : 'neutral';
       return {
@@ -3862,8 +3854,10 @@ export function TradeScreen() {
     hasActiveTradePosition,
     hasManageOpenExposure,
     isManageMode,
+    market,
     portfolioAlignedLiveUnrealized.movePct,
     portfolioAlignedLiveUnrealized.pnlUsd,
+    primaryChartOpenPosition?.leverage,
     managePnlDisplay,
   ]);
 

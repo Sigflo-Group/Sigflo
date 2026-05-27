@@ -7,6 +7,7 @@ type SeriesHost = ISeriesApi<'Candlestick'> | ISeriesApi<'Line'>;
 const PRICE_SCALE_GUTTER_FALLBACK_PX = 72;
 const PRICE_SCALE_GUTTER_PAD_PX = 6;
 const HIT_STRIP_PX = 14;
+const HIT_HANDLE_WIDTH_PX = 48;
 
 function numFromBarPrice(p: unknown): number | null {
   const n = typeof p === 'number' ? p : Number(p);
@@ -154,7 +155,7 @@ export function TradePlanDragHandles({
     } catch (e) { console.error("[Caught Error]", e); }
   };
 
-  const stripWrapClass = 'pointer-events-auto absolute left-0 z-[40] cursor-ns-resize touch-none';
+  const stripWrapClass = 'pointer-events-auto absolute z-[40] cursor-ns-resize touch-none';
 
   return (
     <>
@@ -174,6 +175,7 @@ export function TradePlanDragHandles({
             top: yStop - HIT_STRIP_PX / 2,
             height: HIT_STRIP_PX,
             right: rightGutterPx,
+            width: HIT_HANDLE_WIDTH_PX,
           }}
           onPointerDown={(e) => beginStripDrag(e, 'stop', stop)}
           onPointerMove={onStripMove}
@@ -189,6 +191,7 @@ export function TradePlanDragHandles({
             top: yTgt - HIT_STRIP_PX / 2,
             height: HIT_STRIP_PX,
             right: rightGutterPx,
+            width: HIT_HANDLE_WIDTH_PX,
           }}
           onPointerDown={(e) => beginStripDrag(e, 'target', target)}
           onPointerMove={onStripMove}

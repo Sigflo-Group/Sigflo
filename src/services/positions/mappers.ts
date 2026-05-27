@@ -36,7 +36,8 @@ export function sigfloActivePositionFromExchange(
   const mark =
     p.markPrice != null && Number.isFinite(p.markPrice) && p.markPrice > 0 ? p.markPrice : liveMark;
   const lev = p.leverage != null && p.leverage > 0 ? p.leverage : 1;
-  const notional = Math.abs(p.size) * (mark > 0 ? mark : p.entryPrice);
+  const notionalPrice = p.entryPrice > 0 ? p.entryPrice : mark;
+  const notional = Math.abs(p.size) * Math.max(notionalPrice, 0);
   const margin =
     p.positionIM != null && p.positionIM > 0 ? p.positionIM : notional / Math.max(1, lev);
   const pnlUsd =
@@ -68,7 +69,8 @@ export function sigfloActivePositionFromExchange(
 
 export function simulatedFromSigfloActive(p: SigfloActivePosition, market: MarketMode): SimulatedActivePosition {
   const m = Number.isFinite(p.markPrice) && p.markPrice > 0 ? p.markPrice : p.entryPrice;
-  const notional = Math.abs(p.size) * m;
+  const notionalPrice = p.entryPrice > 0 ? p.entryPrice : m;
+  const notional = Math.abs(p.size) * Math.max(notionalPrice, 0);
   const margin = notional / Math.max(1, p.leverage);
   return {
     id: p.id,

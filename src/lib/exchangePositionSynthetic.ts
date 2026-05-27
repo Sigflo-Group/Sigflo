@@ -12,7 +12,8 @@ export function syntheticFromExchangePosition(
   fallbackLeverage: number,
 ): SimulatedActivePosition {
   const mark = p.markPrice != null && p.markPrice > 0 ? p.markPrice : p.entryPrice;
-  const notional = Math.abs(p.size) * mark;
+  const notionalPrice = p.entryPrice > 0 ? p.entryPrice : mark;
+  const notional = Math.abs(p.size) * notionalPrice;
   const lev = p.leverage != null && p.leverage > 0 ? p.leverage : fallbackLeverage;
   const margin =
     p.positionIM != null && p.positionIM > 0 ? p.positionIM : notional / Math.max(1, lev);

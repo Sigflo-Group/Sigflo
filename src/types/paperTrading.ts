@@ -1,4 +1,5 @@
 import type { MarketMode, TradeSide } from '@/types/trade';
+import type { TradeSource } from '@/types/tradeSource';
 import type { SigfloActivePosition } from '@/types/position';
 
 export type PaperOrderSide = 'buy' | 'sell';
@@ -18,6 +19,7 @@ export type PaperTradingOrder = {
   status: 'filled';
   note?: string;
   realizedPnlUsd?: number;
+  source: TradeSource;
 };
 
 export type PaperTradingClosedTrade = {
@@ -33,6 +35,7 @@ export type PaperTradingClosedTrade = {
   notionalUsd: number;
   realizedPnlUsd: number;
   reason: 'manual_close' | 'close_all' | 'flip_position';
+  source: TradeSource;
 };
 
 export type PaperTradeOpenInput = {
@@ -44,7 +47,7 @@ export type PaperTradeOpenInput = {
   leverage: number;
   stopPrice?: number | null;
   targets?: number[];
-  source?: SigfloActivePosition['source'];
+  source?: TradeSource | 'demo' | 'bybit';
   openedAt?: number;
 };
 

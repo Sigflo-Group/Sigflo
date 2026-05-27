@@ -19,6 +19,7 @@ import {
   MEXC_SIGN_UP_HREF,
 } from '@/lib/exchangeTransferUrls';
 import { sanitizeUserFacingHttpErrorMessage } from '@/lib/httpErrorMessage';
+import { getManualTrades } from '@/lib/tradeSourceFilter';
 import { playUiTapSound } from '@/utils/sound';
 import type { ExchangeId, ExchangeSnapshot } from '@/types/integrations';
 
@@ -169,21 +170,22 @@ export default function ProfileScreen() {
   const lastSynced = primaryIntegration?.lastValidatedAt
     ? new Date(primaryIntegration.lastValidatedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
     : null;
+  const manualClosedTrades = useMemo(() => getManualTrades(closedTrades), [closedTrades]);
   const signalCount = signals.length;
   const winRate = useMemo(() => {
-    if (closedTrades.length === 0) return '—';
-    const wins = closedTrades.filter((trade) => trade.closedPnl > 0).length;
-    return `${Math.round((wins / closedTrades.length) * 100)}%`;
-  }, [closedTrades]);
+    if (manualClosedTrades.length === 0) return '—';
+    const wins = manualClosedTrades.filter((trade) => trade.closedPnl > 0).length;
+    return `${Math.round((wins / manualClosedTrades.length) * 100)}%`;
+  }, [manualClosedTrades]);
   const avgRr = useMemo(() => {
-    if (closedTrades.length === 0) return '1.9';
-    const wins = closedTrades.filter((trade) => trade.closedPnl > 0).map((trade) => trade.closedPnl);
-    const losses = closedTrades.filter((trade) => trade.closedPnl < 0).map((trade) => Math.abs(trade.closedPnl));
+    if (manualClosedTrades.length === 0) return '1.9';
+    const wins = manualClosedTrades.filter((trade) => trade.closedPnl > 0).map((trade) => trade.closedPnl);
+    const losses = manualClosedTrades.filter((trade) => trade.closedPnl < 0).map((trade) => Math.abs(trade.closedPnl));
     if (wins.length === 0 || losses.length === 0) return '—';
     const avgWin = wins.reduce((sum, value) => sum + value, 0) / wins.length;
     const avgLoss = losses.reduce((sum, value) => sum + value, 0) / losses.length;
     return (avgWin / Math.max(avgLoss, 0.0001)).toFixed(1);
-  }, [closedTrades]);
+  }, [manualClosedTrades]);
   const activeBotCount = useMemo(
     () => Object.values(statusMap).filter((status) => status === 'active').length,
     [statusMap],

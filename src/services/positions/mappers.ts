@@ -2,7 +2,7 @@ import type { SimulatedActivePosition } from '@/types/activePosition';
 import type { PositionItem } from '@/types/integrations';
 import type { Position } from '@/types/botsPositionsStrip';
 import type { SigfloActivePosition } from '@/types/position';
-import { entryNotionalUsd, marginBaseForRoe } from '@/lib/positionRoe';
+import { marginBaseForRoe } from '@/lib/positionRoe';
 import { normalizePositionPairKey } from '@/services/positions/positionRepository';
 import type { MarketMode } from '@/types/trade';
 
@@ -37,7 +37,6 @@ export function sigfloActivePositionFromExchange(
   const mark =
     p.markPrice != null && Number.isFinite(p.markPrice) && p.markPrice > 0 ? p.markPrice : liveMark;
   const lev = p.leverage != null && p.leverage > 0 ? p.leverage : 1;
-  const notional = entryNotionalUsd({ size: p.size, entryPrice: p.entryPrice, markPrice: mark });
   const margin =
     marginBaseForRoe({
       size: p.size,

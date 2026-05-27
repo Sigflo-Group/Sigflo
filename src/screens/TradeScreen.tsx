@@ -116,7 +116,7 @@ import {
   resolveTradeAnchorPrice,
 } from '@/lib/tradeViewFromSignal';
 import { syntheticFromExchangePosition, syntheticFromSpotHolding } from '@/lib/exchangePositionSynthetic';
-import { entryNotionalUsd, marginBaseForRoe } from '@/lib/positionRoe';
+import { entryNotionalUsd, livePnlPercent } from '@/lib/positionRoe';
 import { formatBybitTradeErrorMessage, resolveBybitTradeError } from '@/lib/bybitUserFacingError';
 import { formatLinearPriceStringForBybit, linearTpSlStringsForOpen } from '@/lib/bybitLinearTpSl';
 import { DEFAULT_BYBIT_TPSL_TRIGGER, type BybitTpSlTriggerBy } from '@/lib/bybitTpSlTrigger';
@@ -1205,14 +1205,15 @@ export function TradeScreen() {
       const notional = entryNotionalUsd({ size: pos.size, entryPrice: entry, markPrice: markPx });
       const usd = notional > 0 ? notional : manageCtx.positionUsd;
       const { pnlUsd } = managePnlFromPrices(pos.side, entry, markPx, usd);
-      const marginBase = marginBaseForRoe({
+      const pnlPct = livePnlPercent({
+        side: pos.side,
+        unrealizedPnl: pnlUsd,
         size: pos.size,
         entryPrice: entry,
         markPrice: markPx,
         leverage: pos.leverage ?? manageCtx.leverage,
         positionIM: pos.positionIM,
       });
-      const pnlPct = marginBase != null ? (pnlUsd / marginBase) * 100 : (pnlUsd / usd) * 100;
       return { pnlUsd, pnlPct };
     }
     const result = managePnlFromPrices(manageCtx.side, manageCtx.entryPrice, markForManage, manageCtx.positionUsd);

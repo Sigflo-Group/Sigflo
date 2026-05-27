@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { entryNotionalUsd, marginBaseForRoe } from '@/lib/positionRoe';
+import { entryNotionalUsd, livePnlPercent, marginBaseForRoe } from '@/lib/positionRoe';
 
 describe('positionRoe helpers', () => {
   it('uses entry price for notional when entry is available', () => {
@@ -41,5 +41,33 @@ describe('positionRoe helpers', () => {
       positionIM: '16',
     });
     expect(margin).toBeCloseTo(3196.21, 2);
+  });
+
+  it('falls back to leverage-adjusted move when margin path diverges too far', () => {
+    const pct = livePnlPercent({
+      side: 'long',
+      unrealizedPnl: -0.02,
+      size: 230,
+      entryPrice: 0.003944,
+      markPrice: 0.003857,
+      leverage: 100,
+      positionIM: 5,
+    });
+    // mark/entry move is ~ -2.205%; at 100x this should be about -220.5%,
+    // not the tiny ~-0.4% from an over-large IM base.
+    expect(pct).toBeCloseTo(-220.59, 2);
+  });
+
+  it('keeps margin-based pct when it remains directionally aligned', () => {
+    const pct = livePnlPercent({
+      side: 'long',
+      unrealizedPnl: 124.56,
+      size: 1000,
+      entryPrice: 319.621,
+      markPrice: 319.7,
+      leverage: 100,
+      positionIM: 3200,
+    });
+    expect(pct).toBeCloseTo(3.89, 1);
   });
 });

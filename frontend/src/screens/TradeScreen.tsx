@@ -4222,7 +4222,7 @@ export function TradeScreen() {
                   <button
                     type="button"
                     onClick={() => navigate(getFeedRoute())}
-                    className={`sigflo-trade-header-triggered flex max-w-[40%] shrink-0 flex-col items-end gap-0.5 rounded-lg py-0.5 pl-2 text-right text-[10px] font-semibold leading-tight transition hover:bg-white/[0.08] active:scale-[0.98] ${uiStateStyle.text}`}
+                    className={`sigflo-trade-header-triggered flex shrink-0 flex-col items-end gap-0.5 rounded-lg py-0.5 pl-2 text-right text-[10px] font-semibold leading-tight transition hover:bg-white/[0.08] active:scale-[0.98] ${uiStateStyle.text}`}
                     aria-label="Back to signals"
                   >
                     <span className="inline-flex items-center justify-end gap-1">
@@ -4243,7 +4243,7 @@ export function TradeScreen() {
                   </button>
                 ) : (
                   <div
-                    className={`flex max-w-[40%] shrink-0 flex-col items-end gap-0.5 text-right text-[10px] font-semibold leading-tight ${uiStateStyle.text}`}
+                    className={`flex shrink-0 flex-col items-end gap-0.5 text-right text-[10px] font-semibold leading-tight ${uiStateStyle.text}`}
                   >
                     <span className="inline-flex items-center justify-end gap-1">
                       <LiveIndicator

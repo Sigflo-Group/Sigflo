@@ -60,6 +60,7 @@ import { useAppAnnouncementsEnabled } from '@/hooks/useAppAnnouncementsEnabled';
 import { usePaperTrading } from '@/hooks/usePaperTrading';
 import { emitGlobalAnnouncement } from '@/lib/globalAnnouncements';
 import { useAccountSnapshot } from '@/hooks/useAccountSnapshot';
+import { useExchangeIntegrations } from '@/hooks/useExchangeIntegrations';
 import { useSignalEngine } from '@/hooks/useSignalEngine';
 import { useLiveTradeMarket, type TradeChartInterval } from '@/hooks/useLiveTradeMarket';
 import { useThrottledLiveUnrealized } from '@/hooks/useThrottledLiveUnrealized';
@@ -736,6 +737,7 @@ export function TradeScreen() {
   }, [liveSignals]);
 
   const { items: accountSnapshots, refresh: refreshAccountSnapshots } = useAccountSnapshot({ pollMs: 12_000 });
+  const { items: exchangeIntegrations } = useExchangeIntegrations();
   const bybitSnap = useMemo(
     () => accountSnapshots.find((s) => s.exchange === 'bybit' && s.status === 'connected'),
     [accountSnapshots],
@@ -744,7 +746,15 @@ export function TradeScreen() {
     () => accountSnapshots.find((s) => s.exchange === 'mexc' && s.status === 'connected'),
     [accountSnapshots],
   );
-  const activeExchange: 'bybit' | 'mexc' | null = bybitSnap ? 'bybit' : mexcSnap ? 'mexc' : null;
+  const preferredActiveExchange = useMemo((): 'bybit' | 'mexc' | null => {
+    const active = exchangeIntegrations.find((item) => item.isActive && item.status === 'connected');
+    return active?.exchange ?? null;
+  }, [exchangeIntegrations]);
+  const activeExchange: 'bybit' | 'mexc' | null = useMemo(() => {
+    if (preferredActiveExchange === 'bybit' && bybitSnap) return 'bybit';
+    if (preferredActiveExchange === 'mexc' && mexcSnap) return 'mexc';
+    return bybitSnap ? 'bybit' : mexcSnap ? 'mexc' : null;
+  }, [preferredActiveExchange, bybitSnap, mexcSnap]);
 
   const live = useLiveTradeMarket(liveSymbol, chartInterval, {
     uiThrottleMs: isManageMode ? 16 : undefined,
@@ -838,8 +848,21 @@ export function TradeScreen() {
   const paperSnapshot = usePaperTrading();
   const paperCashUsd = useMemo(() => paperSnapshot?.cashUsd ?? 10_000, [paperSnapshot]);
   const [forcePaperMode, setForcePaperMode] = useState(false);
+  const riskSettings = useRiskSettings();
+  const dailyRiskGuard = useDailyRiskGuard();
+
+  /** Manage mode still posts closes/adds via exchange API when an exchange is linked. MEXC only supports futures. */
+  const useRealExecution =
+    Boolean(bybitSnap && (market === 'futures' || market === 'spot')) ||
+    Boolean(mexcSnap && market === 'futures');
+  /** User opt-in from Risk controls — when false, Sigflo does not submit opens or TP/SL updates (closes use their own path). */
+  const liveOrderSubmitEnabled = useRealExecution && riskSettings.allowLiveExecution;
+  const paperModeActive = forcePaperMode || (!isManageMode && !liveOrderSubmitEnabled);
 
   const tradeBalanceHelper = useMemo(() => {
+    if (paperModeActive) {
+      return 'Paper mode is active. Position sizing and available balance use your simulated cash.';
+    }
     if (!tradeBalance) return undefined;
     if (tradeBalance.exchange === 'mexc') {
       if (market === 'futures') {
@@ -851,7 +874,7 @@ export function TradeScreen() {
       return 'Balances above update from your connected Bybit account. In Futures mode, Long/Short and Close place live orders.';
     }
     return 'Balances above update from your connected Bybit account. In Spot mode, Buy/Sell and Close place live orders.';
-  }, [tradeBalance, market]);
+  }, [paperModeActive, tradeBalance, market]);
 
   /**
    * Single raw cap for linked UTA: max of sizing + display paths (they can diverge on edge API shapes).
@@ -865,18 +888,18 @@ export function TradeScreen() {
   }, [tradeBalance]);
 
   const displayBalanceUsd = useMemo((): number | null => {
-    if (linkedUtaRawMaxUsd != null && linkedUtaRawMaxUsd > 0 && !forcePaperMode) {
+    if (linkedUtaRawMaxUsd != null && linkedUtaRawMaxUsd > 0 && !paperModeActive) {
       return roundUsdAmount(linkedUtaRawMaxUsd);
     }
     return paperCashUsd;
-  }, [linkedUtaRawMaxUsd, forcePaperMode, paperCashUsd]);
+  }, [linkedUtaRawMaxUsd, paperModeActive, paperCashUsd]);
 
   const balanceForModel = useMemo(() => {
-    if (tradeBalance && linkedUtaRawMaxUsd != null && linkedUtaRawMaxUsd > 0 && !forcePaperMode) {
+    if (tradeBalance && linkedUtaRawMaxUsd != null && linkedUtaRawMaxUsd > 0 && !paperModeActive) {
       return roundUsdAmount(linkedUtaRawMaxUsd);
     }
     return paperCashUsd;
-  }, [tradeBalance, linkedUtaRawMaxUsd, forcePaperMode, paperCashUsd]);
+  }, [tradeBalance, linkedUtaRawMaxUsd, paperModeActive, paperCashUsd]);
 
   const [tradePriceAnchor, setTradePriceAnchor] = useState<number | null>(null);
   useEffect(() => {
@@ -1014,8 +1037,6 @@ export function TradeScreen() {
     };
   }, [market, mergedModel.pair]);
 
-  const riskSettings = useRiskSettings();
-  const dailyRiskGuard = useDailyRiskGuard();
   const dailyReviewLocked = Boolean(isBotsReviewCockpit && dailyRiskGuard.status === 'locked');
   const exchangeOpenLegCount = useMemo(() => countExchangeOpenLegs((bybitSnap ?? mexcSnap)?.positions), [(bybitSnap ?? mexcSnap)?.positions]);
   const riskMonitoredOpenCount = useMemo(
@@ -1023,13 +1044,6 @@ export function TradeScreen() {
     [exchangeOpenLegCount],
   );
   const maxOpenPositionsReached = riskMonitoredOpenCount >= riskSettings.maxOpenPositions;
-  /** Manage mode still posts closes/adds via exchange API when an exchange is linked. MEXC only supports futures. */
-  const useRealExecution =
-    Boolean(bybitSnap && (market === 'futures' || market === 'spot')) ||
-    Boolean(mexcSnap && market === 'futures');
-  /** User opt-in from Risk controls — when false, Sigflo does not submit opens or TP/SL updates (closes use their own path). */
-  const liveOrderSubmitEnabled = useRealExecution && riskSettings.allowLiveExecution;
-  const paperModeActive = forcePaperMode || (!isManageMode && !liveOrderSubmitEnabled);
   const exchangePositionForSymbol = useMemo((): PositionItem | null => {
     const snap = bybitSnap ?? mexcSnap;
     if (!snap?.positions?.length) return null;
@@ -1169,14 +1183,14 @@ export function TradeScreen() {
     const next = { ...mergedModel };
     if (Number.isFinite(stopParsed) && stopParsed > 0) next.stop = stopParsed;
     if (Number.isFinite(targetParsed) && targetParsed > 0) next.target = targetParsed;
-    if (tradeBalance && linkedUtaRawMaxUsd != null && linkedUtaRawMaxUsd > 0 && !forcePaperMode) {
+    if (tradeBalance && linkedUtaRawMaxUsd != null && linkedUtaRawMaxUsd > 0 && !paperModeActive) {
       next.balanceUsd = roundUsdAmount(linkedUtaRawMaxUsd);
     }
     if (!Number.isFinite(next.balanceUsd) || next.balanceUsd < 0) {
-      next.balanceUsd = forcePaperMode || !tradeBalance ? paperCashUsd : 0;
+      next.balanceUsd = paperModeActive || !tradeBalance ? paperCashUsd : 0;
     }
     return next;
-  }, [mergedModel, stopParsed, targetParsed, tradeBalance, linkedUtaRawMaxUsd, forcePaperMode, paperCashUsd]);
+  }, [mergedModel, stopParsed, targetParsed, tradeBalance, linkedUtaRawMaxUsd, paperModeActive, paperCashUsd]);
 
   // live.lastPrice updates on every WS trade/ticker event (immediateUiOnTick: true).
   // manageFastMark carries the WS mark price, but mark price only changes in ticker delta messages
@@ -5027,7 +5041,7 @@ export function TradeScreen() {
           metrics={metrics}
           estFeeUsd={estFeeUsd}
           balanceLabel={
-            forcePaperMode || !tradeBalance
+            paperModeActive || !tradeBalance
               ? 'Simulated Cash (Paper)'
               : tradeBalance?.exchange === 'mexc'
                 ? 'Available (USDT)'

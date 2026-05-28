@@ -164,6 +164,8 @@ export type MexcOrderRequest = {
 export type MexcOrderResponse = {
   success: boolean;
   data: number;            // orderId
+  code?: number;
+  message?: string;
 };
 
 /** "BTCUSDT" → "BTC_USDT" (inserts underscore before USDT) */
@@ -429,7 +431,10 @@ export class MexcAdapter implements ExchangeAdapter {
     );
 
     if (!res.success) {
-      throw new Error(`MEXC order rejected (success=false, data=${res.data})`);
+      const detail = res.message ?? (res.code != null ? `code=${res.code}` : undefined);
+      throw new Error(
+        `MEXC order rejected${detail ? `: ${detail}` : ''}`,
+      );
     }
 
     return { orderId: String(res.data) };

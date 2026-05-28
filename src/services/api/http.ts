@@ -41,7 +41,6 @@ export async function apiJson<T>(path: string, init?: RequestInit): Promise<T> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     'Cache-Control': 'no-cache',
-    'bypass-tunnel-reminder': '1',
     ...(init?.headers as Record<string, string> | undefined),
   };
 

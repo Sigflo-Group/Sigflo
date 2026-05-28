@@ -18,17 +18,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const sb = requireSupabaseClient();
-    void sb.auth.getSession().then(({ data }) => {
-      setSession(data.session ?? null);
+    try {
+      const sb = requireSupabaseClient();
+      void sb.auth.getSession().then(({ data }) => {
+        setSession(data.session ?? null);
+        setLoading(false);
+      });
+      const {
+        data: { subscription },
+      } = sb.auth.onAuthStateChange((_event, nextSession) => {
+        setSession(nextSession);
+      });
+      return () => subscription.unsubscribe();
+    } catch {
       setLoading(false);
-    });
-    const {
-      data: { subscription },
-    } = sb.auth.onAuthStateChange((_event, nextSession) => {
-      setSession(nextSession);
-    });
-    return () => subscription.unsubscribe();
+    }
   }, []);
 
   const value = useMemo<AuthProviderValue>(

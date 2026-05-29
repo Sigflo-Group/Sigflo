@@ -160,6 +160,8 @@ export type MexcOrderRequest = {
   price?: string;          // limit orders only
   stopLossPrice?: string;
   takeProfitPrice?: string;
+  lossTrend?: 1 | 2 | 3;  // 1=latest, 2=fair, 3=index (required with stopLossPrice)
+  profitTrend?: 1 | 2 | 3; // (required with takeProfitPrice)
 };
 
 export type MexcOrderResponse = {
@@ -522,12 +524,12 @@ export class MexcAdapter implements ExchangeAdapter {
       vol: qty,
       ...(params.leverage != null && !params.reduceOnly ? { leverage: params.leverage } : {}),
       price: price ?? '0',
-      ...(params.takeProfit ? { takeProfitPrice: params.takeProfit } : {}),
-      ...(params.stopLoss ? { stopLossPrice: params.stopLoss } : {}),
+      ...(params.takeProfit ? { takeProfitPrice: params.takeProfit, profitTrend: 1 } : {}),
+      ...(params.stopLoss ? { stopLossPrice: params.stopLoss, lossTrend: 1 } : {}),
     };
 
     const res = await futuresPrivatePost<MexcOrderResponse>(
-      '/api/v1/private/order/submit',
+      '/api/v1/private/order/create',
       orderBody as unknown as Record<string, unknown>,
       input,
     );

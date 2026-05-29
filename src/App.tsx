@@ -8,7 +8,6 @@ import { getFeedRoute } from '@/config/appRoutes';
 import { SIGFLO_MOBILE_LOADER_FEED_STATUSES } from '@/config/sigfloMobileLoaderStatuses';
 import { useAuth } from '@/context/AuthContext';
 import { useAuthProvider } from '@/providers/AuthProvider';
-import { isTradingStyleOnboarded } from '@/lib/tradingStyleOnboarding';
 import { isExchangeConnectOnboardingSeen } from '@/lib/exchangeConnectOnboarding';
 import AuthCallbackScreen from '@/screens/AuthCallbackScreen';
 import ResetPasswordScreen from '@/screens/ResetPasswordScreen';
@@ -52,13 +51,8 @@ function OnboardingGate() {
   const { user, authMode } = useAuth();
   const location = useLocation();
   if (authMode !== 'supabase' || !user) return <Outlet />;
-  const styleDone = isTradingStyleOnboarded();
   const connectSeen = isExchangeConnectOnboardingSeen();
-  if (!styleDone && location.pathname !== '/onboarding') {
-    return <Navigate to="/onboarding" replace />;
-  }
-  // Exchange connection is optional; once finished users can continue directly.
-  if (styleDone && connectSeen && (location.pathname === '/onboarding' || location.pathname === '/onboarding/connect')) {
+  if (connectSeen && (location.pathname === '/onboarding' || location.pathname === '/onboarding/connect')) {
     return <Navigate to={getFeedRoute()} replace />;
   }
   return <Outlet />;

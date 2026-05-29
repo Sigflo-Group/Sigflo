@@ -14,7 +14,6 @@ import {
   symbolToPair,
   TRACKED_SYMBOLS,
 } from '@/lib/marketScannerRows';
-import { STRATEGY_PERSONALITY_PROFILES, type StrategyPersonalityMode } from '@/lib/strategyPersonality';
 
 type FeedFilter = 'all' | 'strong' | 'actionable' | 'risky';
 
@@ -44,8 +43,6 @@ export function FeedScreen() {
     loading,
     mode,
     connection,
-    strategyPersonalityMode,
-    setStrategyPersonalityMode,
     userAdaptation,
   } = useSignalEngine();
 
@@ -187,26 +184,6 @@ export function FeedScreen() {
 
         {/* Filter chips */}
         <div className="space-y-2">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-sigflo-muted">Strategy personality</p>
-          <div className="flex flex-wrap gap-2">
-            {(Object.keys(STRATEGY_PERSONALITY_PROFILES) as StrategyPersonalityMode[]).map((m) => {
-              const active = strategyPersonalityMode === m;
-              return (
-                <button
-                  key={m}
-                  type="button"
-                  onClick={() => setStrategyPersonalityMode(m)}
-                  className={`rounded-full border px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] transition ${
-                    active
-                      ? 'border-sigflo-accent/45 bg-sigflo-accentDim text-sigflo-accent'
-                      : 'border-white/[0.08] bg-sigflo-elevated text-sigflo-muted hover:text-sigflo-text'
-                  }`}
-                >
-                  {STRATEGY_PERSONALITY_PROFILES[m].label}
-                </button>
-              );
-            })}
-          </div>
           <p className="text-[10px] text-sigflo-muted">
             User adaptation: {userAdaptation.preferences.preferredTradeType} setups · {userAdaptation.preferences.preferredSignalFrequency} frequency · {userAdaptation.preferences.preferredRiskLevel} risk preference
           </p>

@@ -46,7 +46,12 @@ export async function fetchLinearMaxLeverage(symbol: string): Promise<number | n
 }
 
 export async function fetchTickers(symbols?: string[]): Promise<SymbolTicker[]> {
-  const data = await getJson<BybitResp<{ list: Array<Record<string, string>> }>>('/v5/market/tickers?category=linear');
+  const param = symbols?.length
+    ? `&symbol=${symbols.map((s) => encodeURIComponent(s)).join(',')}`
+    : '';
+  const data = await getJson<BybitResp<{ list: Array<Record<string, string>> }>>(
+    `/v5/market/tickers?category=linear${param}`,
+  );
   if (data.retCode !== 0) throw new Error(data.retMsg || 'Bybit tickers failed');
   const symbolSet = symbols ? new Set(symbols) : undefined;
   return (data.result?.list ?? [])

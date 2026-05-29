@@ -9,9 +9,10 @@
     <!-- If the CSS bundle fails to load (wrong deploy base path), avoid a blank white screen -->
     <style>
       html {
-        touch-action: pan-x pan-y;
+        touch-action: manipulation;
         overflow-x: hidden;
         overscroll-behavior: none;
+        height: 100%;
       }
       html,
       body,
@@ -21,11 +22,30 @@
         background: #050506;
         color: #f4f4f5;
       }
+      body {
+        overflow-x: hidden;
+        overscroll-behavior: none;
+        height: 100%;
+      }
     </style>
     <script>
-      document.addEventListener('touchmove',function(e){if(e.touches.length>1)e.preventDefault()},{passive:false});
-      document.addEventListener('gesturestart',function(e){e.preventDefault()},{passive:false});
-      document.addEventListener('gesturechange',function(e){e.preventDefault()},{passive:false});
+      (function(){
+        function blockPinch(e) {
+          if (e.touches && e.touches.length > 1) { e.preventDefault(); return false; }
+        }
+        function blockAll(e) { e.preventDefault(); return false; }
+        ['touchstart','touchmove'].forEach(function(ev){
+          document.addEventListener(ev, blockPinch, {passive:false,capture:true});
+          window.addEventListener(ev, blockPinch, {passive:false,capture:true});
+        });
+        ['gesturestart','gesturechange'].forEach(function(ev){
+          document.addEventListener(ev, blockAll, {passive:false,capture:true});
+          window.addEventListener(ev, blockAll, {passive:false,capture:true});
+        });
+        document.addEventListener('wheel',function(e){
+          if (e.ctrlKey||e.metaKey) { e.preventDefault(); }
+        },{passive:false,capture:true});
+      })();
     </script>
   </head>
   <body class="bg-sigflo-bg text-sigflo-text antialiased">

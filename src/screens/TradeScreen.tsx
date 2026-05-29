@@ -4284,7 +4284,7 @@ export function TradeScreen() {
                       <rect x="3" y="3" width="18" height="18" rx="2" strokeLinejoin="round" />
                       <path d="M9 12l2 2 4-4" strokeLinecap="round" strokeLinejoin="round" />
                     </svg>
-                    Paper
+                    Live
                   </button>
                 ) : null}
                 {forcePaperMode ? (
@@ -4298,7 +4298,7 @@ export function TradeScreen() {
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
                       <path d="M12 3v3m0 12v3M3 12h3m12 0h3M5.64 5.64l2.12 2.12m8.48 8.48l2.12 2.12M5.64 18.36l2.12-2.12m8.48-8.48l2.12-2.12" strokeLinecap="round" />
                     </svg>
-                    Live
+                    Paper
                   </button>
                 ) : null}
                 <button

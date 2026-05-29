@@ -3,7 +3,7 @@
 
 [build]
 builder = "RAILPACK"
-buildCommand = "npm ci && (npm run build || true)"
+buildCommand = "NPM_CONFIG_PRODUCTION=false npm ci && npm run build"
 
 [deploy]
 startCommand = "npm start"

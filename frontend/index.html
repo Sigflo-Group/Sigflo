@@ -9,7 +9,9 @@
     <!-- If the CSS bundle fails to load (wrong deploy base path), avoid a blank white screen -->
     <style>
       html {
-        touch-action: manipulation;
+        touch-action: pan-x pan-y;
+        overflow-x: hidden;
+        overscroll-behavior: none;
       }
       html,
       body,
@@ -20,6 +22,11 @@
         color: #f4f4f5;
       }
     </style>
+    <script>
+      document.addEventListener('touchmove',function(e){if(e.touches.length>1)e.preventDefault()},{passive:false});
+      document.addEventListener('gesturestart',function(e){e.preventDefault()},{passive:false});
+      document.addEventListener('gesturechange',function(e){e.preventDefault()},{passive:false});
+    </script>
   </head>
   <body class="bg-sigflo-bg text-sigflo-text antialiased">
     <div id="root"></div>

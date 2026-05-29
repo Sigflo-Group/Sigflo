@@ -190,6 +190,8 @@ export default function ProfileScreen() {
     () => Object.values(statusMap).filter((status) => status === 'active').length,
     [statusMap],
   );
+  const totalBotCount = useMemo(() => Object.keys(statusMap).length, [statusMap]);
+  const pausedBotCount = Math.max(0, totalBotCount - activeBotCount);
   const apiConnected = !integrationsError && !snapshotError;
   const dataStatus = signalConnection === 'connected' ? 'Live' : signalConnection === 'reconnecting' ? 'Syncing' : 'Offline';
   const syncIssue = integrationsError || snapshotError;
@@ -915,11 +917,37 @@ export default function ProfileScreen() {
       </section>
 
       <section className="rounded-2xl border border-white/[0.06] bg-sigflo-surface sigflo-panel-texture p-3.5">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-sigflo-muted">Bot Stats</p>
+        <div className="mt-2.5 grid grid-cols-3 gap-2 text-center">
+          <div className="rounded-xl border border-white/[0.06] bg-sigflo-elevated px-2 py-2.5">
+            <p className="text-[10px] uppercase tracking-[0.12em] text-sigflo-muted">Active</p>
+            <p className="mt-1 text-base font-bold text-cyan-200">{activeBotCount.toLocaleString()}</p>
+          </div>
+          <div className="rounded-xl border border-white/[0.06] bg-sigflo-elevated px-2 py-2.5">
+            <p className="text-[10px] uppercase tracking-[0.12em] text-sigflo-muted">Paused</p>
+            <p className="mt-1 text-base font-bold text-amber-200">{pausedBotCount.toLocaleString()}</p>
+          </div>
+          <div className="rounded-xl border border-white/[0.06] bg-sigflo-elevated px-2 py-2.5">
+            <p className="text-[10px] uppercase tracking-[0.12em] text-sigflo-muted">Total</p>
+            <p className="mt-1 text-base font-bold text-white">{totalBotCount.toLocaleString()}</p>
+          </div>
+        </div>
+        <p className="mt-2 text-[11px] text-sigflo-muted">Based on your saved bot states</p>
+      </section>
+
+      <section className="rounded-2xl border border-white/[0.06] bg-sigflo-surface sigflo-panel-texture p-3.5">
         <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-sigflo-muted">System</p>
-        <div className="mt-2 grid grid-cols-3 gap-2">
+        <div className="mt-2 grid grid-cols-2 gap-2">
           <SystemIndicator label="API" value={apiConnected ? 'Connected' : 'Degraded'} active={apiConnected} />
           <SystemIndicator label="Data" value={dataStatus} active={signalConnection === 'connected'} />
-          <SystemIndicator label="Bots" value={`${activeBotCount} active`} active={activeBotCount > 0} />
+        </div>
+        <div className="mt-2">
+          <Link
+            to="/admin/feedback"
+            className="inline-flex rounded-lg border border-cyan-400/25 bg-cyan-500/[0.08] px-2.5 py-1.5 text-[11px] font-semibold text-cyan-100 transition hover:bg-cyan-500/[0.14]"
+          >
+            Open admin feedback dashboard
+          </Link>
         </div>
       </section>
 

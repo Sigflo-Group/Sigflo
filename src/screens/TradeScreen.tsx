@@ -1192,10 +1192,8 @@ export function TradeScreen() {
     return next;
   }, [mergedModel, stopParsed, targetParsed, tradeBalance, linkedUtaRawMaxUsd, paperModeActive, paperCashUsd]);
 
-  // live.lastPrice updates on every WS trade/ticker event (immediateUiOnTick: true).
-  // manageFastMark carries the WS mark price, but mark price only changes in ticker delta messages
-  // (not on every trade), so it lags behind. Prioritise lastPrice to keep the P&L live.
-  const markForManage = live.lastPrice ?? manageFastMark ?? manageCtx?.markPrice ?? mergedModel.lastPrice;
+  // Prefer mark price for PnL (exchanges use mark price, not last price).
+  const markForManage = manageFastMark ?? live.markPrice ?? manageCtx?.markPrice ?? live.lastPrice ?? mergedModel.lastPrice;
 
   const insightTicker = useMemo((): SymbolTicker | undefined => {
     if (live.lastPrice == null || live.high24h == null || live.low24h == null) return undefined;
@@ -1215,6 +1213,25 @@ export function TradeScreen() {
     if (market === 'futures' && exchangePositionForSymbol) {
       const pos = exchangePositionForSymbol;
       const entry = pos.entryPrice > 0 ? pos.entryPrice : manageCtx.entryPrice;
+      // Prefer exchange-reported unrealizedPnl (authoritative) when available.
+      if (pos.unrealizedPnl != null && Number.isFinite(pos.unrealizedPnl)) {
+        const markPx =
+          pos.markPrice != null && pos.markPrice > 0
+            ? pos.markPrice
+            : typeof markForManage === 'number' && Number.isFinite(markForManage) && markForManage > 0
+              ? markForManage
+              : entry;
+        const pnlPct = livePnlPercent({
+          side: pos.side,
+          unrealizedPnl: pos.unrealizedPnl,
+          size: pos.size,
+          entryPrice: entry,
+          markPrice: markPx,
+          leverage: pos.leverage ?? manageCtx.leverage,
+          positionIM: pos.positionIM,
+        });
+        return { pnlUsd: pos.unrealizedPnl, pnlPct };
+      }
       const markPx =
         typeof markForManage === 'number' && Number.isFinite(markForManage) && markForManage > 0
           ? markForManage

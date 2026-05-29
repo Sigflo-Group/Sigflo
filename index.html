@@ -3,50 +3,12 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/png" href="/sigflo-mark.png" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#050506" />
     <title>Sigflo</title>
     <!-- If the CSS bundle fails to load (wrong deploy base path), avoid a blank white screen -->
     <style>
-      html {
-        touch-action: manipulation;
-        overflow-x: hidden;
-        overscroll-behavior: none;
-        height: 100%;
-      }
-      html,
-      body,
-      #root {
-        min-height: 100%;
-        margin: 0;
-        background: #050506;
-        color: #f4f4f5;
-      }
-      body {
-        overflow-x: hidden;
-        overscroll-behavior: none;
-        height: 100%;
-      }
     </style>
-    <script>
-      (function(){
-        function blockPinch(e) {
-          if (e.touches && e.touches.length > 1) { e.preventDefault(); return false; }
-        }
-        function blockAll(e) { e.preventDefault(); return false; }
-        ['touchstart','touchmove'].forEach(function(ev){
-          document.addEventListener(ev, blockPinch, {passive:false,capture:true});
-          window.addEventListener(ev, blockPinch, {passive:false,capture:true});
-        });
-        ['gesturestart','gesturechange'].forEach(function(ev){
-          document.addEventListener(ev, blockAll, {passive:false,capture:true});
-          window.addEventListener(ev, blockAll, {passive:false,capture:true});
-        });
-        document.addEventListener('wheel',function(e){
-          if (e.ctrlKey||e.metaKey) { e.preventDefault(); }
-        },{passive:false,capture:true});
-      })();
-    </script>
   </head>
   <body class="bg-sigflo-bg text-sigflo-text antialiased">
     <div id="root"></div>

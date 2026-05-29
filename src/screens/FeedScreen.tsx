@@ -43,7 +43,6 @@ export function FeedScreen() {
     loading,
     mode,
     connection,
-    userAdaptation,
   } = useSignalEngine();
 
   /** Tracked watchlist pairs with no engine emission yet — same shells as Markets “Tracked”. */
@@ -183,12 +182,6 @@ export function FeedScreen() {
         </button>
 
         {/* Filter chips */}
-        <div className="space-y-2">
-          <p className="text-[10px] text-sigflo-muted">
-            User adaptation: {userAdaptation.preferences.preferredTradeType} setups · {userAdaptation.preferences.preferredSignalFrequency} frequency · {userAdaptation.preferences.preferredRiskLevel} risk preference
-          </p>
-        </div>
-
         <div className="flex gap-2" aria-label="Filter signals">
           {filterChips.map((chip) => {
             const active = filter === chip.id;

@@ -157,7 +157,7 @@ export default function MarketsScreen() {
         </div>
 
         {/* Market rows */}
-        <div className="space-y-4 px-3 pb-4 sm:space-y-3 sm:px-0 sm:pb-3">
+        <div className="space-y-4 px-3 pb-[5rem] sm:space-y-3 sm:px-0 sm:pb-3">
           {tab === 'movers' && !tickersLoading && moverRows.length === 0 ? (
             <p className="rounded-xl border border-white/[0.06] bg-sigflo-surface sigflo-panel-texture px-3.5 py-8 text-center text-[14px] leading-snug text-sigflo-muted sm:rounded-2xl sm:px-4 sm:py-8 sm:text-sm">
               No movers yet — check back later.

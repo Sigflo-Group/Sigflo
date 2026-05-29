@@ -26,7 +26,6 @@ import OnboardingConnect from '@/screens/Onboarding/OnboardingConnect';
 import PortfolioScreen from '@/screens/PortfolioScreen';
 import PerformanceDashboardScreen from '@/screens/PerformanceDashboardScreen';
 import AdminFeedbackDashboardScreen from '@/screens/AdminFeedbackDashboardScreen';
-import StrategyAttributionScreen from '@/screens/StrategyAttributionScreen';
 import TradeReplayScreen from '@/screens/TradeReplayScreen';
 import PrivacyPolicyScreen from '@/screens/PrivacyPolicyScreen';
 import LegalScreen from '@/screens/LegalScreen';
@@ -151,16 +150,6 @@ export default function App() {
                   <Route path="/portfolio" element={<ProtectedRoute><PortfolioScreen /></ProtectedRoute>} />
                   <Route path="/performance" element={<ProtectedRoute><PerformanceDashboardScreen /></ProtectedRoute>} />
                   <Route path="/admin/feedback" element={<ProtectedRoute><AdminFeedbackDashboardScreen /></ProtectedRoute>} />
-                  <Route
-                    path="/analytics/strategy-attribution"
-                    element={
-                      <ProtectedRoute>
-                        <ProIntelligenceRoute>
-                          <StrategyAttributionScreen />
-                        </ProIntelligenceRoute>
-                      </ProtectedRoute>
-                    }
-                  />
                   <Route
                     path="/replay"
                     element={

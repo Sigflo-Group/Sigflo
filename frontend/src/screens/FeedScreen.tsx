@@ -46,7 +46,6 @@ export function FeedScreen() {
     connection,
     strategyPersonalityMode,
     setStrategyPersonalityMode,
-    userAdaptation,
   } = useSignalEngine();
 
   /** Tracked watchlist pairs with no engine emission yet — same shells as Markets “Tracked”. */
@@ -207,9 +206,6 @@ export function FeedScreen() {
               );
             })}
           </div>
-          <p className="text-[10px] text-sigflo-muted">
-            User adaptation: {userAdaptation.preferences.preferredTradeType} setups · {userAdaptation.preferences.preferredSignalFrequency} frequency · {userAdaptation.preferences.preferredRiskLevel} risk preference
-          </p>
         </div>
 
         <div className="flex gap-2" aria-label="Filter signals">

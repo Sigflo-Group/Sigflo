@@ -71,8 +71,7 @@ export default function PerformanceDashboardScreen() {
       winRate: total > 0 ? wins.length / total : 0,
       lossRate: total > 0 ? losses.length / total : 0,
       neutralRate: total > 0 ? neutrals.length / total : 0,
-      avgWinConfidence: mean(wins.map((w) => w.confidence)),
-      avgLossConfidence: mean(losses.map((l) => l.confidence)),
+
     };
   }, [completed]);
 
@@ -182,12 +181,7 @@ export default function PerformanceDashboardScreen() {
             >
               Open trade replay →
             </Link>
-            <Link
-              to="/analytics/strategy-attribution"
-              className="inline-flex rounded-xl border border-amber-500/25 bg-amber-500/[0.08] px-3 py-1.5 text-[11px] font-semibold text-amber-100 transition-colors hover:border-amber-400/40 hover:bg-amber-500/[0.12]"
-            >
-              Style performance →
-            </Link>
+
           </div>
         ) : (
           <p className="mt-2 text-[11px] text-sigflo-muted">
@@ -214,8 +208,7 @@ export default function PerformanceDashboardScreen() {
         <StatCard label="Win rate" value={pct(overall.winRate)} tone="good" />
         <StatCard label="Loss rate" value={pct(overall.lossRate)} tone="bad" />
         <StatCard label="Neutral rate" value={pct(overall.neutralRate)} tone="warn" />
-        <StatCard label="Avg win confidence" value={overall.avgWinConfidence.toFixed(1)} />
-        <StatCard label="Avg loss confidence" value={overall.avgLossConfidence.toFixed(1)} />
+
       </div>
       </Section>
 

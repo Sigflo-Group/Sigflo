@@ -175,6 +175,7 @@ export type MexcContractDetail = {
   volumeUnit: string;
   minVol: string;
   maxVol: string;
+  contractSize: string;
 };
 
 type CachedLot = { expiryMs: number; lot: MexcContractDetail };
@@ -492,7 +493,14 @@ export class MexcAdapter implements ExchangeAdapter {
       const lot = await fetchInstrumentLot(mexcSymbol);
       if (lot) {
         if (price) price = normalizePriceToStep(price, lot.priceUnit);
-        qty = normalizeQtyToStep(qty, lot.volumeUnit, lot.minVol);
+        // MEXC expects vol in contracts, not base currency
+        const contractSize = Number(lot.contractSize);
+        if (Number.isFinite(contractSize) && contractSize > 0) {
+          const contractCount = String(Number(qty) / contractSize);
+          qty = normalizeQtyToStep(contractCount, lot.volumeUnit, lot.minVol);
+        } else {
+          qty = normalizeQtyToStep(qty, lot.volumeUnit, lot.minVol);
+        }
       }
     } catch {
       log('warn', 'MEXC instrument lot fetch failed, sending raw values', { symbol: mexcSymbol });
@@ -513,7 +521,7 @@ export class MexcAdapter implements ExchangeAdapter {
       type: params.orderType === 'Limit' ? 1 : 5,
       vol: qty,
       ...(params.leverage != null && !params.reduceOnly ? { leverage: params.leverage } : {}),
-      ...(price ? { price } : {}),
+      price: price ?? '0',
       ...(params.takeProfit ? { takeProfitPrice: params.takeProfit } : {}),
       ...(params.stopLoss ? { stopLossPrice: params.stopLoss } : {}),
     };

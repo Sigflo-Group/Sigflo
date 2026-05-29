@@ -4,6 +4,7 @@ import { useFeedback } from '@/context/FeedbackContext';
 
 const staticTabs = [
   { to: '/markets', label: 'Markets', icon: MarketsIcon },
+  { to: '/bots', label: 'Bots', icon: BotsIcon },
   { to: '/performance', label: 'Stats', icon: StatsIcon },
   { to: '/portfolio', label: 'Portfolio', icon: PortfolioIcon },
   { to: '/profile', label: 'Account', icon: ProfileIcon },
@@ -105,6 +106,17 @@ function ProfileIcon({ active }: { active: boolean }) {
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" className={active ? 'text-sigflo-accent' : 'currentColor'}>
       <circle cx="12" cy="9" r="3.5" stroke="currentColor" strokeWidth={active ? 2 : 1.8} />
       <path d="M6 19c1.2-3 3.8-4.5 6-4.5s4.8 1.5 6 4.5" stroke="currentColor" strokeWidth={active ? 2 : 1.8} strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function BotsIcon({ active }: { active: boolean }) {
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" className={active ? 'text-sigflo-accent' : 'currentColor'}>
+      <rect x="5" y="8" width="14" height="10" rx="2" stroke="currentColor" strokeWidth={active ? 2 : 1.8} />
+      <path d="M9 8V6a2 2 0 012-2h2a2 2 0 012 2v2" stroke="currentColor" strokeWidth={active ? 2 : 1.8} />
+      <circle cx="10" cy="13" r="1" fill="currentColor" />
+      <circle cx="14" cy="13" r="1" fill="currentColor" />
     </svg>
   );
 }

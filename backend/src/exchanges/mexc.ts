@@ -1,3 +1,4 @@
+import { log } from '../lib/logger.js';
 import { getJson, postJson, signHmacSha256 } from './http.js';
 import type {
   AccountBucketSnapshot,
@@ -164,7 +165,89 @@ export type MexcOrderRequest = {
 export type MexcOrderResponse = {
   success: boolean;
   data: number;            // orderId
+  code?: number;
+  message?: string;
 };
+
+export type MexcContractDetail = {
+  symbol: string;
+  priceUnit: string;
+  volumeUnit: string;
+  minVol: string;
+  maxVol: string;
+};
+
+type CachedLot = { expiryMs: number; lot: MexcContractDetail };
+const instrumentLotCache = new Map<string, CachedLot>();
+const LOT_CACHE_TTL_MS = 60 * 60 * 1000;
+
+function decimalPlacesFromStepString(stepStr: string): number {
+  const n = Number(stepStr);
+  if (!Number.isFinite(n) || n <= 0) return 8;
+  const s = stepStr.includes('e') || stepStr.includes('E') ? n.toFixed(16) : stepStr;
+  const parts = String(s).split('.');
+  if (parts.length < 2) return 0;
+  return parts[1].replace(/0+$/, '').length || 0;
+}
+
+function normalizePriceToStep(priceRaw: string, priceUnitStr: string): string {
+  const n = Number(String(priceRaw).trim().replace(/,/g, ''));
+  const step = Number(priceUnitStr);
+  if (!Number.isFinite(n) || n <= 0) return priceRaw.trim();
+  if (!Number.isFinite(step) || step <= 0) return priceRaw.trim();
+  const tol = 1e-12;
+  let k = Math.round(n / step);
+  let adj = k * step;
+  const dec = Math.min(16, decimalPlacesFromStepString(priceUnitStr));
+  let out = adj.toFixed(dec);
+  out = out.replace(/\.?0+$/, '');
+  return out === '' ? priceRaw.trim() : out;
+}
+
+function normalizeQtyToStep(qtyRaw: string, qtyStepStr: string, minQtyStr: string): string {
+  const n = Number(String(qtyRaw).trim().replace(/,/g, ''));
+  const step = Number(qtyStepStr);
+  const minQ = Number(minQtyStr);
+  if (!Number.isFinite(n) || n <= 0) throw new Error('Order qty must be a positive number');
+  if (!Number.isFinite(step) || step <= 0) return qtyRaw.trim();
+  const tol = 1e-12;
+  let k = Math.floor(n / step + tol);
+  let adj = k * step;
+  if (adj < minQ - tol) {
+    const minK = Math.ceil(minQ / step - tol);
+    adj = minK * step;
+  }
+  if (!Number.isFinite(adj) || adj < minQ - tol || adj <= 0) {
+    throw new Error(`Order qty ${qtyRaw} is below this symbol's minimum (${minQtyStr}, step ${qtyStepStr}).`);
+  }
+  const dec = Math.min(16, decimalPlacesFromStepString(qtyStepStr));
+  let out = adj.toFixed(dec);
+  out = out.replace(/\.?0+$/, '');
+  return out === '' ? '0' : out;
+}
+
+async function fetchInstrumentLot(symbol: string): Promise<MexcContractDetail | null> {
+  const sym = symbol.toUpperCase();
+  const now = Date.now();
+  const hit = instrumentLotCache.get(sym);
+  if (hit && hit.expiryMs > now) return hit.lot;
+  try {
+    const res = await getJson<{ success: boolean; data: MexcContractDetail[] }>(
+      `${FUTURES_BASE}/api/v1/contract/detail`,
+      {},
+    );
+    if (res.success && Array.isArray(res.data)) {
+      const row = res.data.find((c) => c.symbol === sym);
+      if (row) {
+        instrumentLotCache.set(sym, { expiryMs: now + LOT_CACHE_TTL_MS, lot: row });
+        return row;
+      }
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
 
 /** "BTCUSDT" → "BTC_USDT" (inserts underscore before USDT) */
 function standardSymbolToMexc(sym: string): string {
@@ -402,6 +485,19 @@ export class MexcAdapter implements ExchangeAdapter {
   ): Promise<{ orderId: string }> {
     const mexcSymbol = standardSymbolToMexc(params.symbol);
 
+    // Normalize price / qty to MEXC tick-size / step-size
+    let price = params.price;
+    let qty = params.qty;
+    try {
+      const lot = await fetchInstrumentLot(mexcSymbol);
+      if (lot) {
+        if (price) price = normalizePriceToStep(price, lot.priceUnit);
+        qty = normalizeQtyToStep(qty, lot.volumeUnit, lot.minVol);
+      }
+    } catch {
+      log('warn', 'MEXC instrument lot fetch failed, sending raw values', { symbol: mexcSymbol });
+    }
+
     // Map Bybit-style side+reduceOnly → MEXC side integer
     // 1=open long, 2=close short, 3=open short, 4=close long
     let mexcSide: 1 | 2 | 3 | 4;
@@ -415,9 +511,9 @@ export class MexcAdapter implements ExchangeAdapter {
       side: mexcSide,
       openType: 1, // isolated
       type: params.orderType === 'Limit' ? 1 : 5,
-      vol: params.qty,
+      vol: qty,
       ...(params.leverage != null && !params.reduceOnly ? { leverage: params.leverage } : {}),
-      ...(params.price ? { price: params.price } : {}),
+      ...(price ? { price } : {}),
       ...(params.takeProfit ? { takeProfitPrice: params.takeProfit } : {}),
       ...(params.stopLoss ? { stopLossPrice: params.stopLoss } : {}),
     };
@@ -429,7 +525,10 @@ export class MexcAdapter implements ExchangeAdapter {
     );
 
     if (!res.success) {
-      throw new Error(`MEXC order rejected (success=false, data=${res.data})`);
+      const detail = res.message ?? (res.code != null ? `code=${res.code}` : undefined);
+      throw new Error(
+        `MEXC order rejected${detail ? `: ${detail}` : ''}`,
+      );
     }
 
     return { orderId: String(res.data) };

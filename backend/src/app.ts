@@ -58,6 +58,7 @@ export function createApp() {
       credentials: true,
       origin(origin, callback) {
         if (!origin) return callback(null, true);
+        if (origin === 'null') return callback(new Error('CORS blocked'));
         if (allowedOrigins.includes(origin)) return callback(null, true);
         return callback(new Error('CORS blocked'));
       },

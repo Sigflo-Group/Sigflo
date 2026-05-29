@@ -26,7 +26,7 @@
   "dependencies": {
     "@supabase/supabase-js": "^2.106.2",
     "core-js": "^3.49.0",
-    "framer-motion": "^12.38.0",
+    "framer-motion": "^12.40.0",
     "lightweight-charts": "^5.2.0",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
@@ -36,6 +36,8 @@
     "@eslint/js": "^9.21.0",
     "@types/node": "^25.9.1",
     "@types/react": "^19.0.10",
+    "@types/node": "^25.7.0",
+    "@types/react": "^19.2.15",
     "@types/react-dom": "^19.0.4",
     "@vitejs/plugin-react": "^5.2.0",
     "autoprefixer": "^10.5.0",

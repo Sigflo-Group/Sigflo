@@ -1,5 +1,7 @@
+import nacl from 'tweetnacl';
+
 const KEY_BYTES = 32;
-const IV_BYTES = 12;
+const LEGACY_IV_BYTES = 12;
 const KEY_STORAGE = '__sigflo_cipher_key__';
 
 let cacheKey: Uint8Array | null = null;
@@ -25,36 +27,28 @@ function getKey(): Uint8Array {
       cacheKey = base64ToBytes(stored);
       return cacheKey;
     }
-  } catch {}
+  } catch {
+    // Ignore storage access failures and fall back to in-memory key generation.
+  }
   cacheKey = crypto.getRandomValues(new Uint8Array(KEY_BYTES));
   try {
     sessionStorage.setItem(KEY_STORAGE, bytesToBase64(cacheKey));
-  } catch {}
-  return cacheKey;
-}
-
-function xorEncrypt(value: string): string {
-  const key = getKey();
-  const data = new TextEncoder().encode(value);
-  const iv = crypto.getRandomValues(new Uint8Array(IV_BYTES));
-  const out = new Uint8Array(IV_BYTES + data.length);
-  out.set(iv, 0);
-  for (let i = 0; i < data.length; i++) {
-    out[IV_BYTES + i] = data[i] ^ key[i % KEY_BYTES] ^ iv[i % IV_BYTES];
+  } catch {
+    // Best-effort persistence only.
   }
-  return bytesToBase64(out);
+  return cacheKey;
 }
 
 function xorDecrypt(encoded: string): string | null {
   try {
     const raw = base64ToBytes(encoded);
-    if (raw.length < IV_BYTES + 1) return null;
+    if (raw.length < LEGACY_IV_BYTES + 1) return null;
     const key = getKey();
-    const iv = raw.slice(0, IV_BYTES);
-    const data = raw.slice(IV_BYTES);
+    const iv = raw.slice(0, LEGACY_IV_BYTES);
+    const data = raw.slice(LEGACY_IV_BYTES);
     const out = new Uint8Array(data.length);
     for (let i = 0; i < data.length; i++) {
-      out[i] = data[i] ^ key[i % KEY_BYTES] ^ iv[i % IV_BYTES];
+      out[i] = data[i] ^ key[i % KEY_BYTES] ^ iv[i % LEGACY_IV_BYTES];
     }
     return new TextDecoder().decode(out);
   } catch {
@@ -62,7 +56,34 @@ function xorDecrypt(encoded: string): string | null {
   }
 }
 
-const PREFIX = 'c1:';
+function secretboxEncrypt(value: string): string {
+  const nonce = crypto.getRandomValues(new Uint8Array(nacl.secretbox.nonceLength));
+  const msg = new TextEncoder().encode(value);
+  const key = getKey();
+  const box = nacl.secretbox(msg, nonce, key);
+  const payload = new Uint8Array(nonce.length + box.length);
+  payload.set(nonce, 0);
+  payload.set(box, nonce.length);
+  return bytesToBase64(payload);
+}
+
+function secretboxDecrypt(encoded: string): string | null {
+  try {
+    const raw = base64ToBytes(encoded);
+    const nonceLen = nacl.secretbox.nonceLength;
+    if (raw.length < nonceLen + nacl.secretbox.overheadLength) return null;
+    const nonce = raw.slice(0, nonceLen);
+    const box = raw.slice(nonceLen);
+    const msg = nacl.secretbox.open(box, nonce, getKey());
+    if (!msg) return null;
+    return new TextDecoder().decode(msg);
+  } catch {
+    return null;
+  }
+}
+
+const PREFIX_V1 = 'c1:'; // legacy XOR-obfuscated entries
+const PREFIX_V2 = 'c2:'; // authenticated encryption entries
 
 function getStorage(): Storage | null {
   if (typeof window === 'undefined') return null;
@@ -76,7 +97,8 @@ export const secureStorage = {
     try {
       const raw = store.getItem(key);
       if (!raw) return null;
-      if (raw.startsWith(PREFIX)) return xorDecrypt(raw.slice(PREFIX.length));
+      if (raw.startsWith(PREFIX_V2)) return secretboxDecrypt(raw.slice(PREFIX_V2.length));
+      if (raw.startsWith(PREFIX_V1)) return xorDecrypt(raw.slice(PREFIX_V1.length));
       return raw;
     } catch { return null; }
   },
@@ -85,14 +107,20 @@ export const secureStorage = {
     const store = getStorage();
     if (!store) return;
     try {
-      const encrypted = xorEncrypt(value);
-      store.setItem(key, PREFIX + encrypted);
-    } catch {}
+      const encrypted = secretboxEncrypt(value);
+      store.setItem(key, PREFIX_V2 + encrypted);
+    } catch {
+      // Ignore quota/storage errors.
+    }
   },
 
   removeItem(key: string): void {
     const store = getStorage();
     if (!store) return;
-    try { store.removeItem(key); } catch {}
+    try {
+      store.removeItem(key);
+    } catch {
+      // Ignore storage errors on removal.
+    }
   },
 };

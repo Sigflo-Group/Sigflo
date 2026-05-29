@@ -55,6 +55,7 @@ import {
 } from '@/lib/userAdaptation';
 import { TRACKED_SYMBOLS } from '@/lib/marketScannerRows';
 import type { CandidateLifecycle } from '@/lib/timingLifecycle';
+import type { NormalizedKline } from '@/core/market-data-interface';
 import type { Candle, KlineInterval, SymbolTicker } from '@/types/market';
 import type { AiSnapshotStore } from '@/types/aiSnapshot';
 import type { CryptoSignal } from '@/types/signal';
@@ -392,6 +393,7 @@ function useSignalEngineValue(): SignalEngineState {
   const streamReadyRef = useRef(false);
   const didPrintDeterminismRef = useRef(false);
   const tickerFlushRafRef = useRef<number | null>(null);
+  const pendingWSCandlesRef = useRef<NormalizedKline[]>([]);
   const biasSideBySymbolRef = useRef<Record<string, 'long' | 'short'>>({});
   const userAdaptationRef = useRef<UserAdaptationStore>(loadUserAdaptationStore());
   const strategyPersonalityModeRef = useRef<StrategyPersonalityMode>(strategyPersonalityMode);
@@ -479,15 +481,19 @@ function useSignalEngineValue(): SignalEngineState {
       if (DEBUG) console.log(`[Sigflo][Engine] REST bootstrap (${reason})`);
       streamReadyRef.current = false;
       try {
-        const tickers = await exchangeManager.current.fetchTickers(STREAM_SYMBOLS);
+        const [tickers, ...symbolResults] = await Promise.all([
+          exchangeManager.current.fetchTickers(STREAM_SYMBOLS),
+          ...STREAM_SYMBOLS.map(async (symbol) => {
+            const [candles5m, candles15m] = await Promise.all([
+              exchangeManager.current.fetchKlines(symbol, '5', 240),
+              exchangeManager.current.fetchKlines(symbol, '15', 240),
+            ]);
+            return { symbol, candles5m, candles15m };
+          }),
+        ]);
         if (gen !== backfillGen || cancelled) return;
         for (const ticker of tickers) tickersRef.current[ticker.symbol] = ticker;
-        for (const symbol of STREAM_SYMBOLS) {
-          const [candles5m, candles15m] = await Promise.all([
-            exchangeManager.current.fetchKlines(symbol, '5', 240),
-            exchangeManager.current.fetchKlines(symbol, '15', 240),
-          ]);
-          if (gen !== backfillGen || cancelled) return;
+        for (const { symbol, candles5m, candles15m } of symbolResults) {
           candlesRef.current[symbol] = {
             ...emptyIntervalCandles(),
             ...candlesRef.current[symbol],
@@ -495,9 +501,29 @@ function useSignalEngineValue(): SignalEngineState {
             '15': candles15m,
           };
         }
+        // Re-apply any WS confirmed 15m candles that arrived during backfill
+        for (const pending of pendingWSCandlesRef.current) {
+          if (pending.interval !== '15') continue;
+          const symbol = pending.symbol;
+          if (!candlesRef.current[symbol]) candlesRef.current[symbol] = emptyIntervalCandles();
+          candlesRef.current[symbol]['15'] = upsertCandle(candlesRef.current[symbol]['15'], {
+            ts: pending.ts,
+            open: pending.open,
+            high: pending.high,
+            low: pending.low,
+            close: pending.close,
+            volume: pending.volume,
+            isClosed: pending.confirmed,
+          });
+        }
         recomputeAllFromStore('REST');
         if (gen !== backfillGen || cancelled) return;
         streamReadyRef.current = true;
+        // Flush buffered WS recomputation now that store is ready
+        for (const pending of pendingWSCandlesRef.current) {
+          if (pending.interval === '15') recomputeForSymbol(pending.symbol, 'WS');
+        }
+        pendingWSCandlesRef.current = [];
         setLiveTickersBySymbol({ ...tickersRef.current });
         pushState('REST', wsConnectedRef.current ? 'connected' : 'disconnected');
       } catch (err) {
@@ -918,7 +944,10 @@ function useSignalEngineValue(): SignalEngineState {
           // Closed-candle event is the only trigger input for signal generation.
           if (!kline.confirmed) return;
           if (DEBUG) console.log(`[Sigflo][Engine] closed candle received ${symbol} ${interval}`);
-          if (!streamReadyRef.current) return;
+          if (!streamReadyRef.current) {
+            if (interval === '15') pendingWSCandlesRef.current.push(kline);
+            return;
+          }
           if (interval === '15') recomputeForSymbol(symbol, 'WS');
         },
       });
@@ -938,6 +967,7 @@ function useSignalEngineValue(): SignalEngineState {
       if (healthSummaryTimer != null) window.clearInterval(healthSummaryTimer);
       window.clearInterval(restPollTimer);
       cancelled = true;
+      pendingWSCandlesRef.current = [];
       if (tickerFlushRafRef.current != null) {
         window.cancelAnimationFrame(tickerFlushRafRef.current);
         tickerFlushRafRef.current = null;

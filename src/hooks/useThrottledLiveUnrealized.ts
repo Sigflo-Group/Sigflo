@@ -68,7 +68,7 @@ export function useThrottledLiveUnrealized(
 
     raf = window.requestAnimationFrame(loop);
     return () => window.cancelAnimationFrame(raf);
-  }, [enabled, position?.id, lastPriceRef]);
+  }, [enabled, position, lastPriceRef]);
 
   return bundle;
 }

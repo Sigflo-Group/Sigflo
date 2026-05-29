@@ -5,7 +5,6 @@ import { getFeedRoute } from '@/config/appRoutes';
 import { useAuth } from '@/context/AuthContext';
 import { isExchangeConnectOnboardingSeen, markExchangeConnectOnboardingSeen } from '@/lib/exchangeConnectOnboarding';
 import { BYBIT_SIGN_UP_HREF, MEXC_SIGN_UP_HREF } from '@/lib/exchangeTransferUrls';
-import { isTradingStyleOnboarded } from '@/lib/tradingStyleOnboarding';
 
 function ConnectionGlyphIcon({ className }: { className?: string }) {
   return (
@@ -40,10 +39,6 @@ export default function OnboardingConnect() {
 
   if (authMode !== 'supabase' || !user) {
     return <Navigate to={getFeedRoute()} replace />;
-  }
-
-  if (!isTradingStyleOnboarded()) {
-    return <Navigate to="/onboarding" replace />;
   }
 
   if (isExchangeConnectOnboardingSeen()) {

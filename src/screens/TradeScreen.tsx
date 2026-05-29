@@ -1038,7 +1038,7 @@ export function TradeScreen() {
   }, [market, mergedModel.pair]);
 
   const dailyReviewLocked = Boolean(isBotsReviewCockpit && dailyRiskGuard.status === 'locked');
-  const exchangeOpenLegCount = useMemo(() => countExchangeOpenLegs((bybitSnap ?? mexcSnap)?.positions), [(bybitSnap ?? mexcSnap)?.positions]);
+  const exchangeOpenLegCount = countExchangeOpenLegs((bybitSnap ?? mexcSnap)?.positions);
   const riskMonitoredOpenCount = useMemo(
     () => activePositionCountForRisk(exchangeOpenLegCount),
     [exchangeOpenLegCount],

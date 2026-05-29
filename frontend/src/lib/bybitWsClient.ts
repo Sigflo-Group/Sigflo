@@ -182,7 +182,7 @@ export class BybitWsClient {
     const parts = topic.split('.');
     const interval = parts[1] as WsTopicInterval;
     const symbol = parts[2];
-    const rows = Array.isArray(data) ? (data as Array<Record<string, unknown>>) : [];
+    const rows = Array.isArray(data) ? (data as Array<Record<string, unknown>>) : data ? [data as Record<string, unknown>] : [];
     for (const row of rows) {
       const kline: BybitWsKline = {
         symbol,
@@ -194,7 +194,7 @@ export class BybitWsClient {
         low: toNum(row.low),
         close: toNum(row.close),
         volume: toNum(row.volume),
-        confirm: Boolean(row.confirm),
+        confirm: String(row.confirm).toLowerCase() === 'true',
         timestamp: toNum(row.timestamp),
       };
       this.options.onKline?.(kline);

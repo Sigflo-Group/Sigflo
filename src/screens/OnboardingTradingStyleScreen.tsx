@@ -4,64 +4,25 @@ import { SigfloLogo } from '@/components/branding/SigfloLogo';
 import { getFeedRoute } from '@/config/appRoutes';
 import { useAuth } from '@/context/AuthContext';
 import {
-  isTradingStyleOnboarded,
   markTradingStyleOnboarded,
-  readTradingStyleChoice,
-  type TradingStyleChoice,
+  isTradingStyleOnboarded,
 } from '@/lib/tradingStyleOnboarding';
 import { markExchangeConnectOnboardingSeen } from '@/lib/exchangeConnectOnboarding';
-
-const OPTIONS: {
-  choice: TradingStyleChoice;
-  title: string;
-  bot: string;
-  blurb: string;
-}[] = [
-  {
-    choice: 'aggressive',
-    title: 'Aggressive',
-    bot: 'Kai',
-    blurb: 'Wider stops, longer holds — momentum first.',
-  },
-  {
-    choice: 'balanced',
-    title: 'Balanced',
-    bot: 'Nova',
-    blurb: 'Staged exits and balanced risk.',
-  },
-  {
-    choice: 'defensive',
-    title: 'Defensive',
-    bot: 'Rio',
-    blurb: 'Tight invalidation, protect capital early.',
-  },
-];
 
 export default function OnboardingTradingStyleScreen() {
   const navigate = useNavigate();
   const { user, authMode } = useAuth();
 
   const startPaperTrading = useCallback(() => {
-    const existing = readTradingStyleChoice();
-    markTradingStyleOnboarded(existing ?? 'balanced');
+    markTradingStyleOnboarded('balanced');
     markExchangeConnectOnboardingSeen();
     navigate(getFeedRoute(), { replace: true });
   }, [navigate]);
 
   const connectExchange = useCallback(() => {
-    const existing = readTradingStyleChoice();
-    markTradingStyleOnboarded(existing ?? 'balanced');
+    markTradingStyleOnboarded('balanced');
     navigate('/onboarding/connect', { replace: true });
   }, [navigate]);
-
-  const pickAndStartPaperTrading = useCallback(
-    (choice: TradingStyleChoice) => {
-      markTradingStyleOnboarded(choice);
-      markExchangeConnectOnboardingSeen();
-      navigate(getFeedRoute(), { replace: true });
-    },
-    [navigate],
-  );
 
   if (authMode !== 'supabase' || !user) {
     return <Navigate to={getFeedRoute()} replace />;
@@ -108,27 +69,6 @@ export default function OnboardingTradingStyleScreen() {
           Connect Exchange (optional)
         </button>
 
-        <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.18em] text-[rgba(245,247,250,0.45)]">
-          Optional style preset
-        </p>
-        <div className="space-y-2.5">
-          {OPTIONS.map(({ choice, title, bot, blurb }) => (
-            <button
-              key={choice}
-              type="button"
-              onClick={() => pickAndStartPaperTrading(choice)}
-              className="flex w-full flex-col items-start rounded-2xl border border-white/[0.08] bg-[#171A20] px-4 py-4 text-left shadow-[inset_0_1px_0_0_rgba(255,255,255,0.04)] transition hover:border-[rgba(0,200,120,0.35)] hover:bg-[#1a1e26] active:scale-[0.99]"
-            >
-              <div className="flex w-full items-center justify-between gap-2">
-                <span className="text-base font-bold text-[#F5F7FA]">{title}</span>
-                <span className="rounded-full border border-[rgba(0,200,120,0.28)] bg-[rgba(0,200,120,0.08)] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[#7ee8d3]">
-                  {bot}
-                </span>
-              </div>
-              <p className="mt-1.5 text-xs leading-relaxed text-[rgba(245,247,250,0.6)]">{blurb}</p>
-            </button>
-          ))}
-        </div>
       </div>
     </div>
   );

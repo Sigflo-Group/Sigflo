@@ -1177,10 +1177,8 @@ export function TradeScreen() {
     return next;
   }, [mergedModel, stopParsed, targetParsed, tradeBalance, linkedUtaRawMaxUsd, forcePaperMode, paperCashUsd]);
 
-  // live.lastPrice updates on every WS trade/ticker event (immediateUiOnTick: true).
-  // manageFastMark carries the WS mark price, but mark price only changes in ticker delta messages
-  // (not on every trade), so it lags behind. Prioritise lastPrice to keep the P&L live.
-  const markForManage = live.lastPrice ?? manageFastMark ?? manageCtx?.markPrice ?? mergedModel.lastPrice;
+  // Prefer mark price for PnL (exchanges use mark price, not last price).
+  const markForManage = manageFastMark ?? live.markPrice ?? manageCtx?.markPrice ?? live.lastPrice ?? mergedModel.lastPrice;
 
   const insightTicker = useMemo((): SymbolTicker | undefined => {
     if (live.lastPrice == null || live.high24h == null || live.low24h == null) return undefined;
@@ -1200,17 +1198,33 @@ export function TradeScreen() {
     if (market === 'futures' && exchangePositionForSymbol) {
       const pos = exchangePositionForSymbol;
       const entry = pos.entryPrice > 0 ? pos.entryPrice : manageCtx.entryPrice;
+      const notional = Math.abs(pos.size) * (entry > 0 ? entry : manageCtx.entryPrice);
+      // Prefer exchange-reported unrealizedPnl (authoritative) when available.
+      if (pos.unrealizedPnl != null && Number.isFinite(pos.unrealizedPnl)) {
+        const markPx =
+          pos.markPrice != null && pos.markPrice > 0
+            ? pos.markPrice
+            : typeof markForManage === 'number' && Number.isFinite(markForManage) && markForManage > 0
+              ? markForManage
+              : entry;
+        const lev = pos.leverage ?? manageCtx.leverage;
+        const marginBase =
+          pos.positionIM != null && pos.positionIM > 0
+            ? pos.positionIM
+            : lev && lev > 1 && notional > 0
+              ? notional / lev
+              : null;
+        const pnlPct = marginBase != null ? (pos.unrealizedPnl / marginBase) * 100 : 0;
+        return { pnlUsd: pos.unrealizedPnl, pnlPct };
+      }
       const markPx =
         typeof markForManage === 'number' && Number.isFinite(markForManage) && markForManage > 0
           ? markForManage
           : pos.markPrice != null && pos.markPrice > 0
             ? pos.markPrice
             : entry;
-      const notional = Math.abs(pos.size) * (entry > 0 ? entry : manageCtx.entryPrice);
       const usd = notional > 0 ? notional : manageCtx.positionUsd;
       const { pnlUsd } = managePnlFromPrices(pos.side, entry, markPx, usd);
-      // Show return on margin so the % reflects actual capital at risk (matches what the exchange shows).
-      // positionIM is the initial margin in USD sent by Bybit; fall back to notional/leverage.
       const lev = pos.leverage ?? manageCtx.leverage;
       const marginBase =
         pos.positionIM != null && pos.positionIM > 0

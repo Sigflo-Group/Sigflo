@@ -1,9 +1,10 @@
-import { useCallback } from 'react';
+import { useCallback, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { ExecutionSafetyCard } from '@/components/risk/ExecutionSafetyCard';
 import { RiskLimitCard } from '@/components/risk/RiskLimitCard';
 import { RiskModeSelector } from '@/components/risk/RiskModeSelector';
 import { getRiskSettings, saveRiskSettings, useRiskSettings } from '@/services/risk/riskSettings';
+import { updateChecklist } from '@/lib/onboardingChecklist';
 import type { SigfloRiskMode, SigfloRiskSettings } from '@/types/risk';
 
 function NumField({
@@ -39,6 +40,8 @@ function NumField({
 
 export default function RiskControlsScreen() {
   const draft = useRiskSettings();
+
+  useEffect(() => { updateChecklist({ visitedRisk: true }); }, []);
 
   const persist = useCallback((patch: Partial<SigfloRiskSettings>) => {
     saveRiskSettings({ ...getRiskSettings(), ...patch });

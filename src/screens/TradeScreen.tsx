@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { AssistedExitConfirmBar } from '@/components/trade/AssistedExitConfirmBar';
 import { ExitAutomationControls } from '@/components/trade/ExitAutomationControls';
-import { TradeChartScenarioStrip, computeScenarioProbabilities } from '@/components/trade/TradeChartScenarioStrip';
+
 import { MarketToggle } from '@/components/trade/MarketToggle';
 import { ActivePositionsPanel } from '@/components/trade/ActivePositionsPanel';
 import { CloseAllPositionsModal } from '@/components/trade/CloseAllPositionsModal';
@@ -85,6 +85,7 @@ import {
 } from '@/lib/marketScannerRows';
 import { formatElapsedAgo, postedAgoToSeconds, uiSignalStateClasses, uiSignalStateFromMarketStatus, uiSignalStateLabel } from '@/lib/signalState';
 import { EXIT_AI_MODE_LABEL, EXIT_STRATEGY_LABEL } from '@/lib/aiExitAutomation';
+import { EntryGuidanceCard, ExitGuidanceCard } from '@/components/trade/TradeGuidanceCards';
 import { TRADE_CHART_LEVEL_COLORS } from '@/lib/tradeChartLevels';
 import {
   readPersistedTradeChartInterval,
@@ -97,6 +98,7 @@ import {
 } from '@/lib/exitFlowDisplayStabilize';
 import { buildExitAiCoPilotModel, buildManageAiExitZoneAuxLines } from '@/lib/exitAiCoPilot';
 import { resolveExitGuidanceFlow } from '@/lib/tradeExitGuidanceFlow';
+import { computeTradeEntryGuidance } from '@/lib/tradeEntryGuidance';
 import {
   buildTradeTimingUiModel,
   getExecutionQuality,
@@ -1948,16 +1950,6 @@ export function TradeScreen() {
     targetParsed,
   ]);
 
-  const scenarioProb = useMemo(
-    () =>
-      computeScenarioProbabilities({
-        tradeScore: metrics.riskSummary.tradeScore,
-        setupScore: selectedSignal.setupScore,
-        side: side === 'long' ? 'long' : 'short',
-      }),
-    [metrics.riskSummary.tradeScore, selectedSignal.setupScore, side],
-  );
-
   const timingUi = useMemo(
     () =>
       buildTradeTimingUiModel({
@@ -2160,6 +2152,33 @@ export function TradeScreen() {
     exitFlowDisplayStashRef.current = stash;
     return stash.displayed;
   }, [exitFlowRaw, exitFlowDisplayTick]);
+
+  const entryGuidance = useMemo(
+    () =>
+      computeTradeEntryGuidance({
+        marketStatus: scannerStatus,
+        tradeScore: metrics.riskSummary.tradeScore,
+        setupScore: selectedSignal.setupScore,
+        side: side === 'long' ? 'long' : 'short',
+        lastPrice:
+          typeof mergedModel.lastPrice === 'number' && Number.isFinite(mergedModel.lastPrice)
+            ? mergedModel.lastPrice
+            : modelForMetrics.entry,
+        planEntry: modelForMetrics.entry,
+        hasOpenPosition: hasActiveTradePosition,
+        executionQuality: executionQuality ?? null,
+      }),
+    [
+      scannerStatus,
+      metrics.riskSummary.tradeScore,
+      selectedSignal.setupScore,
+      side,
+      mergedModel.lastPrice,
+      modelForMetrics.entry,
+      hasActiveTradePosition,
+      executionQuality,
+    ],
+  );
 
   const serverExitEligible = useMemo(
     () =>
@@ -3235,6 +3254,7 @@ export function TradeScreen() {
               }
             }
           }
+          tradeScrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
           return true;
         } catch (e) {
           reverseOrderInProgressRef.current = false;
@@ -3262,6 +3282,7 @@ export function TradeScreen() {
         });
         if (open?.ok) {
           flashTradeToast('Paper trade opened — simulated portfolio updated.');
+          tradeScrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
           return true;
         }
         flashTradeToast(open?.error ?? 'Paper trade unavailable right now.');
@@ -4543,7 +4564,7 @@ export function TradeScreen() {
         >
           <div className="flex flex-col gap-1">
             {!isManageMode && !isBotsReviewCockpit ? <MarketToggle value={market} onChange={setMarket} /> : null}
-            {paperModeActive ? (
+            {forcePaperMode ? (
               <div className="rounded-lg border border-violet-400/25 bg-violet-500/[0.08] px-2.5 py-1.5 text-[10px] font-semibold tracking-wide text-violet-100">
                 Paper Trading Mode · Simulated Portfolio
               </div>
@@ -4832,46 +4853,10 @@ export function TradeScreen() {
               <WhyThisTradePanel model={whyThisTradeModel} />
             ) : null}
             {!isManageMode && !isBotsReviewCockpit ? (
-              <TradeChartScenarioStrip
-                mode="trade"
-                side={primaryChartOpenPosition?.side ?? side}
-                estimatedPnlUsd={portfolioAlignedLiveUnrealized.pnlUsd}
-                estimatedPnlPct={portfolioAlignedLiveUnrealized.movePct}
-                targetProfitUsd={metrics.targetProfitUsd}
-                stopLossUsd={metrics.stopLossUsd}
-                riskReward={mergedModel.riskReward}
-                probUp={scenarioProb.probUp}
-                probDown={scenarioProb.probDown}
-                marginUsd={primaryChartOpenPosition?.marginUsd ?? metrics.amountUsedUsd}
-                estFeeUsd={estFeeUsd}
-                liqPrice={
-                  market === 'futures'
-                    ? (primaryChartOpenPosition?.liquidationPrice ?? metrics.liquidation)
-                    : null
-                }
-                entry={primaryChartOpenPosition?.entryPrice ?? modelForMetrics.entry}
-                stop={modelForMetrics.stop}
-                target={modelForMetrics.target}
-                positionSizeUsd={primaryChartOpenPosition?.positionNotionalUsd ?? metrics.positionSizeUsd}
-                leverage={primaryChartOpenPosition?.leverage ?? leverage}
-                isFutures={market === 'futures'}
-                tradeScore={metrics.riskSummary.tradeScore}
-                setupScore={selectedSignal.setupScore}
-                trendAlignment={selectedSignal.scoreBreakdown.trendAlignment}
-                momentumQuality={selectedSignal.scoreBreakdown.momentumQuality}
-                exitAiMode={exitAuto.mode}
-                exitStrategyPreset={exitAuto.strategy}
-                automationSafeguards={exitAuto.safeguards}
-                customStrategyThresholds={exitAuto.customStrategyThresholds}
-                scannerStatus={scannerStatus}
-                lastPrice={
-                  typeof mergedModel.lastPrice === 'number' && Number.isFinite(mergedModel.lastPrice)
-                    ? mergedModel.lastPrice
-                    : modelForMetrics.entry
-                }
-                hasOpenPosition={hasActiveTradePosition}
-                executionQuality={executionQuality}
-              />
+              <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+                <EntryGuidanceCard g={entryGuidance} />
+                <ExitGuidanceCard eg={exitFlow?.effective ?? null} />
+              </div>
             ) : null}
           </div>
           {isManageMode && managePnlDisplay && manageCtx && hasManageOpenExposure ? (

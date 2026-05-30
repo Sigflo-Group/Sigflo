@@ -65,7 +65,7 @@ import { useSignalEngine } from '@/hooks/useSignalEngine';
 import { useLiveTradeMarket, type TradeChartInterval } from '@/hooks/useLiveTradeMarket';
 import { useThrottledLiveUnrealized } from '@/hooks/useThrottledLiveUnrealized';
 import { managePnlFromPrices, parseManageTradeContext } from '@/lib/manageTradeContext';
-import { buildManageTradeQueryFromLinearPosition, buildTradeQueryString } from '@/lib/tradeNavigation';
+import { buildManageTradeQueryFromLinearPosition, buildPortfolioPositionTradeQuery, buildTradeQueryString } from '@/lib/tradeNavigation';
 import { isTradePairFavorite, normalizeTradePairBase, toggleTradePairFavorite } from '@/lib/tradePairFavorites';
 import {
   readAppAnnouncementsEnabled,
@@ -3545,20 +3545,33 @@ export function TradeScreen() {
 
   const openManagePositionView = useCallback(() => {
     const pos = exchangePositionForSymbol;
-    if (!pos || market !== 'futures') return;
-    const mark =
-      hasActiveTradePosition && Number.isFinite(throttledOpenPnl.mark) && throttledOpenPnl.mark > 0
-        ? throttledOpenPnl.mark
-        : live.lastPrice != null && live.lastPrice > 0
-          ? live.lastPrice
-          : Number.isFinite(mergedModel.lastPrice) && mergedModel.lastPrice > 0
-            ? mergedModel.lastPrice
-            : undefined;
-    const q = buildManageTradeQueryFromLinearPosition(pos, {
-      markPrice: mark,
-      leverageFallback: effectiveFuturesLeverage,
-    });
-    navigate(`/trade?${q}`);
+    if (pos && market === 'futures') {
+      const mark =
+        hasActiveTradePosition && Number.isFinite(throttledOpenPnl.mark) && throttledOpenPnl.mark > 0
+          ? throttledOpenPnl.mark
+          : live.lastPrice != null && live.lastPrice > 0
+            ? live.lastPrice
+            : Number.isFinite(mergedModel.lastPrice) && mergedModel.lastPrice > 0
+              ? mergedModel.lastPrice
+              : undefined;
+      const q = buildManageTradeQueryFromLinearPosition(pos, {
+        markPrice: mark,
+        leverageFallback: effectiveFuturesLeverage,
+      });
+      navigate(`/trade?${q}`);
+      return;
+    }
+    if (sigfloRepoPosition && market === 'futures') {
+      const symbol = sigfloRepoPosition.pair.replace(/ \/ /g, '');
+      const q = buildPortfolioPositionTradeQuery(symbol, sigfloRepoPosition.direction, {
+        positionUsd: Math.max(1, Math.round(Math.abs(sigfloRepoPosition.size * sigfloRepoPosition.entryPrice))),
+        entryPrice: sigfloRepoPosition.entryPrice,
+        posSize: sigfloRepoPosition.size,
+        markPrice: sigfloRepoPosition.markPrice,
+        leverage: sigfloRepoPosition.leverage,
+      });
+      navigate(`/trade?${q}`);
+    }
   }, [
     effectiveFuturesLeverage,
     exchangePositionForSymbol,
@@ -3567,6 +3580,7 @@ export function TradeScreen() {
     market,
     mergedModel.lastPrice,
     navigate,
+    sigfloRepoPosition,
     throttledOpenPnl.mark,
   ]);
 
@@ -4931,16 +4945,6 @@ export function TradeScreen() {
             ) : null}
             {!isBotsReviewCockpit ? (
               <>
-                {!isManageMode && hasActiveTradePosition && market === 'futures' ? (
-                  <button
-                    type="button"
-                    onClick={openManagePositionView}
-                    className="flex w-full items-center justify-between rounded-xl border border-white/[0.08] bg-sigflo-surface px-3.5 py-2.5 text-sm text-sigflo-text transition hover:border-white/[0.14] hover:bg-white/[0.06]"
-                  >
-                    <span className="font-semibold">Manage position</span>
-                    <span className="text-sigflo-muted">→</span>
-                  </button>
-                ) : null}
                 <ExitModePanel live={Boolean(hasActiveTradePosition) || isManageMode}>
                   <ExitAutomationControls
                     mode={exitAuto.mode}

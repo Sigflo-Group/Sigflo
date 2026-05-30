@@ -6,7 +6,17 @@ type AdapterFactory = () => MarketDataAdapter;
 const registry: Record<ExchangeId, AdapterFactory> = {
   bybit: () => new BybitMarketDataAdapter(),
   // mexc adapter will be registered here when market data support is added
-  mexc: () => { throw new Error('MEXC market data adapter not yet implemented'); },
+  mexc: () => ({
+    exchangeId: 'mexc',
+    capabilities: { linearPerps: false, spot: false, publicTrades: false },
+    fetchKlines: () => Promise.resolve([]),
+    fetchTickers: () => Promise.resolve([]),
+    fetchTradablePerpSymbols: () => Promise.resolve([]),
+    rankLiquidUniverse: () => [],
+    connectWebSocket: () => {},
+    disconnectWebSocket: () => {},
+    updateTickerSymbols: () => {},
+  }),
 };
 
 export function createAdapter(id: ExchangeId): MarketDataAdapter {

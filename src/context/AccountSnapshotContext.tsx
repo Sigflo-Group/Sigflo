@@ -101,8 +101,9 @@ export function AccountSnapshotProvider({
   useEffect(() => {
     if (authLoading) return;
     if (sessionUid == null) setBiasFlipNotifyTradeFocusLinearSymbol(null);
-    hasFetchedRef.current = true;
-    void refresh();
+    refresh().then(() => {
+      hasFetchedRef.current = true;
+    });
   }, [authLoading, sessionUid, refresh]);
 
   useEffect(() => {

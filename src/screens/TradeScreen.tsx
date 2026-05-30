@@ -85,6 +85,7 @@ import {
 } from '@/lib/marketScannerRows';
 import { formatElapsedAgo, postedAgoToSeconds, uiSignalStateClasses, uiSignalStateFromMarketStatus, uiSignalStateLabel } from '@/lib/signalState';
 import { EXIT_AI_MODE_LABEL, EXIT_STRATEGY_LABEL } from '@/lib/aiExitAutomation';
+import { EntryGuidanceCard, ExitGuidanceCard } from '@/components/trade/TradeGuidanceCards';
 import { TRADE_CHART_LEVEL_COLORS } from '@/lib/tradeChartLevels';
 import {
   readPersistedTradeChartInterval,
@@ -97,6 +98,7 @@ import {
 } from '@/lib/exitFlowDisplayStabilize';
 import { buildExitAiCoPilotModel, buildManageAiExitZoneAuxLines } from '@/lib/exitAiCoPilot';
 import { resolveExitGuidanceFlow } from '@/lib/tradeExitGuidanceFlow';
+import { computeTradeEntryGuidance } from '@/lib/tradeEntryGuidance';
 import {
   buildTradeTimingUiModel,
   getExecutionQuality,
@@ -2150,6 +2152,33 @@ export function TradeScreen() {
     exitFlowDisplayStashRef.current = stash;
     return stash.displayed;
   }, [exitFlowRaw, exitFlowDisplayTick]);
+
+  const entryGuidance = useMemo(
+    () =>
+      computeTradeEntryGuidance({
+        marketStatus: scannerStatus,
+        tradeScore: metrics.riskSummary.tradeScore,
+        setupScore: selectedSignal.setupScore,
+        side: side === 'long' ? 'long' : 'short',
+        lastPrice:
+          typeof mergedModel.lastPrice === 'number' && Number.isFinite(mergedModel.lastPrice)
+            ? mergedModel.lastPrice
+            : modelForMetrics.entry,
+        planEntry: modelForMetrics.entry,
+        hasOpenPosition: hasActiveTradePosition,
+        executionQuality: executionQuality ?? null,
+      }),
+    [
+      scannerStatus,
+      metrics.riskSummary.tradeScore,
+      selectedSignal.setupScore,
+      side,
+      mergedModel.lastPrice,
+      modelForMetrics.entry,
+      hasActiveTradePosition,
+      executionQuality,
+    ],
+  );
 
   const serverExitEligible = useMemo(
     () =>
@@ -4822,6 +4851,12 @@ export function TradeScreen() {
             ) : null}
             {!isManageMode && !isBotsReviewCockpit && proIntelligenceMode ? (
               <WhyThisTradePanel model={whyThisTradeModel} />
+            ) : null}
+            {!isManageMode && !isBotsReviewCockpit ? (
+              <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+                <EntryGuidanceCard g={entryGuidance} />
+                <ExitGuidanceCard eg={exitFlow?.effective ?? null} />
+              </div>
             ) : null}
           </div>
           {isManageMode && managePnlDisplay && manageCtx && hasManageOpenExposure ? (

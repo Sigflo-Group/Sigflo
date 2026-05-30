@@ -72,11 +72,14 @@ export function SignalCard({
   signal,
   miniCandles,
   intervalLabel = '5m',
+  onNavigate,
 }: {
   signal: CryptoSignal;
   miniCandles?: Candle[];
   /** Matches trade chart timeframe (e.g. `15m`, `1h`). */
   intervalLabel?: string;
+  /** Called when user taps the card to open the trade screen. */
+  onNavigate?: () => void;
 }) {
   const navigate = useNavigate();
   const { registerSignalFollowed } = useSignalEngine();
@@ -132,6 +135,7 @@ export function SignalCard({
 
   const openTrade = () => {
     registerSignalFollowed(signal);
+    onNavigate?.();
     navigate(`/trade?${buildTradeQueryString(signal, { marketStatus: deriveMarketStatus(signal) })}`);
   };
 

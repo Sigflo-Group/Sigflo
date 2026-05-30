@@ -4604,7 +4604,7 @@ export function TradeScreen() {
                 }
                 onRequestCloseAllModal={onRequestActiveCloseAllModal}
                 onOpenManagePosition={
-                  market === 'futures' && exchangePositionForSymbol ? openManagePositionView : undefined
+                  market === 'futures' && (exchangePositionForSymbol || sigfloRepoPosition) ? openManagePositionView : undefined
                 }
                 exitAiModeLabel={exitAiModeLabel}
                 exitStrategyLabel={exitStrategyLabel}

@@ -2,14 +2,12 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { MarketNewsScanSheet } from '@/components/news/MarketNewsScanSheet';
 import { SignalCard } from '@/components/feed/SignalCard';
-import { FeedWalkthrough } from '@/components/feed/FeedWalkthrough';
 import { OnboardingChecklist } from '@/components/feed/OnboardingChecklist';
 import { useFeedMiniCharts } from '@/hooks/useFeedMiniCharts';
 import { useSyncedTradeChartInterval } from '@/hooks/useSyncedTradeChartInterval';
 import { tradeChartIntervalShortLabel } from '@/lib/tradeChartIntervalPreference';
 import { useSignalEngine } from '@/hooks/useSignalEngine';
 import { dismissFeedWelcome, isFeedWelcomeDismissed } from '@/lib/feedWelcomeBanner';
-import { isFeedWalkthroughSeen } from '@/lib/feedWalkthrough';
 import { updateChecklist } from '@/lib/onboardingChecklist';
 import {
   buildTrackedFallbackSignal,
@@ -38,19 +36,9 @@ export function FeedScreen() {
   const [filter, setFilter] = useState<FeedFilter>(initialFilter);
   const [newsScanOpen, setNewsScanOpen] = useState(false);
   const [showWelcome, setShowWelcome] = useState(!isFeedWelcomeDismissed());
-  const [showWalkthrough, setShowWalkthrough] = useState(false);
   const onDismissWelcome = useCallback(() => {
     dismissFeedWelcome();
     setShowWelcome(false);
-    if (!isFeedWalkthroughSeen()) {
-      setShowWalkthrough(true);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (!isFeedWelcomeDismissed()) return;
-    if (isFeedWalkthroughSeen()) return;
-    setShowWalkthrough(true);
   }, []);
   const {
     signals: liveSignals,
@@ -142,10 +130,6 @@ export function FeedScreen() {
             </div>
           ) : null}
         </div>
-
-          {showWalkthrough ? (
-            <FeedWalkthrough onComplete={() => setShowWalkthrough(false)} />
-          ) : null}
 
           {showWelcome ? (
           <div className="rounded-2xl border border-sigflo-accent/20 bg-sigflo-accent/[0.04] px-4 py-3.5">

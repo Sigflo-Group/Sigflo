@@ -5,6 +5,7 @@ import { fetchKlines, fetchTickers } from '@/services/bybit/client';
 import { fetchMexcKlines, fetchMexcTicker } from '@/services/mexc/publicClient';
 import type { Candle } from '@/types/market';
 import type { TradeChartCandle } from '@/types/trade';
+import { upsertCandle } from '@/lib/engineUtils';
 import type { ExchangeId } from '@/types/integrations';
 
 export type TradeChartInterval = '1' | '5' | '15' | '60' | '240' | 'D' | 'W';
@@ -59,14 +60,6 @@ type LiveTradeMarketOptions = {
   /** Exchange source for market data. Defaults to 'bybit' (uses Bybit public API + WS). Pass 'mexc' to use MEXC public REST polling instead. */
   exchange?: ExchangeId;
 };
-
-function upsertCandle(store: Candle[], next: Candle): Candle[] {
-  const out = [...store];
-  const last = out.at(-1);
-  if (!last || next.ts > last.ts) out.push(next);
-  else if (next.ts === last.ts) out[out.length - 1] = next;
-  return out.slice(-140);
-}
 
 function toBillions(v: number): string {
   if (v >= 1_000_000_000) return `$${(v / 1_000_000_000).toFixed(2)}B`;

@@ -4511,7 +4511,7 @@ export function TradeScreen() {
 
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         {isManageMode ? (
-          <div className="shrink-0 border-b border-emerald-400/40 bg-landing-bg pt-2 shadow-[0_8px_28px_-8px_rgba(0,0,0,0.45)]">
+          <div className="shrink-0 border-b border-emerald-400/40 bg-landing-bg shadow-[0_8px_28px_-8px_rgba(0,0,0,0.45)]">
             <div className="mx-auto w-full min-w-0 max-w-lg px-1.5">
               {/* Manage chart: boolean setupMode + live preset so PriceChartCard syncs overlays (undefined = uncontrolled, levels stuck off). */}
               <TradeChartPanel

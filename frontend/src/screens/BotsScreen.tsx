@@ -18,20 +18,12 @@ const COMING_FEATURES = [
     description: 'Set daily drawdown caps, max position size, leverage limits, and cooldown periods per pair.',
   },
   {
-    title: 'Multi-exchange support',
-    description: 'Run the same bot across Bybit, MEXC, and more — with unified portfolio tracking.',
-  },
-  {
     title: 'Backtesting engine',
     description: 'Replay historical market data to see how your strategy would have performed before going live.',
   },
   {
     title: 'Performance analytics',
     description: 'Detailed PnL breakdown, win-rate by pair, Sharpe ratio, and drawdown curves per bot.',
-  },
-  {
-    title: 'Portfolio rebalancing',
-    description: 'Schedule auto-rebalancing across assets to maintain target allocations.',
   },
 ];
 

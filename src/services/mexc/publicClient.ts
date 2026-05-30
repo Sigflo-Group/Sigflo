@@ -1,5 +1,5 @@
 import { apiJson } from '@/services/api/http';
-import type { Candle } from '@/types/market';
+import type { Candle, SymbolTicker, SymbolUniverseItem } from '@/types/market';
 
 const INTERVAL_MAP: Record<string, string> = {
   '1': 'Min1',
@@ -31,7 +31,6 @@ type MexcTickerData = {
   riseFallRate?: string;
   changeRate24?: string;
   high24Price?: string;
-  low24Price?: string;
   lower24Price?: string;
   amount24?: string;
   volume24?: string;
@@ -54,7 +53,7 @@ export async function fetchMexcKlines(symbol: string, interval: string, limit = 
   );
   if (!json?.success || !json.data?.time?.length) return [];
   const d = json.data;
-  return d.time.map((ts, i) => ({
+  const candles = d.time.map((ts, i) => ({
     ts: ts < 1e12 ? ts * 1000 : ts,
     open: Number(d.open[i]),
     high: Number(d.high[i]),
@@ -62,6 +61,7 @@ export async function fetchMexcKlines(symbol: string, interval: string, limit = 
     close: Number(d.close[i]),
     volume: Number(d.vol[i]),
   }));
+  return candles.map((c, i) => ({ ...c, isClosed: i < candles.length - 1 }));
 }
 
 export async function fetchMexcTicker(symbol: string): Promise<MexcPublicTickerSnapshot | null> {
@@ -84,8 +84,8 @@ export async function fetchMexcTicker(symbol: string): Promise<MexcPublicTickerS
   const rawRate = t.riseFallRate ?? t.changeRate24;
   const change24hPct = rawRate != null ? Number(rawRate) * 100 : 0;
 
-  const high24h = Number(t.high24Price ?? t.lower24Price ?? lastPrice);
-  const low24h = Number(t.low24Price ?? t.lower24Price ?? lastPrice);
+  const high24h = Number(t.high24Price ?? lastPrice);
+  const low24h = Number(t.lower24Price ?? lastPrice);
   const turnover24hUsd = Number(t.amount24 ?? t.volume24 ?? 0);
 
   return {
@@ -97,4 +97,59 @@ export async function fetchMexcTicker(symbol: string): Promise<MexcPublicTickerS
     low24h: Number.isFinite(low24h) && low24h > 0 ? low24h : lastPrice,
     turnover24hUsd,
   };
+}
+
+type MexcBulkTickerData = {
+  symbol: string;
+  lastPrice: string;
+  fairPrice?: string;
+  indexPrice?: string;
+  riseFallRate?: string;
+  high24Price?: string;
+  lower24Price?: string;
+  volume24?: string;
+  amount24?: string;
+};
+
+function toSymbolTicker(t: MexcBulkTickerData): SymbolTicker {
+  const markRaw = t.fairPrice != null ? Number(t.fairPrice) : NaN;
+  const indexRaw = t.indexPrice != null ? Number(t.indexPrice) : NaN;
+  return {
+    symbol: t.symbol.replace(/_/g, ''),
+    lastPrice: Number(t.lastPrice),
+    ...(Number.isFinite(markRaw) && markRaw > 0 ? { markPrice: markRaw } : {}),
+    ...(Number.isFinite(indexRaw) && indexRaw > 0 ? { indexPrice: indexRaw } : {}),
+    high24h: Number(t.high24Price ?? 0),
+    low24h: Number(t.lower24Price ?? 0),
+    volume24h: Number(t.volume24 ?? 0),
+    turnover24h: Number(t.amount24 ?? 0),
+    price24hPcnt: Number(t.riseFallRate ?? 0),
+  };
+}
+
+export async function fetchTickers(symbols?: string[]): Promise<SymbolTicker[]> {
+  const json = await apiJson<MexcFuturesResponse<MexcBulkTickerData[]>>('/mexc-public/tickers');
+  if (!json?.success || !Array.isArray(json.data)) return [];
+  const list = json.data.map(toSymbolTicker);
+  if (symbols?.length) {
+    const set = new Set(symbols);
+    return list.filter((t) => set.has(t.symbol));
+  }
+  return list;
+}
+
+export async function fetchTradablePerpSymbols(): Promise<string[]> {
+  const json = await apiJson<MexcFuturesResponse<MexcBulkTickerData[]>>('/mexc-public/tickers');
+  if (!json?.success || !Array.isArray(json.data)) return [];
+  return json.data.map((t) => t.symbol.replace(/_/g, ''));
+}
+
+export function rankLiquidUniverse(tickers: SymbolTicker[], minCount: number, maxCount: number): SymbolUniverseItem[] {
+  const sorted = [...tickers].sort((a, b) => b.turnover24h - a.turnover24h);
+  const take = Math.min(Math.max(minCount, 1), Math.max(maxCount, 1));
+  return sorted.slice(0, take).map((t) => ({
+    symbol: t.symbol,
+    volume24h: t.volume24h,
+    turnover24h: t.turnover24h,
+  }));
 }

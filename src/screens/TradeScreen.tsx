@@ -1,5 +1,6 @@
 import { secureStorage } from '@/lib/storage';
-import { dismissFirstTradeGuide, isFirstTradeGuideDismissed } from '@/lib/firstTradeGuide';
+import { dismissFirstTradeGuide, isFirstTradeGuideDismissed, readTradeGuideStep, saveTradeGuideStep } from '@/lib/firstTradeGuide';
+import { updateChecklist } from '@/lib/onboardingChecklist';
 import { ariaExpanded, ariaPressed, ariaSelected } from '@/a11y/ariaBoolean';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
@@ -362,6 +363,14 @@ export function TradeScreen() {
   /** When reviewing an open Sigflo row without an engine opportunity, skip workspace setup hints. */
   const hideFreshSetupTradeHint = Boolean(positionReviewFromQuery && !opportunityIdFromQuery);
   const [showTradeGuide, setShowTradeGuide] = useState(() => !hideFreshSetupTradeHint && !isFirstTradeGuideDismissed());
+  const [tradeGuideStep, setTradeGuideStepLocal] = useState(() => (hideFreshSetupTradeHint ? 0 : readTradeGuideStep()));
+  const setTradeGuideStep = useCallback(
+    (step: number) => {
+      setTradeGuideStepLocal(step);
+      saveTradeGuideStep(step);
+    },
+    [],
+  );
 
   useEffect(() => {
     if (!botsTradeOpp) return;
@@ -580,17 +589,15 @@ export function TradeScreen() {
 
   const tradeScreenOpps = useMemo(() => signalsToOpportunities(liveSignals, oppPrices, {}), [liveSignals, oppPrices]);
 
+  const reviewOppId = botsReviewContext?.opportunityId?.trim();
+  const matchedOpp = useMemo(
+    () => (reviewOppId ? tradeScreenOpps.find((o) => o.id === reviewOppId) ?? null : undefined),
+    [reviewOppId, tradeScreenOpps],
+  );
   useEffect(() => {
-    const id = botsReviewContext?.opportunityId?.trim();
-    if (!id) {
-      setBotsTradeOpp(undefined);
-      setBotsTradeOppLoading(false);
-      return;
-    }
-    setBotsTradeOppLoading(true);
-    setBotsTradeOpp(tradeScreenOpps.find((o) => o.id === id) ?? null);
+    setBotsTradeOpp(matchedOpp);
     setBotsTradeOppLoading(false);
-  }, [botsReviewContext?.opportunityId, tradeScreenOpps]);
+  }, [matchedOpp]);
 
   const selectedSignal = useMemo(() => {
     const fromQuery = buildSignalContextFromQuery(params, signalId);
@@ -768,6 +775,7 @@ export function TradeScreen() {
       setManageFastMark(undefined);
       return;
     }
+    let rafId: number;
     const push = () => {
       const snap = live.tickSnapshotRef.current;
       const next =
@@ -780,9 +788,12 @@ export function TradeScreen() {
         setManageFastMark((prev) => (prev !== next ? next : prev));
       }
     };
-    push();
-    const id = window.setInterval(push, 25);
-    return () => window.clearInterval(id);
+    const loop = () => {
+      push();
+      rafId = requestAnimationFrame(loop);
+    };
+    rafId = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(rafId);
   }, [isManageMode, live.tickSnapshotRef, live.lastPrice]);
 
   const liveMarketTickerItems = useMemo(
@@ -4554,30 +4565,61 @@ export function TradeScreen() {
               </p>
             ) : null}
             {showTradeGuide && !isManageMode && !hideFreshSetupTradeHint ? (
-              <div className="rounded-xl border border-cyan-400/20 bg-cyan-500/[0.06] px-3 py-2.5">
-                <div className="flex items-start justify-between gap-2">
-                  <p className="text-[11px] font-semibold text-cyan-100">How to review a setup</p>
-                  <button
-                    type="button"
-                    onClick={() => { dismissFirstTradeGuide(); setShowTradeGuide(false); }}
-                    className="text-[10px] text-zinc-500 hover:text-zinc-300"
-                    aria-label="Dismiss trade guide"
-                  >
-                    Dismiss
-                  </button>
-                </div>
-                <div className="mt-2 space-y-1.5">
-                  <p className="text-[11px] leading-relaxed text-zinc-300">
-                    <span className="text-cyan-200/80">1.</span> Review the signal thesis and score in the cards below.
-                  </p>
-                  <p className="text-[11px] leading-relaxed text-zinc-300">
-                    <span className="text-cyan-200/80">2.</span> The chart shows price action — set your entry, stop, and target on the plan.
-                  </p>
-                  <p className="text-[11px] leading-relaxed text-zinc-300">
-                    <span className="text-cyan-200/80">3.</span> Use <span className="font-semibold text-white">Paper trade</span> to try a position without real funds.
-                  </p>
-                </div>
-              </div>
+              (() => {
+                const guideSteps = [
+                  { title: 'Review the signal', text: 'Read the thesis and score in the cards below to understand why this setup was detected and its conviction level.' },
+                  { title: 'Set your levels', text: 'Drag on the chart or type prices for entry, stop loss, and take-profit targets. The Paper Trade Preview updates in real time.' },
+                  { title: 'Paper trade', text: 'Tap Paper trade to simulate the position with virtual funds — no risk, no exchange needed.' },
+                  { title: 'Track it', text: 'Your position appears in the panel above. Set exit rules or let AI manage the trade automatically.' },
+                ];
+                const isLast = tradeGuideStep >= guideSteps.length - 1;
+                const s = guideSteps[Math.min(tradeGuideStep, guideSteps.length - 1)];
+                return (
+                  <div className="rounded-xl border border-cyan-400/20 bg-cyan-500/[0.06] px-3 py-2.5">
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="text-[11px] font-semibold text-cyan-100">{s.title}</p>
+                      <button
+                        type="button"
+                        onClick={() => { dismissFirstTradeGuide(); setShowTradeGuide(false); }}
+                        className="text-[10px] text-zinc-500 hover:text-zinc-300"
+                        aria-label="Dismiss trade guide"
+                      >
+                        Dismiss
+                      </button>
+                    </div>
+                    <div className="mt-1.5 flex items-center gap-1.5">
+                      {guideSteps.map((_, i) => (
+                        <span
+                          key={i}
+                          className={`h-1 rounded-full transition-all duration-300 ${
+                            i === tradeGuideStep ? 'w-5 bg-cyan-400/80' : 'w-1 bg-white/15'
+                          }`}
+                        />
+                      ))}
+                    </div>
+                    <p className="mt-2 text-[11px] leading-relaxed text-zinc-300">{s.text}</p>
+                    <div className="mt-2 flex items-center gap-2">
+                      {!isLast ? (
+                        <button
+                          type="button"
+                          onClick={() => setTradeGuideStep(tradeGuideStep + 1)}
+                          className="rounded-lg border border-cyan-400/30 bg-cyan-500/10 px-3 py-1 text-[10px] font-semibold text-cyan-200 transition hover:bg-cyan-500/20"
+                        >
+                          Next
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => { updateChecklist({ paperTraded: true }); dismissFirstTradeGuide(); setShowTradeGuide(false); }}
+                          className="rounded-lg border border-cyan-400/30 bg-cyan-500/10 px-3 py-1 text-[10px] font-semibold text-cyan-200 transition hover:bg-cyan-500/20"
+                        >
+                          Got it
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()
             ) : null}
             {!isManageMode ? (
               <ActivePositionsPanel

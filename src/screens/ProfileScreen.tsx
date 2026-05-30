@@ -8,6 +8,7 @@ import { useFeedback } from '@/context/FeedbackContext';
 import { useSignalEngine } from '@/hooks/useSignalEngine';
 import { supabase } from '@/lib/supabase';
 import { formatFundingBalance } from '@/lib/formatFundingBalance';
+import { updateChecklist } from '@/lib/onboardingChecklist';
 import { getOAuthRedirectToProfile } from '@/lib/oauthRedirectOrigin';
 import {
   BYBIT_API_KEYS_HREF,
@@ -131,6 +132,13 @@ export default function ProfileScreen() {
     code: string;
   } | null>(null);
   const { items: integrations, loading: integrationsLoading, error: integrationsError, refresh: refreshIntegrations, connect, disconnect, setActive } = useExchangeIntegrations();
+  const anyExchangeConnected = useMemo(
+    () => integrations.some((i) => i.status === 'connected'),
+    [integrations],
+  );
+  useEffect(() => {
+    if (anyExchangeConnected) updateChecklist({ connectedExchange: true });
+  }, [anyExchangeConnected]);
   const { open: openFeedback } = useFeedback();
   const [activateBusy, setActivateBusy] = useState<string | null>(null); // accountId being activated
   const { items: snapshots, closedTrades, loading: snapshotLoading, error: snapshotError, refresh: refreshSnapshots } =
@@ -778,8 +786,8 @@ export default function ProfileScreen() {
                     apiSecret: exchangeForm.apiSecret,
                     passphrase: exchangeForm.passphrase || undefined,
                   });
-                  await refreshSnapshots();
                   closeConnectPanel();
+                  await refreshSnapshots();
                 } catch (e) {
                   setConnectError(
                     e instanceof Error ? sanitizeUserFacingHttpErrorMessage(e.message) : 'Connection failed.',
@@ -1092,6 +1100,10 @@ export default function ProfileScreen() {
                     await disconnect(disconnectTarget);
                     await refreshSnapshots();
                     setDisconnectTarget(null);
+                  } catch (e) {
+                    setConnectError(
+                      e instanceof Error ? e.message : 'Disconnect failed.',
+                    );
                   } finally {
                     setDisconnectBusy(false);
                   }

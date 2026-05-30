@@ -51,8 +51,12 @@ function OnboardingGate() {
   const location = useLocation();
   if (authMode !== 'supabase' || !user) return <Outlet />;
   const connectSeen = isExchangeConnectOnboardingSeen();
-  if (connectSeen && (location.pathname === '/onboarding' || location.pathname === '/onboarding/connect')) {
+  const onOnboarding = location.pathname === '/onboarding' || location.pathname === '/onboarding/connect';
+  if (connectSeen && onOnboarding) {
     return <Navigate to={getFeedRoute()} replace />;
+  }
+  if (!connectSeen && !onOnboarding) {
+    return <Navigate to="/onboarding" replace />;
   }
   return <Outlet />;
 }

@@ -7,7 +7,6 @@ React 19 + TypeScript + Vite + Tailwind SPA for crypto trading signals. Core mar
 ## Project structure
 
 - **Root** — the actual frontend SPA (source of truth)
-- **`frontend/`** — self-contained copy of the SPA used only by Docker (`docker-compose.yml` mounts `./frontend:/app`). Edit root files, not `frontend/` files.
 - **`backend/`** — Express API, separate deploy, not wired through root `npm install` (has own `package.json`)
 - **`netlify/functions/`** — Netlify serverless functions for AI suggest, news scan, admin beta
 
@@ -19,7 +18,7 @@ React 19 + TypeScript + Vite + Tailwind SPA for crypto trading signals. Core mar
 | `npm run dev:backend` | Express backend via `tsx watch` on `:8787` |
 | `npm run build` | `tsc -b && vite build` — required order |
 | `npm test` | `vitest run` (single test file: `src/lib/__tests__/timingLifecycle.test.ts`) |
-| `npm run lint` | ESLint 9 flat config; expects ~30 warnings (react-hooks/exhaustive-deps, react-refresh), 0 errors |
+| `npm run lint` | ESLint 9 flat config; expects ~60 warnings (react-hooks/exhaustive-deps, react-refresh), 0 errors |
 
 ## Testing
 
@@ -27,7 +26,14 @@ React 19 + TypeScript + Vite + Tailwind SPA for crypto trading signals. Core mar
 - **Run:** `npm test` or `npx vitest run`
 - **Location:** `src/lib/__tests__/*.test.ts` (currently 1 file: `timingLifecycle.test.ts`)
 - **Environment:** `node` (not jsdom)
+- **Test files:** `src/lib/__tests__/engineUtils.test.ts`, `src/lib/__tests__/engineStorage.test.ts`, `src/lib/__tests__/timingLifecycle.test.ts`
 - **No component/e2e tests exist** — validate UI changes via `npm run build` + manual browser testing
+
+## Docker
+
+Docker compose mounts root source files directly into the container — no frontend/ sync needed. Run:
+- `npm run docker:up` — start dev containers
+- `npm run docker:up:build` — rebuild and start
 
 ## Env & config quirks
 
@@ -40,7 +46,7 @@ React 19 + TypeScript + Vite + Tailwind SPA for crypto trading signals. Core mar
 
 ## Architecture notes
 
-- **Signal engine runs client-side** in `SignalEngineContext.tsx` (no backend calls for core detection)
+- **Signal engine runs client-side** in `SignalEngineContext.tsx` (no backend calls for core detection). Engine utilities extracted to `src/lib/engineUtils.ts` (candle helpers, key generation) and `src/lib/engineStorage.ts` (localStorage persistence helpers).
 - **Bybit CORS:** browser may show feeds as offline — expected in some dev setups (bypass with Netlify Dev or Vite proxy)
 - **Route splitting:** `app.sigflo.group` → feed at `/`; `sigflo.group` → landing at `/`; other hosts → feed at `/feed` (see `src/config/appRoutes.ts`)
 - **AI routes** (`/api/ai/suggest`, `/api/ai/news-scan`, `/api/admin/beta`) are handled by Vite middleware in dev, Netlify functions in prod
@@ -50,6 +56,46 @@ React 19 + TypeScript + Vite + Tailwind SPA for crypto trading signals. Core mar
 ## Chart height rule (do not hardcode)
 
 Trade chart plot heights live in `src/config/tradeChartHeights.ts` only. `ChartHeader`, `TradeScreen`, and `PriceChartCard` import those constants — do not reintroduce hardcoded values.
+
+## Slack bridge
+
+A polling-based Slack DM bridge connects this session to Slack. When the user DMs `@opencode-link` in Slack, the message lands in `/tmp/slack-messages.jsonl` (appended as JSON lines). A background process (`slack-poll.mjs`) polls `conversations.history` every 2s and auto-replies "Got it!" as a read receipt. Reply to the user via `slack_slack_post_message` to their DM channel `D0B74AVRYUU`.
+
+Key files:
+- `slack-poll.mjs` — background polling bridge (start before session, uses `SLACK_BOT_TOKEN`)
+- `opencode.json` — MCP server config for Slack tools
+- `.opencode/opencode-link.json` — (deprecated) was for opencode-link plugin, no longer used
+
+The polling bridge must be running for messages to be detected. Start it with:
+```
+SLACK_BOT_TOKEN="xoxb-..." nohup node /root/Sigflo/slack-poll.mjs > /dev/null 2>&1 & disown
+```
+
+A companion watcher (`slack-watch.mjs`) writes the latest DM text to `/tmp/slack-alert` on new messages. Check that file to see if the user has messaged.
+
+## WhatsApp bridge
+
+A Baileys-based WhatsApp bridge (`whatsapp-poll.mjs`) polls for incoming messages and outgoing send requests. On first run, it generates a QR code (saved as `/tmp/whatsapp-qr.png`) or pairing code (saved to `/tmp/whatsapp-pairing-code`) that must be used with the user's phone to link the session. Set `WHATSAPP_PHONE` env var to use pairing code mode (QR otherwise).
+
+**Files:**
+- `whatsapp-poll.mjs` — main bridge (Baileys WhatsApp Web client)
+- `whatsapp-auth/` — auth state directory (persisted WhatsApp session)
+- `/tmp/whatsapp-messages.jsonl` — incoming DMs (same format as Slack)
+- `/tmp/whatsapp-send.jsonl` — outgoing messages to send `{"to": "...@s.whatsapp.net", "text": "..."}`
+- `/tmp/whatsapp-qr.png` — QR code image for first-time auth
+- `/tmp/whatsapp-pairing-code` — pairing code for phone number linking
+
+To reply to a WhatsApp user, write to `/tmp/whatsapp-send.jsonl`:
+```
+echo '{"to":"1234567890@s.whatsapp.net","text":"Hello"}' >> /tmp/whatsapp-send.jsonl
+```
+
+The user's WhatsApp number must be known after they first message the bridge. User's number: 61483837839.
+
+Start it with (pairing code mode):
+```
+SLACK_BOT_TOKEN="" WHATSAPP_PHONE=61483837839 nohup node /root/Sigflo/whatsapp-poll.mjs > /tmp/whatsapp-bridge.log 2>&1 &
+```
 
 ## Netlify deploy
 

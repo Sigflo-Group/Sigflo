@@ -12,8 +12,8 @@
     "dev:vite": "vite --host",
     "dev:backend": "cross-env NODE_OPTIONS=--use-system-ca npm run dev --prefix backend",
     "sync:frontend-src": "node scripts/sync-frontend-src.mjs",
-    "docker:up": "npm run sync:frontend-src && docker compose up",
-    "docker:up:build": "npm run sync:frontend-src && docker compose up --build",
+    "docker:up": "docker compose up",
+    "docker:up:build": "docker compose up --build",
     "docker:down": "docker compose down",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
@@ -24,19 +24,24 @@
     "deploy:netlify:draft": "cross-env NODE_OPTIONS=--use-system-ca npx --yes netlify-cli deploy"
   },
   "dependencies": {
+    "@slack/bolt": "^4.7.3",
     "@supabase/supabase-js": "^2.106.2",
+    "@whiskeysockets/baileys": "^7.0.0-rc13",
     "core-js": "^3.49.0",
     "framer-motion": "^12.40.0",
     "lightweight-charts": "^5.2.0",
+    "pino": "^10.3.1",
+    "puppeteer": "^25.1.0",
+    "qrcode": "^1.5.4",
+    "qrcode-terminal": "^0.12.0",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
     "react-router-dom": "^7.15.0",
-    "tweetnacl": "^1.0.3"
+    "tweetnacl": "^1.0.3",
+    "whatsapp-web.js": "^1.34.7"
   },
   "devDependencies": {
     "@eslint/js": "^9.21.0",
-    "@types/node": "^25.9.1",
-    "@types/react": "^19.0.10",
     "@types/node": "^25.7.0",
     "@types/react": "^19.2.15",
     "@types/react-dom": "^19.0.4",
@@ -53,5 +58,21 @@
     "typescript-eslint": "^8.60.0",
     "vite": "~6.4.2",
     "vitest": "^4.1.7"
-  }
+  },
+  "description": "Smart Trader",
+  "main": "eslint.config.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://oauth2:[REDACTED_GITHUB_PAT]@github.com/cmfreak3-jpg/Sigflo.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/cmfreak3-jpg/Sigflo/issues"
+  },
+  "homepage": "https://github.com/cmfreak3-jpg/Sigflo#readme"
 }

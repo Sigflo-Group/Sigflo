@@ -4931,6 +4931,16 @@ export function TradeScreen() {
             ) : null}
             {!isBotsReviewCockpit ? (
               <>
+                {!isManageMode && hasActiveTradePosition && market === 'futures' ? (
+                  <button
+                    type="button"
+                    onClick={openManagePositionView}
+                    className="flex w-full items-center justify-between rounded-xl border border-white/[0.08] bg-sigflo-surface px-3.5 py-2.5 text-sm text-sigflo-text transition hover:border-white/[0.14] hover:bg-white/[0.06]"
+                  >
+                    <span className="font-semibold">Manage position</span>
+                    <span className="text-sigflo-muted">→</span>
+                  </button>
+                ) : null}
                 <ExitModePanel live={Boolean(hasActiveTradePosition) || isManageMode}>
                   <ExitAutomationControls
                     mode={exitAuto.mode}

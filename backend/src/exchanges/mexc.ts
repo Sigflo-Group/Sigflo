@@ -325,9 +325,12 @@ export class MexcAdapter implements ExchangeAdapter {
       if (total <= 0) continue;
       const existing = balances.get(asset);
       if (existing) {
-        existing.free += free;
-        existing.locked += locked;
-        existing.total += total;
+        balances.set(asset, {
+          asset,
+          free: existing.free + free,
+          locked: existing.locked + locked,
+          total: existing.total + total,
+        });
       } else {
         balances.set(asset, { asset, free, locked, total });
       }
@@ -345,8 +348,8 @@ export class MexcAdapter implements ExchangeAdapter {
         input,
       );
       raw = res.success && Array.isArray(res.data) ? res.data : [];
-    } catch {
-      // Futures API not accessible (spot-only key, or account has no futures access) — return empty
+    } catch (e) {
+      console.warn('[MEXC] fetchPositions failed:', e);
       return [];
     }
 
@@ -554,7 +557,8 @@ export class MexcAdapter implements ExchangeAdapter {
         input,
       );
       page = res.success && res.data ? res.data : { pageNum: 1, pageSize: 0, totalPage: 0, resultList: [] };
-    } catch {
+    } catch (e) {
+      console.warn('[MEXC] fetchClosedTrades failed:', e);
       return [];
     }
 

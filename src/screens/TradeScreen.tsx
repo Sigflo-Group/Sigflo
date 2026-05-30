@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { AssistedExitConfirmBar } from '@/components/trade/AssistedExitConfirmBar';
 import { ExitAutomationControls } from '@/components/trade/ExitAutomationControls';
-import { TradeChartScenarioStrip, computeScenarioProbabilities } from '@/components/trade/TradeChartScenarioStrip';
+
 import { MarketToggle } from '@/components/trade/MarketToggle';
 import { ActivePositionsPanel } from '@/components/trade/ActivePositionsPanel';
 import { CloseAllPositionsModal } from '@/components/trade/CloseAllPositionsModal';
@@ -1948,16 +1948,6 @@ export function TradeScreen() {
     targetParsed,
   ]);
 
-  const scenarioProb = useMemo(
-    () =>
-      computeScenarioProbabilities({
-        tradeScore: metrics.riskSummary.tradeScore,
-        setupScore: selectedSignal.setupScore,
-        side: side === 'long' ? 'long' : 'short',
-      }),
-    [metrics.riskSummary.tradeScore, selectedSignal.setupScore, side],
-  );
-
   const timingUi = useMemo(
     () =>
       buildTradeTimingUiModel({
@@ -3235,6 +3225,7 @@ export function TradeScreen() {
               }
             }
           }
+          tradeScrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
           return true;
         } catch (e) {
           reverseOrderInProgressRef.current = false;
@@ -3262,6 +3253,7 @@ export function TradeScreen() {
         });
         if (open?.ok) {
           flashTradeToast('Paper trade opened — simulated portfolio updated.');
+          tradeScrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
           return true;
         }
         flashTradeToast(open?.error ?? 'Paper trade unavailable right now.');
@@ -4543,7 +4535,7 @@ export function TradeScreen() {
         >
           <div className="flex flex-col gap-1">
             {!isManageMode && !isBotsReviewCockpit ? <MarketToggle value={market} onChange={setMarket} /> : null}
-            {paperModeActive ? (
+            {forcePaperMode ? (
               <div className="rounded-lg border border-violet-400/25 bg-violet-500/[0.08] px-2.5 py-1.5 text-[10px] font-semibold tracking-wide text-violet-100">
                 Paper Trading Mode · Simulated Portfolio
               </div>
@@ -4830,48 +4822,6 @@ export function TradeScreen() {
             ) : null}
             {!isManageMode && !isBotsReviewCockpit && proIntelligenceMode ? (
               <WhyThisTradePanel model={whyThisTradeModel} />
-            ) : null}
-            {!isManageMode && !isBotsReviewCockpit ? (
-              <TradeChartScenarioStrip
-                mode="trade"
-                side={primaryChartOpenPosition?.side ?? side}
-                estimatedPnlUsd={portfolioAlignedLiveUnrealized.pnlUsd}
-                estimatedPnlPct={portfolioAlignedLiveUnrealized.movePct}
-                targetProfitUsd={metrics.targetProfitUsd}
-                stopLossUsd={metrics.stopLossUsd}
-                riskReward={mergedModel.riskReward}
-                probUp={scenarioProb.probUp}
-                probDown={scenarioProb.probDown}
-                marginUsd={primaryChartOpenPosition?.marginUsd ?? metrics.amountUsedUsd}
-                estFeeUsd={estFeeUsd}
-                liqPrice={
-                  market === 'futures'
-                    ? (primaryChartOpenPosition?.liquidationPrice ?? metrics.liquidation)
-                    : null
-                }
-                entry={primaryChartOpenPosition?.entryPrice ?? modelForMetrics.entry}
-                stop={modelForMetrics.stop}
-                target={modelForMetrics.target}
-                positionSizeUsd={primaryChartOpenPosition?.positionNotionalUsd ?? metrics.positionSizeUsd}
-                leverage={primaryChartOpenPosition?.leverage ?? leverage}
-                isFutures={market === 'futures'}
-                tradeScore={metrics.riskSummary.tradeScore}
-                setupScore={selectedSignal.setupScore}
-                trendAlignment={selectedSignal.scoreBreakdown.trendAlignment}
-                momentumQuality={selectedSignal.scoreBreakdown.momentumQuality}
-                exitAiMode={exitAuto.mode}
-                exitStrategyPreset={exitAuto.strategy}
-                automationSafeguards={exitAuto.safeguards}
-                customStrategyThresholds={exitAuto.customStrategyThresholds}
-                scannerStatus={scannerStatus}
-                lastPrice={
-                  typeof mergedModel.lastPrice === 'number' && Number.isFinite(mergedModel.lastPrice)
-                    ? mergedModel.lastPrice
-                    : modelForMetrics.entry
-                }
-                hasOpenPosition={hasActiveTradePosition}
-                executionQuality={executionQuality}
-              />
             ) : null}
           </div>
           {isManageMode && managePnlDisplay && manageCtx && hasManageOpenExposure ? (

@@ -202,7 +202,7 @@ export default defineConfig(({ mode }) => {
       },
     },
     server: {
-      allowedHosts: true,
+      allowedHosts: ['localhost', '127.0.0.1', '.gitpod.io', '.cursor.app', '.loca.lt'],
       /**
        * Netlify Dev (`netlify.toml` `[dev]` targetPort) must match this port. If Vite silently picked
        * the next port (e.g. 5174), the proxy (e.g. :4000) would still forward to :5173 → blank/black UI.

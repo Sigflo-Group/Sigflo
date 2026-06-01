@@ -60,13 +60,13 @@
     "vitest": "^4.1.7"
   },
   "description": "Smart Trader",
-  "main": "eslint.config.js",
+  "main": "index.html",
   "directories": {
     "doc": "docs"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://oauth2:[REDACTED_GITHUB_PAT]@github.com/cmfreak3-jpg/Sigflo.git"
+    "url": "git+https://github.com/cmfreak3-jpg/Sigflo.git"
   },
   "keywords": [],
   "author": "",

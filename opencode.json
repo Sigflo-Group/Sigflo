@@ -6,7 +6,7 @@
       "command": ["npx", "-y", "slack-workspace-mcp-server"],
       "enabled": true,
       "environment": {
-        "SLACK_BOT_TOKEN": "REDACTED"
+        "SLACK_BOT_TOKEN": "${SLACK_BOT_TOKEN}"
       }
     }
   },

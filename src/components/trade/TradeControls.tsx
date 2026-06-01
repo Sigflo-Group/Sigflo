@@ -48,6 +48,7 @@ export type TradeControlsProps = {
   targetStr: string;
   onAmountChange: (n: number) => void;
   onLeverageChange: (n: number) => void;
+  onSideChange?: (s: TradeSide) => void;
   onStopStrChange: (s: string) => void;
   onTargetStrChange: (s: string) => void;
   metrics: DerivedTradeMetrics;
@@ -121,6 +122,7 @@ export function TradeControls(props: TradeControlsProps) {
     targetStr,
     onAmountChange,
     onLeverageChange,
+    onSideChange,
     onStopStrChange,
     onTargetStrChange,
     metrics,
@@ -299,9 +301,9 @@ export function TradeControls(props: TradeControlsProps) {
         liquidationRisk={metrics.liquidationRisk}
         onAmountChange={onAmountChange}
         onLeverageChange={onLeverageChange}
-        onSideChange={() => {}}
+        onSideChange={onSideChange ?? (() => {})}
         lockSide={isManageMode}
-        showSideToggle={false}
+        showSideToggle={!isManageMode && onSideChange != null}
         panelTitle={isManageMode ? 'Margin (add / reduce)' : 'Position size'}
         hideLiquidationFooter={isManageMode}
         quoteLastPrice={mergedModel.lastPrice}

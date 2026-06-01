@@ -17,5 +17,6 @@ dist
 # Continue IDE local config (models, MCP servers, secrets placeholders)
 .continue/
 
-# OpenCode config (may contain MCP server secrets)
+# OpenCode config (may contain MCP server secrets / tokens)
 opencode.json
+.opencode/

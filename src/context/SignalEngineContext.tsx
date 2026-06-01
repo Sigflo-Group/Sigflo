@@ -817,13 +817,20 @@ function useSignalEngineValue(): SignalEngineState {
         clearTimeout(persistTimerRef.current);
         persistTimerRef.current = null;
       }
+      /* eslint-disable react-hooks/exhaustive-deps */
       const d = dirtyPersistRef.current;
+      const marketMemory = marketMemoryRef.current;
+      const regimePredictor = regimePredictorStoreRef.current;
+      const lifecycle = lifecycleRef.current;
+      const userAdaptation = userAdaptationRef.current;
+      const aiSnapshot = aiSnapshotStoreRef.current;
+      /* eslint-enable react-hooks/exhaustive-deps */
       if (d.signalLifecycle) persistSignalLifecycleStore(signalLifecycleStoreRef.current);
-      if (d.marketMemory) persistMarketMemoryStore(marketMemoryRef.current);
-      if (d.regimePredictor) persistRegimePredictorStore(regimePredictorStoreRef.current);
-      if (d.lifecycle) persistLifecycleRef(lifecycleRef.current);
-      if (d.userAdaptation) persistUserAdaptationStore(userAdaptationRef.current);
-      if (d.aiSnapshot) persistAiSnapshotStore(aiSnapshotStoreRef.current);
+      if (d.marketMemory) persistMarketMemoryStore(marketMemory);
+      if (d.regimePredictor) persistRegimePredictorStore(regimePredictor);
+      if (d.lifecycle) persistLifecycleRef(lifecycle);
+      if (d.userAdaptation) persistUserAdaptationStore(userAdaptation);
+      if (d.aiSnapshot) persistAiSnapshotStore(aiSnapshot);
       exchangeManager.current.disconnectWebSocket();
     };
   }, []);

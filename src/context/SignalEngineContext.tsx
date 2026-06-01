@@ -229,6 +229,30 @@ function useSignalEngineValue(): SignalEngineState {
   const userAdaptationRef = useRef<UserAdaptationStore>(loadUserAdaptationStore());
   const strategyPersonalityModeRef = useRef<StrategyPersonalityMode>(strategyPersonalityMode);
   strategyPersonalityModeRef.current = strategyPersonalityMode;
+  const persistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const dirtyPersistRef = useRef({
+    signalLifecycle: false,
+    marketMemory: false,
+    regimePredictor: false,
+    lifecycle: false,
+    userAdaptation: false,
+    aiSnapshot: false,
+  });
+
+  const schedulePersistRef = useRef(() => {});
+  schedulePersistRef.current = () => {
+    if (persistTimerRef.current != null) return;
+    persistTimerRef.current = setTimeout(() => {
+      persistTimerRef.current = null;
+      const d = dirtyPersistRef.current;
+      if (d.signalLifecycle) { persistSignalLifecycleStore(signalLifecycleStoreRef.current); d.signalLifecycle = false; }
+      if (d.marketMemory) { persistMarketMemoryStore(marketMemoryRef.current); d.marketMemory = false; }
+      if (d.regimePredictor) { persistRegimePredictorStore(regimePredictorStoreRef.current); d.regimePredictor = false; }
+      if (d.lifecycle) { persistLifecycleRef(lifecycleRef.current); d.lifecycle = false; }
+      if (d.userAdaptation) { persistUserAdaptationStore(userAdaptationRef.current); d.userAdaptation = false; }
+      if (d.aiSnapshot) { persistAiSnapshotStore(aiSnapshotStoreRef.current); d.aiSnapshot = false; }
+    }, 5_000);
+  };
 
   const registerSignalFollowed = useCallback((signal: CryptoSignal) => {
     userAdaptationRef.current = registerSignalFollow(userAdaptationRef.current, {
@@ -236,7 +260,8 @@ function useSignalEngineValue(): SignalEngineState {
       riskLevel: signal.riskLevel ?? 'moderate',
       counterTrend: signal.facts?.counterTrend === 'yes',
     });
-    persistUserAdaptationStore(userAdaptationRef.current);
+    dirtyPersistRef.current.userAdaptation = true;
+    schedulePersistRef.current();
     setState((prev) => ({ ...prev }));
   }, []);
 
@@ -288,7 +313,6 @@ function useSignalEngineValue(): SignalEngineState {
       setState((prev) => ({ ...prev,
         signals: ranked,
         loading: false,
-        // Reflect transport/data source truth even when no setups are currently emitted.
         mode,
         connection,
         error,
@@ -299,7 +323,7 @@ function useSignalEngineValue(): SignalEngineState {
         ),
         aiSnapshotLog: aiSnapshotStoreRef.current,
       }));
-
+      schedulePersistRef.current();
     }
 
     // REST bootstrap / reconnect catch-up:
@@ -457,7 +481,7 @@ function useSignalEngineValue(): SignalEngineState {
         now: Date.now(),
         candleTs: candles15m.at(-1)?.ts ?? Date.now(),
       });
-      persistSignalLifecycleStore(signalLifecycleStoreRef.current);
+      dirtyPersistRef.current.signalLifecycle = true;
       const nextMemory = updateMarketMemory({
         symbol,
         previous: marketMemoryRef.current[symbol],
@@ -466,7 +490,7 @@ function useSignalEngineValue(): SignalEngineState {
         now: Date.now(),
       });
       marketMemoryRef.current[symbol] = nextMemory;
-      persistMarketMemoryStore(marketMemoryRef.current);
+      dirtyPersistRef.current.marketMemory = true;
       const nextRegimePredictor = updateRegimePredictor({
         previous: regimePredictorStoreRef.current[symbol] ?? null,
         symbol,
@@ -476,14 +500,7 @@ function useSignalEngineValue(): SignalEngineState {
         now: Date.now(),
       });
       regimePredictorStoreRef.current[symbol] = nextRegimePredictor;
-      persistRegimePredictorStore(regimePredictorStoreRef.current);
-      setState((prev) => ({
-        ...prev,
-        regimePredictorBySymbol: {
-          ...prev.regimePredictorBySymbol,
-          [symbol]: nextRegimePredictor.output,
-        },
-      }));
+      dirtyPersistRef.current.regimePredictor = true;
 
       function flushAiSnapshot(
         memory: MarketMemorySnapshot,
@@ -503,15 +520,8 @@ function useSignalEngineValue(): SignalEngineState {
         });
         if (snapResult.appended) {
           aiSnapshotStoreRef.current = snapResult.store;
-          persistAiSnapshotStore(snapResult.store);
-          setState((prev) => ({
-            ...prev,
-            aiSnapshotLog: snapResult.store,
-            regimePredictorBySymbol: {
-              ...prev.regimePredictorBySymbol,
-              [symbol]: regimePredictor,
-            },
-          }));
+          dirtyPersistRef.current.aiSnapshot = true;
+          dirtyPersistRef.current.regimePredictor = true;
         }
       }
 
@@ -580,7 +590,7 @@ function useSignalEngineValue(): SignalEngineState {
         });
         signalBookRef.current[key] = signal.signal;
         lifecycleRef.current[key] = signal.lifecycle;
-        persistLifecycleRef(lifecycleRef.current);
+        dirtyPersistRef.current.lifecycle = true;
         flushAiSnapshot(nextMemory, signal.signal, nextRegimePredictor.output);
         recordScannerPipelineReport(
           {
@@ -618,7 +628,7 @@ function useSignalEngineValue(): SignalEngineState {
         confidence: signal.signal.confidence ?? signal.signal.setupScore,
         counterTrend: signal.signal.facts?.counterTrend === 'yes',
       });
-      persistUserAdaptationStore(userAdaptationRef.current);
+      dirtyPersistRef.current.userAdaptation = true;
       const prevLifecycleStateOnEmit = lifecycleRef.current[key]?.state;
       const nextLifecycleStateOnEmit = signal.lifecycle.state;
       const lifecycleTransitionOnEmit =
@@ -646,7 +656,7 @@ function useSignalEngineValue(): SignalEngineState {
       lastSignalRef.current[key] = { emittedAt: now, setupScore: signal.signal.setupScore, refPrice: priceNow, atr: atrNow };
       signalBookRef.current[key] = signal.signal;
       lifecycleRef.current[key] = signal.lifecycle;
-      persistLifecycleRef(lifecycleRef.current);
+      dirtyPersistRef.current.lifecycle = true;
       signalLifecycleStoreRef.current = registerSignalLifecycleEvent({
         store: signalLifecycleStoreRef.current,
         signal: signal.signal,
@@ -655,7 +665,7 @@ function useSignalEngineValue(): SignalEngineState {
         now,
         strategyPersonalityMode: strategyPersonalityModeRef.current,
       });
-      persistSignalLifecycleStore(signalLifecycleStoreRef.current);
+      dirtyPersistRef.current.signalLifecycle = true;
       flushAiSnapshot(nextMemory, signal.signal, nextRegimePredictor.output);
       recordScannerDiagnostic({
         symbol,
@@ -803,6 +813,17 @@ function useSignalEngineValue(): SignalEngineState {
         window.cancelAnimationFrame(tickerFlushRafRef.current);
         tickerFlushRafRef.current = null;
       }
+      if (persistTimerRef.current != null) {
+        clearTimeout(persistTimerRef.current);
+        persistTimerRef.current = null;
+      }
+      const d = dirtyPersistRef.current;
+      if (d.signalLifecycle) persistSignalLifecycleStore(signalLifecycleStoreRef.current);
+      if (d.marketMemory) persistMarketMemoryStore(marketMemoryRef.current);
+      if (d.regimePredictor) persistRegimePredictorStore(regimePredictorStoreRef.current);
+      if (d.lifecycle) persistLifecycleRef(lifecycleRef.current);
+      if (d.userAdaptation) persistUserAdaptationStore(userAdaptationRef.current);
+      if (d.aiSnapshot) persistAiSnapshotStore(aiSnapshotStoreRef.current);
       exchangeManager.current.disconnectWebSocket();
     };
   }, []);

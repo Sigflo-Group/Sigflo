@@ -68,9 +68,12 @@ export function useMarketsScanner(): MarketsScannerState {
 
   useEffect(() => {
     let cancelled = false;
+    let abortController: AbortController | null = null;
     const load = async () => {
+      abortController?.abort();
+      abortController = new AbortController();
       try {
-        const list = await fetchTickers();
+        const list = await fetchTickers(undefined, abortController.signal);
         if (cancelled) return;
         const next: Record<string, SymbolTicker> = {};
         for (const t of list) next[t.symbol] = t;
@@ -89,6 +92,7 @@ export function useMarketsScanner(): MarketsScannerState {
     const id = window.setInterval(load, pollMs);
     return () => {
       cancelled = true;
+      abortController?.abort();
       window.clearInterval(id);
     };
   }, [engine.connection]);

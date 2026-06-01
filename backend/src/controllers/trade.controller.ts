@@ -1,4 +1,5 @@
 import type { Response } from 'express';
+import type { z } from 'zod';
 import type { AuthedRequest } from '../middleware/auth.js';
 import { getBrokerAccountForUser, listBrokerAccountsForUser } from '../db/queries/brokerAccounts.js';
 import { consumeTradeIntent, createTradeIntent, resolveTradeIntentByToken } from '../services/tradeIntent.service.js';
@@ -8,18 +9,14 @@ import { createTradeRow, getTradeByIdForUser, listTradesForUser } from '../db/qu
 import { writeAuditLog } from '../services/auditLog.service.js';
 import { consumeIdempotencyKey } from '../utils/idempotency.js';
 import { SECURITY } from '../config/security.js';
+import { tradeIntentSchema, tradeExecuteSchema } from '../schemas/trade.schema.js';
+
+type TradeIntentBody = z.infer<typeof tradeIntentSchema>;
+type TradeExecuteBody = z.infer<typeof tradeExecuteSchema>;
 
 export async function postTradeIntent(req: AuthedRequest, res: Response) {
   if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
-  const body = req.body as {
-    symbol: string;
-    direction: 'long' | 'short';
-    positionSizeUsd: number;
-    leverage: number;
-    stopPrice?: number;
-    targetPrice?: number;
-    brokerAccountId?: string;
-  };
+  const body = req.body as TradeIntentBody;
 
   const policy = validateTradePolicy(body);
   if (!policy.ok) return res.status(400).json({ error: policy.reason });
@@ -77,7 +74,7 @@ export async function postTradeIntent(req: AuthedRequest, res: Response) {
 
 export async function postTradeExecute(req: AuthedRequest, res: Response) {
   if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
-  const body = req.body as { executionToken: string; idempotencyKey: string };
+  const body = req.body as TradeExecuteBody;
   const intent = await resolveTradeIntentByToken(req.user.userId, body.executionToken);
   if (!intent) return res.status(404).json({ error: 'Execution intent not found' });
   if (intent.usedAt) return res.status(409).json({ error: 'Execution intent already used' });

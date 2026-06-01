@@ -378,6 +378,7 @@ export function TradeScreen() {
   /** Bybit linear `instruments-info` max leverage for the active symbol (futures only). */
   const [symbolMaxLeverage, setSymbolMaxLeverage] = useState<number | null>(null);
   const [side, setSide] = useState<TradeSide>('long');
+  const manualSideRef = useRef(false);
   const [stopStr, setStopStr] = useState('');
   const [targetStr, setTargetStr] = useState('');
   /** Futures: Bybit TP/SL trigger (mark / last / index) for new orders + manage TP/SL apply. */
@@ -655,7 +656,12 @@ export function TradeScreen() {
   }, [pairFromQuery, selectedSignal, liveSignals]);
 
   useEffect(() => {
+    manualSideRef.current = false;
+  }, [signalId]);
+
+  useEffect(() => {
     if (isManageMode || signalId.startsWith('pf-')) return;
+    if (manualSideRef.current) return;
     if (positionReviewFromQuery) {
       const sym = pairBaseToLinearSymbol(positionReviewFromQuery.pairRaw);
       const row = getPositionRepository().getActivePositionByPair(sym);
@@ -2576,6 +2582,14 @@ export function TradeScreen() {
         setTradeToastCta(null);
         setTermsRetrySide(null);
       }, durationMs);
+    },
+    [],
+  );
+
+  const onSideChange = useCallback(
+    (next: TradeSide) => {
+      setSide(next);
+      manualSideRef.current = true;
     },
     [],
   );
@@ -5026,6 +5040,7 @@ export function TradeScreen() {
           targetStr={targetStr}
           onAmountChange={onAmountUsdChange}
           onLeverageChange={onLeverageChange}
+          onSideChange={isManageMode ? undefined : onSideChange}
           onStopStrChange={onStopStrForTrade}
           onTargetStrChange={onTargetStrForTrade}
           metrics={metrics}

@@ -25,6 +25,8 @@ aiRouter.post('/news-scan', aiLimiter, validateBody(aiNewsScanSchema), async (re
   const regimePrompt = marketRegime ? `Current market regime: ${marketRegime}.` : '';
   const depth = mode === 'deep' ? 'Provide a detailed analysis.' : 'Provide a concise summary.';
 
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 30_000);
   try {
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
@@ -41,6 +43,7 @@ aiRouter.post('/news-scan', aiLimiter, validateBody(aiNewsScanSchema), async (re
           { role: 'user', content: `${assetPrompt} ${regimePrompt} ${depth} Return the result as JSON.` },
         ],
       }),
+      signal: controller.signal,
     });
 
     if (!response.ok) {
@@ -53,7 +56,13 @@ aiRouter.post('/news-scan', aiLimiter, validateBody(aiNewsScanSchema), async (re
     res.json(data);
   } catch (e) {
     const message = e instanceof Error ? e.message : 'Unknown error';
+    if (e instanceof DOMException && e.name === 'AbortError') {
+      res.status(504).json({ error: 'News scan timed out' });
+      return;
+    }
     res.status(500).json({ error: `News scan failed: ${message}` });
+  } finally {
+    clearTimeout(timeout);
   }
 });
 
@@ -66,6 +75,8 @@ aiRouter.post('/suggest', aiLimiter, validateBody(aiSuggestSchema), async (req, 
 
   const { model, messages, temperature, response_format } = req.body;
 
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 30_000);
   try {
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
@@ -79,6 +90,7 @@ aiRouter.post('/suggest', aiLimiter, validateBody(aiSuggestSchema), async (req, 
         temperature,
         ...(response_format ? { response_format } : {}),
       }),
+      signal: controller.signal,
     });
 
     if (!response.ok) {
@@ -91,6 +103,12 @@ aiRouter.post('/suggest', aiLimiter, validateBody(aiSuggestSchema), async (req, 
     res.json(data);
   } catch (e) {
     const message = e instanceof Error ? e.message : 'Unknown error';
+    if (e instanceof DOMException && e.name === 'AbortError') {
+      res.status(504).json({ error: 'AI request timed out' });
+      return;
+    }
     res.status(500).json({ error: `AI request failed: ${message}` });
+  } finally {
+    clearTimeout(timeout);
   }
 });

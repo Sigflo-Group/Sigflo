@@ -26,6 +26,11 @@ function bearerToken(req: Request): string | null {
 
 export async function requireAuth(req: AuthedRequest, res: Response, next: NextFunction) {
   try {
+    if (process.env.NODE_ENV === 'production' && req.header('x-user-id')) {
+      res.status(401).json({ error: 'Sign in required.' });
+      return;
+    }
+
     const token = bearerToken(req);
 
     if (token && (env.SUPABASE_JWT_SECRET || env.SUPABASE_URL)) {

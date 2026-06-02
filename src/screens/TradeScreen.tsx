@@ -759,6 +759,11 @@ export function TradeScreen() {
     if (preferredActiveExchange === 'mexc' && mexcSnap) return 'mexc';
     return bybitSnap ? 'bybit' : mexcSnap ? 'mexc' : null;
   }, [preferredActiveExchange, bybitSnap, mexcSnap]);
+  const activeExchangeSnap = useMemo(() => {
+    if (activeExchange === 'bybit') return bybitSnap ?? null;
+    if (activeExchange === 'mexc') return mexcSnap ?? null;
+    return bybitSnap ?? mexcSnap ?? null;
+  }, [activeExchange, bybitSnap, mexcSnap]);
 
   const live = useLiveTradeMarket(liveSymbol, chartInterval, {
     uiThrottleMs: isManageMode ? 16 : undefined,
@@ -808,50 +813,55 @@ export function TradeScreen() {
   );
 
   const tradeBalance = useMemo(() => {
-    const bybit = accountSnapshots.find((s) => s.exchange === 'bybit' && s.status === 'connected');
-    const overview = bybit?.accountBreakdown?.overview;
-    if (overview) {
-      const unifiedBucket = bybit?.accountBreakdown?.buckets?.find((b) => b.kind === 'unified');
-      const utaUnrealizedPnl = unifiedBucket?.metrics?.unrealizedPnl;
-      return {
-        exchange: 'bybit' as const,
-        availableToTrade: coerceUsdField(overview.availableToTrade),
-        totalWalletBalance: coerceUsdField(overview.totalWalletBalance),
-        totalEquity: coerceUsdField(overview.totalEquity),
-        marginInUseUsd: coerceUsdField(overview.unifiedMarginInUseUsd ?? null),
-        utaUnrealizedPnl: utaUnrealizedPnl != null ? coerceUsdField(utaUnrealizedPnl) : null,
-        fundingWalletBalance: coerceUsdField(overview.fundingWalletBalance ?? null),
-        fundingPrimaryAsset: overview.fundingPrimaryAsset ?? null,
-      };
-    }
-    const mexc = accountSnapshots.find((s) => s.exchange === 'mexc' && s.status === 'connected');
-    if (!mexc) return null;
-    const mexcOverview = mexc.accountBreakdown?.overview;
-    if (mexcOverview) {
+    const balanceExchangeOrder: Array<'bybit' | 'mexc'> =
+      activeExchange === 'mexc' ? ['mexc', 'bybit'] : ['bybit', 'mexc'];
+    for (const exchange of balanceExchangeOrder) {
+      if (exchange === 'bybit') {
+        const overview = bybitSnap?.accountBreakdown?.overview;
+        if (!overview) continue;
+        const unifiedBucket = bybitSnap.accountBreakdown?.buckets?.find((b) => b.kind === 'unified');
+        const utaUnrealizedPnl = unifiedBucket?.metrics?.unrealizedPnl;
+        return {
+          exchange: 'bybit' as const,
+          availableToTrade: coerceUsdField(overview.availableToTrade),
+          totalWalletBalance: coerceUsdField(overview.totalWalletBalance),
+          totalEquity: coerceUsdField(overview.totalEquity),
+          marginInUseUsd: coerceUsdField(overview.unifiedMarginInUseUsd ?? null),
+          utaUnrealizedPnl: utaUnrealizedPnl != null ? coerceUsdField(utaUnrealizedPnl) : null,
+          fundingWalletBalance: coerceUsdField(overview.fundingWalletBalance ?? null),
+          fundingPrimaryAsset: overview.fundingPrimaryAsset ?? null,
+        };
+      }
+
+      if (!mexcSnap) continue;
+      const mexcOverview = mexcSnap.accountBreakdown?.overview;
+      if (mexcOverview) {
+        return {
+          exchange: 'mexc' as const,
+          availableToTrade: coerceUsdField(mexcOverview.availableToTrade),
+          totalWalletBalance: coerceUsdField(mexcOverview.totalWalletBalance),
+          totalEquity: coerceUsdField(mexcOverview.totalEquity),
+          marginInUseUsd: null,
+          utaUnrealizedPnl: null,
+          fundingWalletBalance: coerceUsdField(mexcOverview.fundingWalletBalance ?? null),
+          fundingPrimaryAsset: mexcOverview.fundingPrimaryAsset ?? null,
+        };
+      }
+      const usdt = mexcSnap.balances?.find((b) => b.asset.toUpperCase() === 'USDT');
+      if (!usdt) continue;
       return {
         exchange: 'mexc' as const,
-        availableToTrade: coerceUsdField(mexcOverview.availableToTrade),
-        totalWalletBalance: coerceUsdField(mexcOverview.totalWalletBalance),
-        totalEquity: coerceUsdField(mexcOverview.totalEquity),
+        availableToTrade: usdt.free,
+        totalWalletBalance: usdt.total,
+        totalEquity: usdt.total,
         marginInUseUsd: null,
         utaUnrealizedPnl: null,
-        fundingWalletBalance: coerceUsdField(mexcOverview.fundingWalletBalance ?? null),
-        fundingPrimaryAsset: mexcOverview.fundingPrimaryAsset ?? null,
+        fundingWalletBalance: null,
+        fundingPrimaryAsset: null,
       };
     }
-    const usdt = mexc.balances?.find((b) => b.asset.toUpperCase() === 'USDT');
-    if (!usdt) return null;
-    return {
-      exchange: 'mexc' as const,
-      availableToTrade: usdt.free,
-      totalWalletBalance: usdt.total,
-      totalEquity: usdt.total,
-      marginInUseUsd: null,
-      utaUnrealizedPnl: null,
-      fundingWalletBalance: null,
-      fundingPrimaryAsset: null,
-    };
-  }, [accountSnapshots]);
+    return null;
+  }, [activeExchange, bybitSnap, mexcSnap]);
 
   const paperSnapshot = usePaperTrading();
   const paperCashUsd = useMemo(() => paperSnapshot?.cashUsd ?? 10_000, [paperSnapshot]);
@@ -1046,14 +1056,14 @@ export function TradeScreen() {
   }, [market, mergedModel.pair]);
 
   const dailyReviewLocked = Boolean(isBotsReviewCockpit && dailyRiskGuard.status === 'locked');
-  const exchangeOpenLegCount = countExchangeOpenLegs((bybitSnap ?? mexcSnap)?.positions);
+  const exchangeOpenLegCount = countExchangeOpenLegs(activeExchangeSnap?.positions);
   const riskMonitoredOpenCount = useMemo(
     () => activePositionCountForRisk(exchangeOpenLegCount),
     [exchangeOpenLegCount],
   );
   const maxOpenPositionsReached = riskMonitoredOpenCount >= riskSettings.maxOpenPositions;
   const exchangePositionForSymbol = useMemo((): PositionItem | null => {
-    const snap = bybitSnap ?? mexcSnap;
+    const snap = activeExchangeSnap;
     if (!snap?.positions?.length) return null;
     const sym = pairBaseToLinearSymbol(mergedModel.pair);
     const open = snap.positions.filter((x) => x.symbol === sym && x.size > 0);
@@ -1061,7 +1071,7 @@ export function TradeScreen() {
     /** Hedge mode (Bybit): same symbol can have long + short; managing uses URL leg, else UI `side`. */
     const legSide = isManageMode && manageCtx ? manageCtx.side : side;
     return open.find((x) => x.side === legSide) ?? open[0];
-  }, [bybitSnap, mexcSnap, isManageMode, manageCtx, mergedModel.pair, side]);
+  }, [activeExchangeSnap, isManageMode, manageCtx, mergedModel.pair, side]);
 
   const spotBaseAsset = useMemo(
     () => spotBaseAssetFromOrderSymbol(pairBaseToLinearSymbol(mergedModel.pair)),

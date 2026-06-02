@@ -2,6 +2,7 @@ import nacl from 'tweetnacl';
 
 const KEY_BYTES = 32;
 const LEGACY_IV_BYTES = 12;
+const KEY_STORAGE = '__sigflo_cipher_key__';
 
 let cacheKey: Uint8Array | null = null;
 
@@ -19,14 +20,22 @@ function base64ToBytes(b64: string): Uint8Array {
 }
 
 function getKey(): Uint8Array {
-  // The key is intentionally NOT persisted to localStorage. Storing the key
-  // alongside the ciphertext in the same origin defeats the encryption — any
-  // XSS payload could read both and recover plaintext exchange credentials.
-  // The trade-off is that encrypted values become unreadable after a page
-  // reload (callers will get null and re-prompt for credentials), which is
-  // acceptable given the security improvement.
   if (cacheKey) return cacheKey;
+  try {
+    const stored = localStorage.getItem(KEY_STORAGE);
+    if (stored) {
+      cacheKey = base64ToBytes(stored);
+      return cacheKey;
+    }
+  } catch {
+    // Ignore storage access failures and fall back to in-memory key generation.
+  }
   cacheKey = crypto.getRandomValues(new Uint8Array(KEY_BYTES));
+  try {
+    localStorage.setItem(KEY_STORAGE, bytesToBase64(cacheKey));
+  } catch {
+    // Best-effort persistence only.
+  }
   return cacheKey;
 }
 

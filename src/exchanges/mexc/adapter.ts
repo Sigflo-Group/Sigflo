@@ -21,7 +21,12 @@ export class MexcMarketDataAdapter implements MarketDataAdapter {
   };
 
   private wsClient: MexcWsClient | null = null;
-  private prevKlineStart = new Map<string, number>();
+  /** Cached previous candle data per symbol:interval - used to emit confirmed candles
+   *  on transition to a new candle, since MEXC WS does not provide a confirm flag. */
+  private prevKlineData = new Map<
+    string,
+    { start: number; open: number; high: number; low: number; close: number; volume: number }
+  >();
 
   fetchKlines(symbol: string, interval: KlineInterval, limit = 200): Promise<Candle[]> {
     return fetchMexcKlines(symbol, interval, limit);
@@ -41,7 +46,7 @@ export class MexcMarketDataAdapter implements MarketDataAdapter {
 
   connectWebSocket(options: WsSubscriptionOptions): void {
     this.disconnectWebSocket();
-    this.prevKlineStart.clear();
+    this.prevKlineData.clear();
 
     this.wsClient = new MexcWsClient({
       klineSymbols: options.klineSymbols,
@@ -55,21 +60,34 @@ export class MexcMarketDataAdapter implements MarketDataAdapter {
       onKline: options.onKline
         ? (kline) => {
             const key = `${kline.symbol}:${kline.interval}`;
-            const prevStart = this.prevKlineStart.get(key);
-            this.prevKlineStart.set(key, kline.start);
-            if (prevStart != null && kline.start !== prevStart) {
+            const prev = this.prevKlineData.get(key);
+            const isTransition = prev != null && kline.start !== prev.start;
+
+            if (isTransition) {
+              // Emit the previous candle as confirmed using its cached data.
               options.onKline!({
                 symbol: kline.symbol,
                 interval: kline.interval as KlineInterval,
-                ts: prevStart,
-                open: kline.open,
-                high: kline.high,
-                low: kline.low,
-                close: kline.close,
-                volume: kline.volume,
+                ts: prev.start,
+                open: prev.open,
+                high: prev.high,
+                low: prev.low,
+                close: prev.close,
+                volume: prev.volume,
                 confirmed: true,
               });
             }
+
+            // Cache current kline data for future transition detection.
+            this.prevKlineData.set(key, {
+              start: kline.start,
+              open: kline.open,
+              high: kline.high,
+              low: kline.low,
+              close: kline.close,
+              volume: kline.volume,
+            });
+
             options.onKline!({
               symbol: kline.symbol,
               interval: kline.interval as KlineInterval,

@@ -527,9 +527,18 @@ export class MexcAdapter implements ExchangeAdapter {
       vol: qty,
       ...(params.leverage != null && !params.reduceOnly ? { leverage: params.leverage } : {}),
       price: price ?? '0',
-      ...(params.takeProfit ? { takeProfitPrice: params.takeProfit, profitTrend: 1 } : {}),
-      ...(params.stopLoss ? { stopLossPrice: params.stopLoss, lossTrend: 1 } : {}),
     };
+
+    // MEXC order/create does not accept stopLossPrice/takeProfitPrice on market orders
+    // (price='0' triggers stop-limit validation and fails). TP/SL must be set via
+    // a separate position-based endpoint after the order fills.
+    if (params.takeProfit || params.stopLoss) {
+      log('warn', 'MEXC placeLinearOrder strips TP/SL - position-based endpoint not yet implemented', {
+        symbol: mexcSymbol,
+        hadTakeProfit: !!params.takeProfit,
+        hadStopLoss: !!params.stopLoss,
+      });
+    }
 
     const res = await futuresPrivatePost<MexcOrderResponse>(
       '/api/v1/private/order/create',
@@ -545,6 +554,89 @@ export class MexcAdapter implements ExchangeAdapter {
     }
 
     return { orderId: String(res.data) };
+  }
+
+  /**
+   * Set full-position TP/SL on an open MEXC futures position by creating separate
+   * stop orders. MEXC does not have a single position-level TP/SL endpoint, so each
+   * TP and SL is implemented as an independent stop order that triggers a market close
+   * when the price is hit. Pass "0" for a side to skip / clear that level.
+   *
+   * Returns the list of orderIds created (empty array if both TP and SL were cleared).
+   */
+  async setPositionTpSl(
+    input: ConnectInput,
+    params: {
+      symbol: string;          // "BTCUSDT"
+      positionSide: 'long' | 'short';
+      qty: string;             // base asset quantity
+      takeProfit?: string;     // price as string; "0" = no TP / clear
+      stopLoss?: string;       // price as string; "0" = no SL / clear
+    },
+  ): Promise<{ orderIds: string[] }> {
+    const mexcSymbol = standardSymbolToMexc(params.symbol);
+
+    // Convert base-asset qty -> contracts (MEXC expects contracts on stop order vol).
+    let contractVol = params.qty;
+    try {
+      const lot = await fetchInstrumentLot(mexcSymbol);
+      if (lot) {
+        const contractSize = Number(lot.contractSize);
+        if (Number.isFinite(contractSize) && contractSize > 0) {
+          const contractCount = String(Number(params.qty) / contractSize);
+          contractVol = normalizeQtyToStep(contractCount, lot.volumeUnit, lot.minVol);
+        } else {
+          contractVol = normalizeQtyToStep(params.qty, lot.volumeUnit, lot.minVol);
+        }
+      }
+    } catch {
+      log('warn', 'MEXC TP/SL lot fetch failed, sending raw values', { symbol: mexcSymbol });
+    }
+
+    // MEXC side for closing: 4=close long, 2=close short.
+    const closeSide: 2 | 4 = params.positionSide === 'long' ? 4 : 2;
+
+    const created: string[] = [];
+    const tasks: Array<{ stopType: 1 | 2; price: string; label: string }> = [];
+    if (params.takeProfit && Number(params.takeProfit) > 0) {
+      tasks.push({ stopType: 2, price: params.takeProfit, label: 'TP' });
+    }
+    if (params.stopLoss && Number(params.stopLoss) > 0) {
+      tasks.push({ stopType: 1, price: params.stopLoss, label: 'SL' });
+    }
+
+    for (const t of tasks) {
+      const stopBody: Record<string, unknown> = {
+        symbol: mexcSymbol,
+        vol: contractVol,
+        side: closeSide,
+        openType: 1, // isolated
+        type: 5,     // market (stop triggers a market close)
+        stopPrice: t.price,
+        stopType: t.stopType,
+        trend: 1,    // 1=latest, 2=fair, 3=index
+      };
+      try {
+        const res = await futuresPrivatePost<MexcOrderResponse>(
+          '/api/v1/private/order/stop_order',
+          stopBody,
+          input,
+        );
+        if (res.success) {
+          created.push(String(res.data));
+        } else {
+          const detail = res.message ?? (res.code != null ? `code=${res.code}` : undefined);
+          throw new Error(
+            `MEXC ${t.label} stop order rejected${detail ? `: ${detail}` : ''}`,
+          );
+        }
+      } catch (e) {
+        log('warn', 'MEXC TP/SL stop order failed', { symbol: mexcSymbol, stopType: t.stopType, error: String(e) });
+        throw e;
+      }
+    }
+
+    return { orderIds: created };
   }
 
   async fetchClosedTrades(input: ConnectInput, opts?: { limit?: number }): Promise<ClosedTradeItem[]> {

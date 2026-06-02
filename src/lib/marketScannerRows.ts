@@ -256,11 +256,7 @@ export function deriveMarketStatus(signal: CryptoSignal): MarketRowStatus {
     if (signal.setupScore >= 45) return 'developing';
     return 'idle';
   }
-  // Only promote non-synthetic signals via score alone. Synthetic signals
-  // (any id not handled by the trend-* guards above) must have their status
-  // set by the lifecycle engine — a bare setupScore is not sufficient evidence
-  // of a confirmed trigger and would bypass the timing lifecycle entirely.
-  if (!isSyntheticMoverSignal(signal) && signal.setupScore >= 70) return 'triggered';
+  if (signal.setupScore >= 70) return 'triggered';
   if (signal.setupScore >= 45) return 'developing';
   return 'idle';
 }

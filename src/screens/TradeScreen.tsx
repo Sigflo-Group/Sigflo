@@ -140,6 +140,7 @@ import {
   postBybitLinearTradingStop,
   postBybitSpotOrder,
   postMexcLinearOrder,
+  postMexcLinearTradingStop,
   putExitAutomationWatch,
 } from '@/services/api/tradeClient';
 import { fetchLinearMaxLeverage } from '@/services/bybit/client';
@@ -2823,6 +2824,11 @@ export function TradeScreen() {
         | { kind: 'spot'; symbol: string; freeBase: number; fraction: number },
     ) => {
       setOrderPending('close');
+      if (paperModeActive) {
+        flashTradeToast('Paper mode is active — close via Paper / Demo portfolio.');
+        setOrderPending(null);
+        return;
+      }
       const fraction = args.fraction;
       try {
         if (args.kind === 'spot') {
@@ -2985,7 +2991,7 @@ export function TradeScreen() {
         return false;
       }
 
-      if (liveOrderSubmitEnabled) {
+      if (!paperModeActive && liveOrderSubmitEnabled) {
         setOrderPending('open');
         try {
           let linearReverseAwaitPostSyncClear = false;
@@ -3082,6 +3088,24 @@ export function TradeScreen() {
                   ...(tpSl.takeProfit ? { takeProfit: tpSl.takeProfit } : {}),
                   ...(tpSl.stopLoss ? { stopLoss: tpSl.stopLoss } : {}),
                 });
+                // MEXC order/create does not accept TP/SL on market orders, so place
+                // them as separate stop-market orders after the entry fills.
+                if (tpSl.takeProfit || tpSl.stopLoss) {
+                  try {
+                    await postMexcLinearTradingStop({
+                      symbol: orderSymbol,
+                      positionSide: nextSide,
+                      qty: qtyStr,
+                      takeProfit: tpSl.takeProfit,
+                      stopLoss: tpSl.stopLoss,
+                    });
+                  } catch (e) {
+                    flashTradeToast(
+                      `Position opened but MEXC TP/SL placement failed: ${e instanceof Error ? e.message : String(e)}`,
+                      7000,
+                    );
+                  }
+                }
               }
             } else {
               // ── Bybit futures path ─────────────────────────────────────────

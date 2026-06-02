@@ -397,3 +397,79 @@ tradeRouter.post('/mexc/linear-order', async (req: AuthedRequest, res) => {
     res.status(400).json({ error: msg });
   }
 });
+
+const mexcLinearTradingStopSchema = z.object({
+  symbol: z.string().min(4).max(32),
+  positionSide: z.enum(['long', 'short']),
+  qty: z.string().min(1).max(48),
+  /** Price string. Omit or "0" to skip TP. */
+  takeProfit: z.string().min(1).max(48).optional(),
+  /** Price string. Omit or "0" to skip SL. */
+  stopLoss: z.string().min(1).max(48).optional(),
+});
+
+/**
+ * Apply full-position TP/SL to an open MEXC futures position by creating stop-market
+ * orders. Pass "0" (or omit) to skip a side. Each side becomes an independent stop
+ * order that closes the position when triggered.
+ */
+tradeRouter.post('/mexc/linear-trading-stop', async (req: AuthedRequest, res) => {
+  if (!req.user) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+
+  const parsed = mexcLinearTradingStopSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: formatZodIssuesForApi(parsed.error.issues) });
+    return;
+  }
+
+  const accounts = await listBrokerAccountsForUser(req.user.userId);
+  const row = accounts.find((a) => a.broker === 'mexc' && a.status === 'connected');
+  if (!row) {
+    res.status(400).json({ error: 'Connect MEXC in Account first.' });
+    return;
+  }
+
+  let creds: { apiKey: string; apiSecret: string };
+  try {
+    creds = await resolveRowCreds(row);
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to retrieve exchange credentials.' });
+    return;
+  }
+
+  const p = parsed.data;
+  const hasTp = p.takeProfit != null && Number(p.takeProfit) > 0;
+  const hasSl = p.stopLoss != null && Number(p.stopLoss) > 0;
+  if (!hasTp && !hasSl) {
+    res.json({
+      ok: true,
+      exchange: 'mexc',
+      orderIds: [],
+      note: 'No TP/SL provided — skipped.',
+    });
+    return;
+  }
+
+  try {
+    const result = await mexcAdapter.setPositionTpSl(creds, {
+      symbol: p.symbol,
+      positionSide: p.positionSide,
+      qty: p.qty.trim(),
+      takeProfit: hasTp ? p.takeProfit!.trim() : '0',
+      stopLoss: hasSl ? p.stopLoss!.trim() : '0',
+    });
+    res.json({
+      ok: true,
+      exchange: 'mexc',
+      orderIds: result.orderIds,
+      note: 'TP/SL stop orders placed on MEXC — they trigger and close the position at the specified prices.',
+    });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : 'Trading stop failed';
+    log('warn', 'MEXC trading-stop failed.', { error: msg });
+    res.status(400).json({ error: msg });
+  }
+});

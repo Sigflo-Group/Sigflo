@@ -374,9 +374,18 @@ function useSignalEngineValue(): SignalEngineState {
         recomputeAllFromStore('REST');
         if (gen !== backfillGen || cancelled) return;
         streamReadyRef.current = true;
-        // Flush buffered WS recomputation now that store is ready
+        // Flush buffered WS recomputation now that store is ready.
+        // Deduplicate by (symbol, ts) first — the same confirmed candle can
+        // arrive more than once across a reconnect, and calling
+        // recomputeForSymbol twice for the same bar bypasses the cooldown
+        // check (the first call resets lastSignalRef so the second fires again).
+        const seenPending = new Set<string>();
         for (const pending of pendingWSCandlesRef.current) {
-          if (pending.interval === '15') recomputeForSymbol(pending.symbol, 'WS');
+          if (pending.interval !== '15') continue;
+          const key = `${pending.symbol}:${pending.ts}`;
+          if (seenPending.has(key)) continue;
+          seenPending.add(key);
+          recomputeForSymbol(pending.symbol, 'WS');
         }
         pendingWSCandlesRef.current = [];
         setLiveTickersBySymbol({ ...tickersRef.current });
@@ -798,10 +807,13 @@ function useSignalEngineValue(): SignalEngineState {
       import.meta.env.DEV
         ? window.setInterval(() => logScannerHealthSummary(), 60_000)
         : undefined;
-    // REST polling fallback when WS stays disconnected
+    // REST polling fallback when WS stays disconnected.
+    // Must call backfillFromRest (not recomputeAllFromStore) so we fetch
+    // fresh candle data before re-running the pipeline — otherwise signals
+    // keep updating their timestamps while replaying the same stale snapshot.
     const restPollTimer = window.setInterval(() => {
       if (wsConnectedRef.current) return;
-      if (streamReadyRef.current) recomputeAllFromStore('REST');
+      if (streamReadyRef.current) void backfillFromRest('reconnect');
     }, 60_000);
 
     return () => {

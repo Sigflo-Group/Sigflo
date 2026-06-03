@@ -103,3 +103,13 @@ SLACK_BOT_TOKEN="" WHATSAPP_PHONE=61483837839 nohup node /root/Sigflo/whatsapp-p
 - **CLI:** `npm run build && npx netlify-cli deploy --prod --dir=dist --functions=netlify/functions`
 - **Key env vars** (set in Netlify UI, never `VITE_*` for secrets): `OPENAI_API_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `SIGFLO_BETA_ADMIN_EMAILS`
 - **SPA catch-all** and API function redirects defined in `netlify.toml`
+
+## Cursor Cloud specific instructions
+
+- **Node:** Use Node 20+ (`.nvmrc` pins 22). Root deps only: `npm install` at repo root; `backend/` has its own `package.json` — run `npm install` there only when working on the Express API.
+- **Dev server:** `npm run dev` binds **5173** with `strictPort: true` — do not pick another port. Use a tmux session for long-running Vite (e.g. session name `vite-dev-server`). AI routes are served by Vite middleware in dev (not a separate process).
+- **Localhost routes:** On non-`app.sigflo.group` hosts, the feed lives at **`/feed`** (not `/`). Public pages that work **without** Supabase: `/legal`, `/disclosure`, `/terms`, `/privacy`.
+- **Supabase required for trading UI:** Set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` in `.env.local` (or VM secrets). Without them, `LoginScreen` redirects to `/feed` while `ProtectedRoute` sends unauthenticated users back to `/login`, causing a **render loop** (black screen) on `/login` and `/feed`. Do not use those paths for smoke tests until Supabase is configured.
+- **Bybit from the VM:** Direct `fetch` to `api.bybit.com` may be **geo-blocked** (CloudFront) on some cloud regions; the in-browser app may still behave differently. If feeds show offline, try Netlify Dev or document regional limits — not necessarily a code defect.
+- **Backend / exchange E2E:** Requires `npm run dev:backend` (port **8787**), Postgres (`backend/migrations/`), and `backend/.env`. See `README.md` for `VITE_BACKEND_API_BASE` and `VITE_DEV_USER_ID` dev fallback.
+- **Lint / test / build:** `npm run lint` (expect ~59 warnings, 0 errors), `npm test` (5 files, 54 tests), `npm run build` (`tsc -b` then `vite build`).

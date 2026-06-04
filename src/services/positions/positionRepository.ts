@@ -23,6 +23,32 @@ export function buildPaperMarkByPairFromSymbols(
   return out;
 }
 
+function pairBaseFromNormalizedKey(key: string): string {
+  if (key.endsWith('USDT')) return key.slice(0, -4);
+  if (key.endsWith('USDC')) return key.slice(0, -4);
+  return key;
+}
+
+/**
+ * Paper marks from WS tickers, with REST mini-chart closes as fallback per open position.
+ */
+export function buildPaperMarkByPair(
+  tickers: Record<string, { lastPrice: number } | null | undefined>,
+  options?: {
+    positionPairKeys?: string[];
+    lastCloseByPairBase?: Record<string, number>;
+  },
+): Record<string, number> {
+  const out = buildPaperMarkByPairFromSymbols(tickers);
+  for (const rawKey of options?.positionPairKeys ?? []) {
+    const key = normalizePositionPairKey(rawKey);
+    if (out[key] != null && out[key] > 0) continue;
+    const close = options?.lastCloseByPairBase?.[pairBaseFromNormalizedKey(key)];
+    if (close != null && Number.isFinite(close) && close > 0) out[key] = close;
+  }
+  return out;
+}
+
 export type PositionRepository = {
   getActivePositionByPair(pair: string): SigfloActivePosition | null;
   /** All rows the repository currently considers open (demo: mock list; future: synced open legs). */

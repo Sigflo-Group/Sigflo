@@ -24,7 +24,10 @@ export async function verifySupabaseBearer(authorizationHeader, env) {
     };
   }
 
-  const token = String(authorizationHeader ?? '')
+  const rawHeader = Array.isArray(authorizationHeader)
+    ? authorizationHeader[0]
+    : authorizationHeader;
+  const token = String(rawHeader ?? '')
     .replace(/^Bearer\s+/i, '')
     .trim();
   if (!token) {

@@ -150,6 +150,12 @@ export function buildPortfolioPositionTradeQuery(
  * `/trade` query for `mode=manage` from a live linear leg (same shape as Portfolio → Trade).
  * Notional uses `|size| × entry` like portfolio cards, not mark × size.
  */
+/** After manage-mode position is closed, return to entry shell for the same pair/side. */
+export function buildManageClosedEntryQuery(ctx: { pair: string; side: 'long' | 'short' }): string {
+  const symbol = ctx.pair.replace(/\//g, '').toUpperCase();
+  return buildPortfolioPositionTradeQuery(symbol, ctx.side);
+}
+
 export function buildManageTradeQueryFromLinearPosition(
   pos: PositionItem,
   options?: { markPrice?: number; leverageFallback?: number },

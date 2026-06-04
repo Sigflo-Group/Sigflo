@@ -3094,7 +3094,7 @@ export function TradeScreen() {
                   leverage: Math.min(leverage, futuresLevCap),
                 });
               } else {
-                const { tpSl, skippedTarget, skippedStop } = linearTpSlStringsForOpen(
+                const { skippedTarget, skippedStop } = linearTpSlStringsForOpen(
                   nextSide,
                   entryMark,
                   targetParsed,

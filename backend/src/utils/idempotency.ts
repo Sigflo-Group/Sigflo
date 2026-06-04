@@ -39,8 +39,11 @@ export async function consumeIdempotencyKey(key: string, ttlMs: number): Promise
     const row = rows[0];
     if (!row) return consumeInMemory(key, ttlMs);
     if (Date.parse(row.expires_at) > Date.now()) return false;
-    await db.query('update idempotency_keys set expires_at = $2 where key = $1', [key, expiresAt.toISOString()]);
-    return true;
+    const { rowCount: renewed } = await db.query(
+      'update idempotency_keys set expires_at = $2 where key = $1 and expires_at <= now()',
+      [key, expiresAt.toISOString()],
+    );
+    return (renewed ?? 0) > 0;
   } catch {
     return consumeInMemory(key, ttlMs);
   }

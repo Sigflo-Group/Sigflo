@@ -190,7 +190,7 @@ export function useLiveTradeMarket(
       stopped = true;
       window.cancelAnimationFrame(raf);
     };
-  }, [symbol, interval, options?.uiThrottleMs]);
+  }, [symbol, interval, options?.uiThrottleMs, options?.immediateUiOnTick]);
 
   useEffect(() => {
     const isMexc = options?.exchange === 'mexc';
@@ -440,6 +440,7 @@ export function useLiveTradeMarket(
       includePublicTrades: true,
       onLog: (msg) => console.log(`[Sigflo][Trade] ${msg}`),
       onConnectionChange: (connection) => {
+        if (cancelled) return;
         setState((prev) => ({
           ...prev,
           connection,
@@ -452,7 +453,7 @@ export function useLiveTradeMarket(
                   ? 'REST'
                   : 'REST',
         }));
-        if (connection === 'connected') void bootstrap('reconnect');
+        if (connection === 'connected' && !cancelled) void bootstrap('reconnect');
       },
       onTicker: (t) => {
         if (t.symbol !== symbol) return;
@@ -582,12 +583,16 @@ export function useLiveTradeMarket(
     if (!active || active.length === 0) return;
     chartImmediateRef.current = true;
     pendingChartRef.current = true;
-    setState((prev) => ({
-      ...prev,
-      priceSeries: normalizeSeries(active),
-      chartCandles: toTradeCandles(active),
-    }));
-  }, [interval]);
+    setState((prev) => {
+      if (prev.dataSymbol != null && prev.dataSymbol !== symbol) return prev;
+      return {
+        ...prev,
+        dataSymbol: symbol,
+        priceSeries: normalizeSeries(active),
+        chartCandles: toTradeCandles(active),
+      };
+    });
+  }, [interval, symbol]);
 
   return useMemo(() => {
     const mismatched = state.dataSymbol != null && state.dataSymbol !== symbol;

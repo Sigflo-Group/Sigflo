@@ -40,7 +40,7 @@ export type PutExitAutomationWatchBody = {
   customStrategyThresholds: Record<string, number> | null;
   safeguards: ExitAutomationWatchApi['safeguards'];
   lastGuidanceState?: ExitAutomationWatchApi['lastGuidanceState'];
-  exchange?: 'bybit';
+  exchange?: 'bybit' | 'mexc';
   market?: 'linear';
 };
 
@@ -59,9 +59,10 @@ export async function deleteExitAutomationWatch(params: {
   symbol: string;
   side: 'long' | 'short';
   positionIdx?: number;
+  exchange?: 'bybit' | 'mexc';
 }): Promise<void> {
   const q = new URLSearchParams({
-    exchange: 'bybit',
+    exchange: params.exchange ?? 'bybit',
     symbol: params.symbol,
     side: params.side,
     positionIdx: String(params.positionIdx ?? 0),

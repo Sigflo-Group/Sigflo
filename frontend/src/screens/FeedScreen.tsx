@@ -60,6 +60,10 @@ export function FeedScreen() {
     const next = searchParams.get('filter');
     if (next === 'strong' || next === 'actionable' || next === 'risky' || next === 'all') {
       setFilter(next);
+      return;
+    }
+    if (next == null || next === '') {
+      setFilter('all');
     }
   }, [searchParams]);
 

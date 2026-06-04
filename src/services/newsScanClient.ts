@@ -1,4 +1,5 @@
 import { resolveAppApiPath } from '@/lib/appBasePath';
+import { authHeaders } from '@/lib/authenticatedFetch';
 import type { MarketRegime } from '@/types/aiGrounded';
 import type { MarketNewsArticle, MarketNewsScanResult, MarketNewsSummary } from '@/types/marketNewsScan';
 
@@ -128,7 +129,7 @@ export async function requestMarketNewsScan(req: {
   try {
     const res = await fetch(endpoint, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: await authHeaders(),
       body: JSON.stringify({
         mode: req.mode,
         focusAsset: req.focusAsset ?? null,

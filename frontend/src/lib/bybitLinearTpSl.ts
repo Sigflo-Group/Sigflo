@@ -27,7 +27,9 @@ export function linearTpSlStringsForOpen(
   const tpSl: LinearTpSlStrings = {};
 
   if (!Number.isFinite(entryPrice) || entryPrice <= 0) {
-    return { tpSl: {}, skippedTarget: false, skippedStop: false };
+    // Both levels are skipped — mark them as such so callers can block the order
+    // rather than proceeding silently without a stop-loss.
+    return { tpSl: {}, skippedTarget: true, skippedStop: true };
   }
 
   if (Number.isFinite(targetParsed) && targetParsed > 0) {

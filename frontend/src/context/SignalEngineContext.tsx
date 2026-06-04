@@ -15,20 +15,14 @@ import { atr } from '@/lib/indicators';
 import { updateMarketMemory, type MarketMemorySnapshot } from '@/lib/marketMemory';
 import {
   DEFAULT_STRATEGY_PERSONALITY_MODE,
-  loadStrategyPersonalityMode,
   STRATEGY_PERSONALITY_PROFILES,
-  STRATEGY_PERSONALITY_STORAGE_KEY,
   type StrategyPersonalityMode,
 } from '@/lib/strategyPersonality';
 import {
   appendAiSnapshotIfTriggered,
   findActiveLifecycleEvent,
-  loadAiSnapshotStore,
-  persistAiSnapshotStore,
 } from '@/lib/aiSnapshotLog';
 import {
-  loadRegimePredictorStore,
-  persistRegimePredictorStore,
   updateRegimePredictor,
 } from '@/lib/regimePredictor';
 import {
@@ -48,7 +42,6 @@ import {
 } from '@/lib/scannerPipelineHealth';
 import {
   adaptationConfidenceAdjustment,
-  createEmptyUserAdaptationStore,
   registerSignalFollow,
   registerSignalImpression,
   type UserAdaptationStore,
@@ -56,12 +49,34 @@ import {
 import { TRACKED_SYMBOLS } from '@/lib/marketScannerRows';
 import type { CandidateLifecycle } from '@/lib/timingLifecycle';
 import type { NormalizedKline } from '@/core/market-data-interface';
-import type { Candle, KlineInterval, SymbolTicker } from '@/types/market';
+import type { Candle, SymbolTicker } from '@/types/market';
 import type { AiSnapshotStore } from '@/types/aiSnapshot';
 import type { CryptoSignal } from '@/types/signal';
 import type { RegimePredictorOutput, RegimePredictorState } from '@/types/regimePredictor';
 import { shouldAnnounceScannerBiasFlip } from '@/lib/biasFlipNotifyGate';
 import { emitGlobalAnnouncement } from '@/lib/globalAnnouncements';
+import {
+  loadMarketMemoryStore,
+  persistMarketMemoryStore,
+  loadSignalLifecycleStore,
+  persistSignalLifecycleStore,
+  loadUserAdaptationStore,
+  persistUserAdaptationStore,
+  loadProIntelligencePrefs,
+  persistProIntelligencePrefs,
+  loadLifecycleRef,
+  persistLifecycleRef,
+  loadRegimePredictorStore,
+  persistRegimePredictorStore,
+  loadAiSnapshotStore,
+  persistAiSnapshotStore,
+} from '@/lib/engineStorage';
+import {
+  signalPairToLinearKey,
+  signalEmitKey,
+  emptyIntervalCandles,
+  upsertCandle,
+} from '@/lib/engineUtils';
 
 const DEBUG = import.meta.env.DEV || !!(globalThis as Record<string, unknown>).__SIGFLO_DEBUG__;
 
@@ -97,189 +112,11 @@ export type SignalEngineState = {
 const COOLDOWN_MS = 20 * 60 * 1000;
 const SCORE_IMPROVE_BYPASS = 6;
 const ATR_MOVE_BYPASS = 0.6;
-const MARKET_MEMORY_STORE_KEY = '__SIGFLO_MARKET_MEMORY_V1__';
-const SIGNAL_LIFECYCLE_STORE_KEY = '__SIGFLO_SIGNAL_LIFECYCLE_V1__';
-const USER_ADAPTATION_STORE_KEY = '__SIGFLO_USER_ADAPTATION_V1__';
-const PRO_INTELLIGENCE_PREFS_KEY = '__SIGFLO_PRO_INTELLIGENCE_PREFS_V1__';
-const LIFECYCLE_REF_STORE_KEY = '__SIGFLO_LIFECYCLE_REF_V2__';
+type CandleStore = Record<string, Record<string, Candle[]>>;
 /** Same as Markets Tracked list — WS klines + tickers for live scanner + detectors. */
 const STREAM_SYMBOLS: string[] = [...TRACKED_SYMBOLS];
 
 const SignalEngineContext = createContext<SignalEngineState | null>(null);
-
-function signalPairToLinearKey(pair: string): string {
-  const raw = pair.trim().toUpperCase();
-  const base = raw.includes('/') ? raw.split('/')[0].trim() : raw.replace(/USDT$/i, '').trim();
-  const clean = base.replace(/[^A-Z0-9]/g, '');
-  return `${clean || 'BTC'}USDT`;
-}
-
-function signalEmitKey(symbol: string, setupType: string, side: 'long' | 'short'): string {
-  return `${symbol}:${setupType}:${side}`;
-}
-
-
-function loadMarketMemoryStore(): Record<string, MarketMemorySnapshot> {
-  try {
-    const raw = globalThis.localStorage?.getItem(MARKET_MEMORY_STORE_KEY);
-    if (!raw) return {};
-    const parsed = JSON.parse(raw) as Record<string, MarketMemorySnapshot>;
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
-    return parsed;
-  } catch {
-    return {};
-  }
-}
-
-function persistMarketMemoryStore(store: Record<string, MarketMemorySnapshot>): void {
-  try {
-    globalThis.localStorage?.setItem(MARKET_MEMORY_STORE_KEY, JSON.stringify(store));
-  } catch {
-    // Ignore quota/privacy failures, memory remains in-session.
-  }
-}
-
-function loadSignalLifecycleStore(): SignalLifecycleTrackerStore {
-  try {
-    const raw = globalThis.localStorage?.getItem(SIGNAL_LIFECYCLE_STORE_KEY);
-    if (!raw) return createEmptySignalLifecycleTracker();
-    const parsed = JSON.parse(raw) as SignalLifecycleTrackerStore;
-    if (!parsed || typeof parsed !== 'object') return createEmptySignalLifecycleTracker();
-    return {
-      events: Array.isArray(parsed.events) ? parsed.events : [],
-      feedbackBySymbolSetup:
-        parsed.feedbackBySymbolSetup && typeof parsed.feedbackBySymbolSetup === 'object'
-          ? parsed.feedbackBySymbolSetup
-          : {},
-      generatedInsights: Array.isArray(parsed.generatedInsights) ? parsed.generatedInsights : [],
-    };
-  } catch {
-    return createEmptySignalLifecycleTracker();
-  }
-}
-
-function persistSignalLifecycleStore(store: SignalLifecycleTrackerStore): void {
-  try {
-    globalThis.localStorage?.setItem(SIGNAL_LIFECYCLE_STORE_KEY, JSON.stringify(store));
-  } catch {
-    // ignore storage failures
-  }
-}
-
-function loadUserAdaptationStore(): UserAdaptationStore {
-  try {
-    const raw = globalThis.localStorage?.getItem(USER_ADAPTATION_STORE_KEY);
-    if (!raw) return createEmptyUserAdaptationStore();
-    const parsed = JSON.parse(raw) as UserAdaptationStore;
-    if (!parsed || typeof parsed !== 'object') return createEmptyUserAdaptationStore();
-    return {
-      ...createEmptyUserAdaptationStore(),
-      ...parsed,
-      bySetup: {
-        ...createEmptyUserAdaptationStore().bySetup,
-        ...(parsed.bySetup ?? {}),
-      },
-      byRisk: {
-        ...createEmptyUserAdaptationStore().byRisk,
-        ...(parsed.byRisk ?? {}),
-      },
-      preferences: {
-        ...createEmptyUserAdaptationStore().preferences,
-        ...(parsed.preferences ?? {}),
-      },
-      generatedNotes: Array.isArray(parsed.generatedNotes) ? parsed.generatedNotes : [],
-    };
-  } catch {
-    return createEmptyUserAdaptationStore();
-  }
-}
-
-function persistUserAdaptationStore(store: UserAdaptationStore): void {
-  try {
-    globalThis.localStorage?.setItem(USER_ADAPTATION_STORE_KEY, JSON.stringify(store));
-  } catch {
-    // ignore storage failures
-  }
-}
-
-type CandleStore = Record<string, Record<KlineInterval, Candle[]>>;
-
-type ProIntelligencePrefs = {
-  enabled: boolean;
-  layout: 'compact' | 'expanded';
-  panelExpanded: Record<string, boolean>;
-};
-
-function loadProIntelligencePrefs(): ProIntelligencePrefs {
-  try {
-    const raw = globalThis.localStorage?.getItem(PRO_INTELLIGENCE_PREFS_KEY);
-    if (!raw) return { enabled: false, layout: 'compact', panelExpanded: {} };
-    const parsed = JSON.parse(raw) as Partial<ProIntelligencePrefs>;
-    return {
-      enabled: Boolean(parsed?.enabled),
-      layout: parsed?.layout === 'expanded' ? 'expanded' : 'compact',
-      panelExpanded:
-        parsed?.panelExpanded && typeof parsed.panelExpanded === 'object'
-          ? (parsed.panelExpanded as Record<string, boolean>)
-          : {},
-    };
-  } catch {
-    return { enabled: false, layout: 'compact', panelExpanded: {} };
-  }
-}
-
-function persistProIntelligencePrefs(prefs: ProIntelligencePrefs): void {
-  try {
-    globalThis.localStorage?.setItem(PRO_INTELLIGENCE_PREFS_KEY, JSON.stringify(prefs));
-  } catch {
-    // ignore storage failures
-  }
-}
-
-function loadLifecycleRef(): Record<string, CandidateLifecycle> {
-  try {
-    const raw = globalThis.localStorage?.getItem(LIFECYCLE_REF_STORE_KEY);
-    if (!raw) return {};
-    const parsed = JSON.parse(raw) as Record<string, CandidateLifecycle>;
-    return parsed && typeof parsed === 'object' ? parsed : {};
-  } catch {
-    return {};
-  }
-}
-
-function persistLifecycleRef(store: Record<string, CandidateLifecycle>): void {
-  try {
-    globalThis.localStorage?.setItem(LIFECYCLE_REF_STORE_KEY, JSON.stringify(store));
-  } catch {
-    // ignore storage failures
-  }
-}
-
-function emptyIntervalCandles(): Record<KlineInterval, Candle[]> {
-  return {
-    '1': [],
-    '5': [],
-    '15': [],
-    '60': [],
-    '240': [],
-    D: [],
-    W: [],
-  };
-}
-
-function upsertCandle(store: Candle[], next: Candle): Candle[] {
-  const out = [...store];
-  const last = out.at(-1);
-  if (!last || next.ts > last.ts) out.push(next);
-  else if (next.ts === last.ts) out[out.length - 1] = next;
-  else {
-    // Out-of-order candle (e.g., after WS reconnect): binary-search insert in correct position.
-    let lo = 0; let hi = out.length;
-    while (lo < hi) { const mid = (lo + hi) >> 1; if (out[mid].ts < next.ts) lo = mid + 1; else hi = mid; }
-    if (lo < out.length && out[lo].ts === next.ts) out[lo] = next; else out.splice(lo, 0, next);
-  }
-  return out.length <= 240 ? out : out.slice(-240);
-}
 
 function useSignalEngineValue(): SignalEngineState {
   type EngineSnapshotState = Pick<
@@ -320,9 +157,7 @@ function useSignalEngineValue(): SignalEngineState {
   proIntelligenceModeRef.current = proIntelligenceMode;
   advancedLayoutRef.current = advancedLayout;
   advancedPanelsExpandedRef.current = advancedPanelsExpanded;
-  const [strategyPersonalityMode, setStrategyPersonalityModeState] = useState<StrategyPersonalityMode>(() =>
-    typeof window !== 'undefined' ? loadStrategyPersonalityMode() : DEFAULT_STRATEGY_PERSONALITY_MODE,
-  );
+  const strategyPersonalityMode: StrategyPersonalityMode = DEFAULT_STRATEGY_PERSONALITY_MODE;
   const mergedTickerSymbols = useMemo(
     () => [...new Set([...STREAM_SYMBOLS, ...scannerTickerExtras])],
     [scannerTickerExtras],
@@ -331,12 +166,8 @@ function useSignalEngineValue(): SignalEngineState {
     setScannerTickerExtras(symbols);
   }, []);
   const setStrategyPersonalityMode = useCallback((mode: StrategyPersonalityMode) => {
-    setStrategyPersonalityModeState(mode);
-    try {
-      globalThis.localStorage?.setItem(STRATEGY_PERSONALITY_STORAGE_KEY, mode);
-    } catch {
-      // ignore storage failures
-    }
+    // Personality mode selection has been removed from the product UI.
+    void mode;
   }, []);
   const setProIntelligenceMode = useCallback(
     (enabled: boolean) => {
@@ -398,6 +229,30 @@ function useSignalEngineValue(): SignalEngineState {
   const userAdaptationRef = useRef<UserAdaptationStore>(loadUserAdaptationStore());
   const strategyPersonalityModeRef = useRef<StrategyPersonalityMode>(strategyPersonalityMode);
   strategyPersonalityModeRef.current = strategyPersonalityMode;
+  const persistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const dirtyPersistRef = useRef({
+    signalLifecycle: false,
+    marketMemory: false,
+    regimePredictor: false,
+    lifecycle: false,
+    userAdaptation: false,
+    aiSnapshot: false,
+  });
+
+  const schedulePersistRef = useRef(() => {});
+  schedulePersistRef.current = () => {
+    if (persistTimerRef.current != null) return;
+    persistTimerRef.current = setTimeout(() => {
+      persistTimerRef.current = null;
+      const d = dirtyPersistRef.current;
+      if (d.signalLifecycle) { persistSignalLifecycleStore(signalLifecycleStoreRef.current); d.signalLifecycle = false; }
+      if (d.marketMemory) { persistMarketMemoryStore(marketMemoryRef.current); d.marketMemory = false; }
+      if (d.regimePredictor) { persistRegimePredictorStore(regimePredictorStoreRef.current); d.regimePredictor = false; }
+      if (d.lifecycle) { persistLifecycleRef(lifecycleRef.current); d.lifecycle = false; }
+      if (d.userAdaptation) { persistUserAdaptationStore(userAdaptationRef.current); d.userAdaptation = false; }
+      if (d.aiSnapshot) { persistAiSnapshotStore(aiSnapshotStoreRef.current); d.aiSnapshot = false; }
+    }, 5_000);
+  };
 
   const registerSignalFollowed = useCallback((signal: CryptoSignal) => {
     userAdaptationRef.current = registerSignalFollow(userAdaptationRef.current, {
@@ -405,7 +260,8 @@ function useSignalEngineValue(): SignalEngineState {
       riskLevel: signal.riskLevel ?? 'moderate',
       counterTrend: signal.facts?.counterTrend === 'yes',
     });
-    persistUserAdaptationStore(userAdaptationRef.current);
+    dirtyPersistRef.current.userAdaptation = true;
+    schedulePersistRef.current();
     setState((prev) => ({ ...prev }));
   }, []);
 
@@ -457,7 +313,6 @@ function useSignalEngineValue(): SignalEngineState {
       setState((prev) => ({ ...prev,
         signals: ranked,
         loading: false,
-        // Reflect transport/data source truth even when no setups are currently emitted.
         mode,
         connection,
         error,
@@ -468,7 +323,7 @@ function useSignalEngineValue(): SignalEngineState {
         ),
         aiSnapshotLog: aiSnapshotStoreRef.current,
       }));
-
+      schedulePersistRef.current();
     }
 
     // REST bootstrap / reconnect catch-up:
@@ -519,9 +374,18 @@ function useSignalEngineValue(): SignalEngineState {
         recomputeAllFromStore('REST');
         if (gen !== backfillGen || cancelled) return;
         streamReadyRef.current = true;
-        // Flush buffered WS recomputation now that store is ready
+        // Flush buffered WS recomputation now that store is ready.
+        // Deduplicate by (symbol, ts) first — the same confirmed candle can
+        // arrive more than once across a reconnect, and calling
+        // recomputeForSymbol twice for the same bar bypasses the cooldown
+        // check (the first call resets lastSignalRef so the second fires again).
+        const seenPending = new Set<string>();
         for (const pending of pendingWSCandlesRef.current) {
-          if (pending.interval === '15') recomputeForSymbol(pending.symbol, 'WS');
+          if (pending.interval !== '15') continue;
+          const key = `${pending.symbol}:${pending.ts}`;
+          if (seenPending.has(key)) continue;
+          seenPending.add(key);
+          recomputeForSymbol(pending.symbol, 'WS');
         }
         pendingWSCandlesRef.current = [];
         setLiveTickersBySymbol({ ...tickersRef.current });
@@ -626,7 +490,7 @@ function useSignalEngineValue(): SignalEngineState {
         now: Date.now(),
         candleTs: candles15m.at(-1)?.ts ?? Date.now(),
       });
-      persistSignalLifecycleStore(signalLifecycleStoreRef.current);
+      dirtyPersistRef.current.signalLifecycle = true;
       const nextMemory = updateMarketMemory({
         symbol,
         previous: marketMemoryRef.current[symbol],
@@ -635,7 +499,7 @@ function useSignalEngineValue(): SignalEngineState {
         now: Date.now(),
       });
       marketMemoryRef.current[symbol] = nextMemory;
-      persistMarketMemoryStore(marketMemoryRef.current);
+      dirtyPersistRef.current.marketMemory = true;
       const nextRegimePredictor = updateRegimePredictor({
         previous: regimePredictorStoreRef.current[symbol] ?? null,
         symbol,
@@ -645,14 +509,7 @@ function useSignalEngineValue(): SignalEngineState {
         now: Date.now(),
       });
       regimePredictorStoreRef.current[symbol] = nextRegimePredictor;
-      persistRegimePredictorStore(regimePredictorStoreRef.current);
-      setState((prev) => ({
-        ...prev,
-        regimePredictorBySymbol: {
-          ...prev.regimePredictorBySymbol,
-          [symbol]: nextRegimePredictor.output,
-        },
-      }));
+      dirtyPersistRef.current.regimePredictor = true;
 
       function flushAiSnapshot(
         memory: MarketMemorySnapshot,
@@ -672,15 +529,8 @@ function useSignalEngineValue(): SignalEngineState {
         });
         if (snapResult.appended) {
           aiSnapshotStoreRef.current = snapResult.store;
-          persistAiSnapshotStore(snapResult.store);
-          setState((prev) => ({
-            ...prev,
-            aiSnapshotLog: snapResult.store,
-            regimePredictorBySymbol: {
-              ...prev.regimePredictorBySymbol,
-              [symbol]: regimePredictor,
-            },
-          }));
+          dirtyPersistRef.current.aiSnapshot = true;
+          dirtyPersistRef.current.regimePredictor = true;
         }
       }
 
@@ -749,7 +599,7 @@ function useSignalEngineValue(): SignalEngineState {
         });
         signalBookRef.current[key] = signal.signal;
         lifecycleRef.current[key] = signal.lifecycle;
-        persistLifecycleRef(lifecycleRef.current);
+        dirtyPersistRef.current.lifecycle = true;
         flushAiSnapshot(nextMemory, signal.signal, nextRegimePredictor.output);
         recordScannerPipelineReport(
           {
@@ -787,7 +637,7 @@ function useSignalEngineValue(): SignalEngineState {
         confidence: signal.signal.confidence ?? signal.signal.setupScore,
         counterTrend: signal.signal.facts?.counterTrend === 'yes',
       });
-      persistUserAdaptationStore(userAdaptationRef.current);
+      dirtyPersistRef.current.userAdaptation = true;
       const prevLifecycleStateOnEmit = lifecycleRef.current[key]?.state;
       const nextLifecycleStateOnEmit = signal.lifecycle.state;
       const lifecycleTransitionOnEmit =
@@ -815,7 +665,7 @@ function useSignalEngineValue(): SignalEngineState {
       lastSignalRef.current[key] = { emittedAt: now, setupScore: signal.signal.setupScore, refPrice: priceNow, atr: atrNow };
       signalBookRef.current[key] = signal.signal;
       lifecycleRef.current[key] = signal.lifecycle;
-      persistLifecycleRef(lifecycleRef.current);
+      dirtyPersistRef.current.lifecycle = true;
       signalLifecycleStoreRef.current = registerSignalLifecycleEvent({
         store: signalLifecycleStoreRef.current,
         signal: signal.signal,
@@ -824,7 +674,7 @@ function useSignalEngineValue(): SignalEngineState {
         now,
         strategyPersonalityMode: strategyPersonalityModeRef.current,
       });
-      persistSignalLifecycleStore(signalLifecycleStoreRef.current);
+      dirtyPersistRef.current.signalLifecycle = true;
       flushAiSnapshot(nextMemory, signal.signal, nextRegimePredictor.output);
       recordScannerDiagnostic({
         symbol,
@@ -957,10 +807,13 @@ function useSignalEngineValue(): SignalEngineState {
       import.meta.env.DEV
         ? window.setInterval(() => logScannerHealthSummary(), 60_000)
         : undefined;
-    // REST polling fallback when WS stays disconnected
+    // REST polling fallback when WS stays disconnected.
+    // Must call backfillFromRest (not recomputeAllFromStore) so we fetch
+    // fresh candle data before re-running the pipeline — otherwise signals
+    // keep updating their timestamps while replaying the same stale snapshot.
     const restPollTimer = window.setInterval(() => {
       if (wsConnectedRef.current) return;
-      if (streamReadyRef.current) recomputeAllFromStore('REST');
+      if (streamReadyRef.current) void backfillFromRest('reconnect');
     }, 60_000);
 
     return () => {
@@ -972,6 +825,24 @@ function useSignalEngineValue(): SignalEngineState {
         window.cancelAnimationFrame(tickerFlushRafRef.current);
         tickerFlushRafRef.current = null;
       }
+      if (persistTimerRef.current != null) {
+        clearTimeout(persistTimerRef.current);
+        persistTimerRef.current = null;
+      }
+      /* eslint-disable react-hooks/exhaustive-deps */
+      const d = dirtyPersistRef.current;
+      const marketMemory = marketMemoryRef.current;
+      const regimePredictor = regimePredictorStoreRef.current;
+      const lifecycle = lifecycleRef.current;
+      const userAdaptation = userAdaptationRef.current;
+      const aiSnapshot = aiSnapshotStoreRef.current;
+      /* eslint-enable react-hooks/exhaustive-deps */
+      if (d.signalLifecycle) persistSignalLifecycleStore(signalLifecycleStoreRef.current);
+      if (d.marketMemory) persistMarketMemoryStore(marketMemory);
+      if (d.regimePredictor) persistRegimePredictorStore(regimePredictor);
+      if (d.lifecycle) persistLifecycleRef(lifecycle);
+      if (d.userAdaptation) persistUserAdaptationStore(userAdaptation);
+      if (d.aiSnapshot) persistAiSnapshotStore(aiSnapshot);
       exchangeManager.current.disconnectWebSocket();
     };
   }, []);

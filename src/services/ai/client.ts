@@ -13,6 +13,7 @@ import type {
 } from '@/types/aiGrounded';
 import type { MarketRowStatus } from '@/types/markets';
 import { resolveAppApiPath } from '@/lib/appBasePath';
+import { authHeaders } from '@/lib/authenticatedFetch';
 import { emitGlobalAnnouncement } from '@/lib/globalAnnouncements';
 import type { CryptoSignal } from '@/types/signal';
 
@@ -192,12 +193,13 @@ export async function requestAssistantSuggestion(req: AssistantRequest): Promise
     const controller = new AbortController();
     const timeout = window.setTimeout(() => controller.abort(), 9000);
     try {
+      const headers =
+        allowBrowserOpenAi && browserOpenAiKey
+          ? { 'Content-Type': 'application/json', Authorization: `Bearer ${browserOpenAiKey}` }
+          : await authHeaders();
       const res = await fetch(target, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(allowBrowserOpenAi && browserOpenAiKey ? { Authorization: `Bearer ${browserOpenAiKey}` } : {}),
-        },
+        headers,
         body: JSON.stringify(body),
         signal: controller.signal,
       });
@@ -398,12 +400,13 @@ export async function requestDeepMarketAnalysis(req: DeepAnalysisRequest): Promi
     const controller = new AbortController();
     const timeout = window.setTimeout(() => controller.abort(), 50_000);
     try {
+      const headers =
+        allowBrowserOpenAi && browserOpenAiKey
+          ? { 'Content-Type': 'application/json', Authorization: `Bearer ${browserOpenAiKey}` }
+          : await authHeaders();
       const res = await fetch(target, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(allowBrowserOpenAi && browserOpenAiKey ? { Authorization: `Bearer ${browserOpenAiKey}` } : {}),
-        },
+        headers,
         body: JSON.stringify(body),
         signal: controller.signal,
       });

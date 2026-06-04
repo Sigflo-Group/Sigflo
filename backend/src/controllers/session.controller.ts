@@ -1,5 +1,6 @@
 import type { Response } from 'express';
 import type { AuthedRequest } from '../middleware/auth.js';
+import { hasAal2 } from '../lib/authAssurance.js';
 import {
   markStepUpVerified,
   revokeSession,
@@ -16,6 +17,7 @@ export async function getSessionMe(req: AuthedRequest, res: Response) {
     userAgent: req.auditContext?.userAgent ?? null,
   });
   const state = await getSessionStateForUser(req.user.userId);
+  const mfaSessionActive = hasAal2(req.user.claims);
   return res.json({
     userId: req.user.userId,
     stepUp: {
@@ -24,7 +26,7 @@ export async function getSessionMe(req: AuthedRequest, res: Response) {
       validUntil: state.stepUpValidUntil,
     },
     oneTapEnabled: state.oneTapEnabled,
-    mfaEnabled: state.mfaEnabled,
+    mfaEnabled: mfaSessionActive,
     sessions: state.sessions,
     sessionIdentifier: session.sessionIdentifier,
   });
@@ -32,6 +34,12 @@ export async function getSessionMe(req: AuthedRequest, res: Response) {
 
 export async function postStepUp(req: AuthedRequest, res: Response) {
   if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
+  if (!hasAal2(req.user.claims)) {
+    return res.status(403).json({
+      error: 'Step-up requires two-factor authentication. Verify with your authenticator app, then try again.',
+      code: 'MFA_REQUIRED',
+    });
+  }
   const session = await ensureSessionTracked({
     userId: req.user.userId,
     ipAddress: req.auditContext?.ipAddress ?? null,

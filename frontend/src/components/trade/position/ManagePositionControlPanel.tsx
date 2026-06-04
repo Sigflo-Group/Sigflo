@@ -7,18 +7,9 @@ import type { ExitAiCoPilotModel } from '@/lib/exitAiCoPilot';
 import { ExitAiCoPilotBlock } from '@/components/trade/exit/ExitAiCoPilotBlock';
 import { TriggeredStatusBadge } from '@/components/ui/TriggeredStatusBadge';
 import { formatQuoteNumber } from '@/lib/formatQuote';
+import { formatSignedPercent, formatSignedUsd } from '@/lib/signedPnl';
 import type { TradeSide } from '@/types/trade';
 import { playAlertSound } from '@/utils/sound';
-
-function fmtSignedUsd(n: number): string {
-  const sign = n >= 0 ? '+' : '−';
-  return `${sign}$${Math.abs(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-}
-
-function fmtSignedPct(n: number): string {
-  const sign = n >= 0 ? '+' : '−';
-  return `${sign}${Math.abs(n).toFixed(2)}%`;
-}
 
 function sizeSummary(ctx: ManageTradePositionContext): string {
   const base = ctx.pair.includes('/') ? ctx.pair.split('/')[0].trim() : ctx.pair;
@@ -177,10 +168,10 @@ export function ManagePositionControlPanel({
                 winning ? 'text-emerald-300' : 'text-rose-300'
               }`}
             >
-              {fmtSignedUsd(pnlUsd)}
+              {formatSignedUsd(pnlUsd)}
             </p>
             <p className={`mt-0.5 font-mono text-lg font-semibold tabular-nums ${winning ? 'text-emerald-200/90' : 'text-rose-200/90'}`}>
-              {fmtSignedPct(pnlPct)}
+              {formatSignedPercent(pnlPct, 2)}
             </p>
           </div>
           <span

@@ -529,11 +529,9 @@ export class MexcAdapter implements ExchangeAdapter {
       price: price ?? '0',
     };
 
-    // MEXC order/create does not accept stopLossPrice/takeProfitPrice on market orders
-    // (price='0' triggers stop-limit validation and fails). TP/SL must be set via
-    // a separate position-based endpoint after the order fills.
+    // MEXC order/create rejects TP/SL on market orders — callers use setPositionTpSl after fill.
     if (params.takeProfit || params.stopLoss) {
-      log('warn', 'MEXC placeLinearOrder strips TP/SL - position-based endpoint not yet implemented', {
+      log('warn', 'MEXC placeLinearOrder ignores TP/SL on create; use setPositionTpSl after fill', {
         symbol: mexcSymbol,
         hadTakeProfit: !!params.takeProfit,
         hadStopLoss: !!params.stopLoss,
@@ -564,6 +562,25 @@ export class MexcAdapter implements ExchangeAdapter {
    *
    * Returns the list of orderIds created (empty array if both TP and SL were cleared).
    */
+  /** Poll open positions until the leg appears (post-fill settle) or timeout. */
+  private async waitForOpenPositionSize(
+    input: ConnectInput,
+    symbol: string,
+    positionSide: 'long' | 'short',
+    deadlineMs = 10_000,
+  ): Promise<number | null> {
+    const deadline = Date.now() + deadlineMs;
+    while (Date.now() < deadline) {
+      const positions = await this.fetchPositions(input);
+      const leg = positions.find((p) => p.symbol === symbol && p.side === positionSide && p.size > 0);
+      if (leg) return leg.size;
+      await new Promise<void>((r) => {
+        setTimeout(r, 300);
+      });
+    }
+    return null;
+  }
+
   async setPositionTpSl(
     input: ConnectInput,
     params: {
@@ -573,20 +590,29 @@ export class MexcAdapter implements ExchangeAdapter {
       takeProfit?: string;     // price as string; "0" = no TP / clear
       stopLoss?: string;       // price as string; "0" = no SL / clear
     },
-  ): Promise<{ orderIds: string[] }> {
+  ): Promise<{
+    orderIds: string[];
+    placed: { sl?: string; tp?: string };
+    warnings: string[];
+  }> {
     const mexcSymbol = standardSymbolToMexc(params.symbol);
+    const warnings: string[] = [];
+    const placed: { sl?: string; tp?: string } = {};
+
+    const liveSize = await this.waitForOpenPositionSize(input, params.symbol, params.positionSide);
+    const baseQty = liveSize != null && liveSize > 0 ? String(liveSize) : params.qty;
 
     // Convert base-asset qty -> contracts (MEXC expects contracts on stop order vol).
-    let contractVol = params.qty;
+    let contractVol = baseQty;
     try {
       const lot = await fetchInstrumentLot(mexcSymbol);
       if (lot) {
         const contractSize = Number(lot.contractSize);
         if (Number.isFinite(contractSize) && contractSize > 0) {
-          const contractCount = String(Number(params.qty) / contractSize);
+          const contractCount = String(Number(baseQty) / contractSize);
           contractVol = normalizeQtyToStep(contractCount, lot.volumeUnit, lot.minVol);
         } else {
-          contractVol = normalizeQtyToStep(params.qty, lot.volumeUnit, lot.minVol);
+          contractVol = normalizeQtyToStep(baseQty, lot.volumeUnit, lot.minVol);
         }
       }
     } catch {
@@ -597,12 +623,13 @@ export class MexcAdapter implements ExchangeAdapter {
     const closeSide: 2 | 4 = params.positionSide === 'long' ? 4 : 2;
 
     const created: string[] = [];
-    const tasks: Array<{ stopType: 1 | 2; price: string; label: string }> = [];
-    if (params.takeProfit && Number(params.takeProfit) > 0) {
-      tasks.push({ stopType: 2, price: params.takeProfit, label: 'TP' });
-    }
+    // SL first so a TP failure still leaves the position protected.
+    const tasks: Array<{ stopType: 1 | 2; price: string; label: 'SL' | 'TP'; leg: 'sl' | 'tp' }> = [];
     if (params.stopLoss && Number(params.stopLoss) > 0) {
-      tasks.push({ stopType: 1, price: params.stopLoss, label: 'SL' });
+      tasks.push({ stopType: 1, price: params.stopLoss, label: 'SL', leg: 'sl' });
+    }
+    if (params.takeProfit && Number(params.takeProfit) > 0) {
+      tasks.push({ stopType: 2, price: params.takeProfit, label: 'TP', leg: 'tp' });
     }
 
     for (const t of tasks) {
@@ -623,20 +650,32 @@ export class MexcAdapter implements ExchangeAdapter {
           input,
         );
         if (res.success) {
-          created.push(String(res.data));
+          const orderId = String(res.data);
+          created.push(orderId);
+          placed[t.leg] = orderId;
         } else {
           const detail = res.message ?? (res.code != null ? `code=${res.code}` : undefined);
-          throw new Error(
+          const err = new Error(
             `MEXC ${t.label} stop order rejected${detail ? `: ${detail}` : ''}`,
           );
+          if (t.leg === 'tp' && placed.sl) {
+            warnings.push(err.message);
+            log('warn', 'MEXC TP stop order failed after SL placed', { symbol: mexcSymbol, error: err.message });
+            continue;
+          }
+          throw err;
         }
       } catch (e) {
         log('warn', 'MEXC TP/SL stop order failed', { symbol: mexcSymbol, stopType: t.stopType, error: String(e) });
+        if (t.leg === 'tp' && placed.sl) {
+          warnings.push(e instanceof Error ? e.message : String(e));
+          continue;
+        }
         throw e;
       }
     }
 
-    return { orderIds: created };
+    return { orderIds: created, placed, warnings };
   }
 
   async fetchClosedTrades(input: ConnectInput, opts?: { limit?: number }): Promise<ClosedTradeItem[]> {

@@ -9,6 +9,7 @@ export function getPositionRepository(): PositionRepository {
 }
 
 export {
+  buildPaperMarkByPair,
   buildPaperMarkByPairFromSymbols,
   normalizePositionPairKey,
   type PositionRepository,

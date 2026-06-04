@@ -156,6 +156,7 @@ import {
 import { fetchLinearMaxLeverage } from '@/services/bybit/client';
 import { signalsToOpportunities } from '@/lib/signalsToOpportunities';
 import {
+  buildPaperMarkByPairFromSymbols,
   getPositionRepository,
   normalizePositionPairKey,
   sigfloActivePositionFromExchange,
@@ -3845,12 +3846,7 @@ export function TradeScreen() {
 
   const onCloseAllDemoPositionsConfirm = useCallback(() => {
     const repo = getPositionRepository();
-    const markByPair: Record<string, number> = {};
-    for (const [symbol, ticker] of Object.entries(liveTickersBySymbol)) {
-      if (!(ticker != null && Number.isFinite(ticker.lastPrice) && ticker.lastPrice > 0)) continue;
-      const pair = symbolToPair(symbol).toUpperCase();
-      markByPair[normalizePositionPairKey(pair)] = ticker.lastPrice;
-    }
+    const markByPair = buildPaperMarkByPairFromSymbols(liveTickersBySymbol);
     const liveLastPrice = live.lastPrice;
     if (typeof liveLastPrice === 'number' && Number.isFinite(liveLastPrice) && liveLastPrice > 0) {
       markByPair[normalizePositionPairKey(mergedModel.pair)] = liveLastPrice;

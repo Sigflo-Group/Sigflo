@@ -26,7 +26,7 @@ import { symbolToPair } from '@/lib/marketScannerRows';
 import { buildPortfolioPositionTradeQuery } from '@/lib/tradeNavigation';
 import { deriveBotsFromSignals } from '@/lib/bots';
 import { BYBIT_APP_ASSETS_HOME_HREF } from '@/lib/exchangeTransferUrls';
-import { normalizePositionPairKey } from '@/services/positions';
+import { buildPaperMarkByPairFromSymbols, normalizePositionPairKey } from '@/services/positions';
 import type { ExchangeSnapshot, PositionItem } from '@/types/integrations';
 import type { Candle } from '@/types/market';
 
@@ -253,14 +253,10 @@ export default function PortfolioScreen() {
     refreshMs: 45_000,
     fastRefreshMs: 12_000,
   });
-  const paperMarkByPair = useMemo(() => {
-    const out: Record<string, number> = {};
-    for (const [symbol, ticker] of Object.entries(liveTickersBySymbol)) {
-      if (!(ticker != null && Number.isFinite(ticker.lastPrice) && ticker.lastPrice > 0)) continue;
-      out[normalizePositionPairKey(symbolToPair(symbol))] = ticker.lastPrice;
-    }
-    return out;
-  }, [liveTickersBySymbol]);
+  const paperMarkByPair = useMemo(
+    () => buildPaperMarkByPairFromSymbols(liveTickersBySymbol),
+    [liveTickersBySymbol],
+  );
   const paperSnapshot = usePaperTrading(paperMarkByPair);
   const paperPositions = paperSnapshot?.positions ?? [];
   const paperOrderRows = useMemo(() => (paperSnapshot?.orders ?? []).slice(0, 10), [paperSnapshot?.orders]);
@@ -340,13 +336,17 @@ export default function PortfolioScreen() {
   const displayNet = connected
     ? netWorth
     : paperSnapshot?.equityUsd ?? paperSnapshot?.startingBalanceUsd ?? 10_000;
-  const displayPnl = connected ? todayPnl : paperSnapshot?.unrealizedPnlUsd ?? 0;
+  const paperTotalPnlUsd = useMemo(() => {
+    if (!paperSnapshot) return 0;
+    return paperSnapshot.equityUsd - paperSnapshot.startingBalanceUsd;
+  }, [paperSnapshot]);
+  const displayPnl = connected ? todayPnl : paperTotalPnlUsd;
   const displayPnlPct = connected
     ? todayPct
-    : displayNet > 0
-      ? (displayPnl / displayNet) * 100
+    : paperSnapshot && paperSnapshot.startingBalanceUsd > 0
+      ? (paperTotalPnlUsd / paperSnapshot.startingBalanceUsd) * 100
       : 0;
-  const displayPnlLabel = connected ? 'today' : 'unrealized';
+  const displayPnlLabel = connected ? 'today' : 'total';
   const activePositionCount = connected ? positions.length : paperPositions.length;
 
   return (
@@ -864,7 +864,11 @@ export default function PortfolioScreen() {
           </p>
         ) : !connected && paperPositions.length > 0 ? (
           <p className="pb-4 text-center text-[11px] leading-relaxed text-white/35">
-            Open PnL: {formatSignedUsd(paperSnapshot?.unrealizedPnlUsd ?? 0)} across simulated positions.
+            Open PnL: {formatSignedUsd(paperSnapshot?.unrealizedPnlUsd ?? 0)} unrealized
+            {paperSnapshot && paperSnapshot.realizedPnlUsd !== 0
+              ? ` · ${formatSignedUsd(paperSnapshot.realizedPnlUsd)} realized`
+              : ''}
+            .
           </p>
         ) : null}
       </div>

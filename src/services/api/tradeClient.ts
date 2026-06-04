@@ -172,6 +172,8 @@ export type MexcLinearTradingStopResponse = {
   ok: true;
   exchange: string;
   orderIds: string[];
+  placed?: { sl?: string; tp?: string };
+  warnings?: string[];
   note?: string;
 };
 

@@ -128,6 +128,11 @@ import { syntheticFromExchangePosition, syntheticFromSpotHolding } from '@/lib/e
 import { entryNotionalUsd, livePnlPercent } from '@/lib/positionRoe';
 import { formatBybitTradeErrorMessage, resolveBybitTradeError } from '@/lib/bybitUserFacingError';
 import { formatLinearPriceStringForBybit, linearTpSlStringsForOpen } from '@/lib/bybitLinearTpSl';
+import {
+  attachMexcTpSlAfterEntry,
+  findMexcOpenLeg,
+  mexcQtyFromLeg,
+} from '@/lib/mexcTpSlAttach';
 import { DEFAULT_BYBIT_TPSL_TRIGGER, type BybitTpSlTriggerBy } from '@/lib/bybitTpSlTrigger';
 import {
   applyOpenOrderNotionalBuffer,
@@ -2950,6 +2955,7 @@ export function TradeScreen() {
       isManageMode,
       live.lastPrice,
       mergedModel.lastPrice,
+      paperModeActive,
       primaryOpenPosition,
       refreshAccountSnapshots,
       throttledOpenPnl.mark,
@@ -2979,6 +2985,10 @@ export function TradeScreen() {
       }
       if (!canExecute) {
         flashTradeToast(sizingValidation.reason ?? 'Set a valid position size before placing an order.');
+        return false;
+      }
+      if (paperModeActive && isManageMode) {
+        flashTradeToast('Paper mode is active — switch to Live to manage exchange positions.');
         return false;
       }
       setSide(nextSide);
@@ -3020,6 +3030,7 @@ export function TradeScreen() {
         try {
           let linearReverseAwaitPostSyncClear = false;
           let openedNewFuturesEntry: { side: 'Buy' | 'Sell'; qty: string; positionIdx: number } | null = null;
+          let openedMexcEntry: { side: 'Buy' | 'Sell'; qty: string; positionSide: TradeSide } | null = null;
           const userRequestedStopLoss = Number.isFinite(stopParsed) && stopParsed > 0;
           const orderNotionalUsd = applyOpenOrderNotionalBuffer(metrics.positionSizeUsd, {
             minNotionalUsd: minOrderUsd,
@@ -3102,34 +3113,14 @@ export function TradeScreen() {
                     7000,
                   );
                 }
-                openedNewFuturesEntry = { side: sideBybit, qty: qtyStr, positionIdx: 0 };
+                openedMexcEntry = { side: sideBybit, qty: qtyStr, positionSide: nextSide };
                 await postMexcLinearOrder({
                   symbol: orderSymbol,
                   side: sideBybit,
                   qty: qtyStr,
                   orderType: 'Market',
                   leverage: Math.min(leverage, futuresLevCap),
-                  ...(tpSl.takeProfit ? { takeProfit: tpSl.takeProfit } : {}),
-                  ...(tpSl.stopLoss ? { stopLoss: tpSl.stopLoss } : {}),
                 });
-                // MEXC order/create does not accept TP/SL on market orders, so place
-                // them as separate stop-market orders after the entry fills.
-                if (tpSl.takeProfit || tpSl.stopLoss) {
-                  try {
-                    await postMexcLinearTradingStop({
-                      symbol: orderSymbol,
-                      positionSide: nextSide,
-                      qty: qtyStr,
-                      takeProfit: tpSl.takeProfit,
-                      stopLoss: tpSl.stopLoss,
-                    });
-                  } catch (e) {
-                    flashTradeToast(
-                      `Position opened but MEXC TP/SL placement failed: ${e instanceof Error ? e.message : String(e)}`,
-                      7000,
-                    );
-                  }
-                }
               }
             } else {
               // ── Bybit futures path ─────────────────────────────────────────
@@ -3240,6 +3231,76 @@ export function TradeScreen() {
           const hasUserTpSl =
             (Number.isFinite(targetParsed) && targetParsed > 0) ||
             (Number.isFinite(stopParsed) && stopParsed > 0);
+          if (market === 'futures' && !isManageMode && hasUserTpSl && activeExchange === 'mexc' && openedMexcEntry) {
+            const mexcSnapAfter = snapshotsAfter.find((s) => s.exchange === 'mexc' && s.status === 'connected');
+            const mexcPos = mexcSnapAfter?.positions?.find(
+              (p) => p.symbol === orderSymbol && p.side === openedMexcEntry.positionSide && p.size > 0,
+            );
+            const entryForTpSl =
+              mexcPos?.entryPrice != null && Number.isFinite(mexcPos.entryPrice) && mexcPos.entryPrice > 0
+                ? mexcPos.entryPrice
+                : entryMark;
+            const synced = linearTpSlStringsForOpen(
+              openedMexcEntry.positionSide,
+              entryForTpSl,
+              targetParsed,
+              stopParsed,
+            );
+            if (userRequestedStopLoss && (synced.skippedStop || !synced.tpSl.stopLoss)) {
+              try {
+                await postMexcLinearOrder({
+                  symbol: orderSymbol,
+                  side: openedMexcEntry.side === 'Buy' ? 'Sell' : 'Buy',
+                  qty: openedMexcEntry.qty,
+                  reduceOnly: true,
+                  orderType: 'Market',
+                });
+                flashTradeToast(
+                  'Stop-loss could not be applied against the fill. Entry was auto-closed on MEXC.',
+                  7600,
+                );
+              } catch (closeErr) {
+                flashTradeToast(
+                  `Stop-loss invalid and auto-close failed — close manually. ${closeErr instanceof Error ? closeErr.message : String(closeErr)}`,
+                  9000,
+                );
+              }
+              return false;
+            }
+            if (synced.tpSl.takeProfit || synced.tpSl.stopLoss) {
+              const tpSlOk = await attachMexcTpSlAfterEntry({
+                symbol: orderSymbol,
+                positionSide: openedMexcEntry.positionSide,
+                fallbackQty: openedMexcEntry.qty,
+                tpSl: synced.tpSl,
+                userRequiredStop: userRequestedStopLoss,
+                resolveQty: async () => {
+                  const snaps = await refreshAccountSnapshots({ silent: true });
+                  const mexc = snaps.find((s) => s.exchange === 'mexc' && s.status === 'connected');
+                  const leg = findMexcOpenLeg(mexc?.positions, orderSymbol, openedMexcEntry!.positionSide);
+                  return leg ? mexcQtyFromLeg(leg) : openedMexcEntry!.qty;
+                },
+                placeTpSl: async (body) => {
+                  const res = await postMexcLinearTradingStop(body);
+                  if (res.warnings?.length) {
+                    flashTradeToast(res.note ?? res.warnings.join(' '), 7000);
+                  }
+                },
+                rollbackEntry: async () => {
+                  await postMexcLinearOrder({
+                    symbol: orderSymbol,
+                    side: openedMexcEntry!.side === 'Buy' ? 'Sell' : 'Buy',
+                    qty: openedMexcEntry!.qty,
+                    reduceOnly: true,
+                    orderType: 'Market',
+                  });
+                  await refreshAccountSnapshots({ silent: true });
+                },
+                onErrorToast: (message) => flashTradeToast(message, 7600),
+              });
+              if (!tpSlOk) return false;
+            }
+          }
           if (market === 'futures' && !isManageMode && hasUserTpSl && activeExchange !== 'mexc') {
             const rollbackUnprotectedEntry = async (reason: string, details?: string) => {
               if (!openedNewFuturesEntry) {
@@ -3388,6 +3449,7 @@ export function TradeScreen() {
       metrics.positionSizeUsd,
       minOrderUsd,
       orderSymbol,
+      paperModeActive,
       refreshAccountSnapshots,
       riskSettings.allowLiveExecution,
       side,
@@ -3414,8 +3476,8 @@ export function TradeScreen() {
         );
         return false;
       }
-      if (activeExchange === 'mexc') {
-        flashTradeToast('MEXC does not support modifying TP/SL on open positions — set them when opening the trade.');
+      if (paperModeActive) {
+        flashTradeToast('Paper mode is active — switch to Live to update exchange TP/SL.');
         return false;
       }
       if (!useRealExecution) {
@@ -3464,14 +3526,28 @@ export function TradeScreen() {
           : '0');
       setOrderPending('tpsl');
       try {
-        await postBybitLinearTradingStop({
-          symbol: orderSymbol,
-          positionIdx: exchangePositionForSymbol.positionIdx ?? 0,
-          takeProfit,
-          stopLoss,
-          tpTriggerBy: futuresTpSlTriggerBy,
-          slTriggerBy: futuresTpSlTriggerBy,
-        });
+        if (activeExchange === 'mexc') {
+          const qtyStr = linearQtyFromBaseAmount(Math.abs(exchangePositionForSymbol.size));
+          const res = await postMexcLinearTradingStop({
+            symbol: orderSymbol,
+            positionSide: legSide,
+            qty: qtyStr,
+            takeProfit: takeProfit !== '0' ? takeProfit : undefined,
+            stopLoss: stopLoss !== '0' ? stopLoss : undefined,
+          });
+          if (res.warnings?.length) {
+            flashTradeToast(res.note ?? res.warnings.join(' '), 7000);
+          }
+        } else {
+          await postBybitLinearTradingStop({
+            symbol: orderSymbol,
+            positionIdx: exchangePositionForSymbol.positionIdx ?? 0,
+            takeProfit,
+            stopLoss,
+            tpTriggerBy: futuresTpSlTriggerBy,
+            slTriggerBy: futuresTpSlTriggerBy,
+          });
+        }
         setStopStr(Number.isFinite(stopPrice) && stopPrice > 0 ? formatQuoteNumber(stopPrice) : '');
         setTargetStr(Number.isFinite(targetPrice) && targetPrice > 0 ? formatQuoteNumber(targetPrice) : '');
         if (isManageMode) setManageTpSlDirty(false);
@@ -3486,13 +3562,16 @@ export function TradeScreen() {
       }
     },
     [
+      activeExchange,
       bybitSnap,
       exchangePositionForSymbol,
       flashTradeToast,
       futuresTpSlTriggerBy,
       isManageMode,
       market,
+      mexcSnap,
       orderSymbol,
+      paperModeActive,
       refreshAccountSnapshots,
       riskSettings.allowLiveExecution,
       useRealExecution,
@@ -3501,16 +3580,16 @@ export function TradeScreen() {
 
   const liveChartTpSlDragEligible = useMemo(
     () =>
-      !isManageMode &&
       !isBotsReviewCockpit &&
       !liveExecutionLocked &&
+      !paperModeActive &&
       market === 'futures' &&
       useRealExecution &&
-      activeExchange !== 'mexc' &&
       riskSettings.allowLiveExecution &&
       exchangePositionForSymbol != null &&
       isExchangeBackedOpenLeg &&
-      orderPending == null,
+      orderPending == null &&
+      (activeExchange === 'mexc' ? isManageMode : !isManageMode),
     [
       activeExchange,
       exchangePositionForSymbol,
@@ -3520,6 +3599,7 @@ export function TradeScreen() {
       liveExecutionLocked,
       market,
       orderPending,
+      paperModeActive,
       riskSettings.allowLiveExecution,
       useRealExecution,
     ],
@@ -5133,12 +5213,12 @@ export function TradeScreen() {
           manageFuturesTpSl={
             isManageMode && market === 'futures'
               ? {
-                  canApply: Boolean(useRealExecution && activeExchange !== 'mexc' && exchangePositionForSymbol),
+                  canApply: Boolean(useRealExecution && !paperModeActive && exchangePositionForSymbol),
                   pending: orderPending === 'tpsl',
                   onApply: applyManageTradingStop,
                   canApplyAll: Boolean(
                     useRealExecution &&
-                      activeExchange !== 'mexc' &&
+                      !paperModeActive &&
                       exchangePositionForSymbol &&
                       (manageTpSlDirty || (manageOrderDraftDirty && amountUsd > 0)),
                   ),

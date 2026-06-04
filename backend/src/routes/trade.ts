@@ -451,11 +451,16 @@ tradeRouter.post('/mexc/linear-trading-stop', async (req: AuthedRequest, res) =>
       takeProfit: hasTp ? p.takeProfit!.trim() : '0',
       stopLoss: hasSl ? p.stopLoss!.trim() : '0',
     });
+    const partial = result.warnings.length > 0;
     res.json({
       ok: true,
       exchange: 'mexc',
       orderIds: result.orderIds,
-      note: 'TP/SL stop orders placed on MEXC — they trigger and close the position at the specified prices.',
+      placed: result.placed,
+      warnings: result.warnings,
+      note: partial
+        ? 'Stop-loss placed on MEXC; take-profit could not be set — adjust manually if needed.'
+        : 'TP/SL stop orders placed on MEXC — they trigger and close the position at the specified prices.',
     });
   } catch (e) {
     const msg = clientSafeExchangeError(e, 'Trading stop failed');

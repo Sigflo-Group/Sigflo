@@ -27,9 +27,10 @@ class ExchangeManager {
 
     console.info(`[ExchangeManager] switching ${this._activeId} → ${id}`);
 
+    const adapter = createAdapter(id);
     this._adapter.disconnectWebSocket();
+    this._adapter = adapter;
     this._activeId = id;
-    this._adapter = createAdapter(id);
   }
 }
 

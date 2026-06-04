@@ -78,6 +78,8 @@ export type ExchangeSnapshot = {
   syncError?: string;
 };
 
+import type { TradeSource } from '@/types/tradeSource';
+
 /** Closed linear PnL row from `/api/portfolio/closed-trades`. */
 export type ClosedTradeRow = {
   exchange: ExchangeId;
@@ -85,4 +87,6 @@ export type ClosedTradeRow = {
   closedPnl: number;
   closedAt: string;
   orderId?: string;
+  /** Origin of this trade. Undefined/missing defaults to 'manual' (exchange API trades). */
+  source?: TradeSource;
 };

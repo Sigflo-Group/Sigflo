@@ -3,24 +3,14 @@ import { z } from 'zod';
 import type { AuthedRequest } from '../middleware/auth.js';
 import { BybitAdapter } from '../exchanges/bybit.js';
 import { MexcAdapter } from '../exchanges/mexc.js';
-import { decryptBrokerCredential, getSecretFromVault } from '../services/exchangeKey.service.js';
-import { listBrokerAccountsForUser, type BrokerAccountRow } from '../db/queries/brokerAccounts.js';
+import { resolveBrokerCredentials } from '../services/brokerCredentials.js';
+import { clientSafeExchangeError } from '../lib/clientSafeError.js';
+import { listBrokerAccountsForUser } from '../db/queries/brokerAccounts.js';
 import { log } from '../lib/logger.js';
 import { formatZodIssuesForApi } from '../lib/formatZodError.js';
 import { isBybitTradingStopNoopError } from '../lib/bybitNoopErrors.js';
 
 export const tradeRouter = Router();
-
-async function resolveRowCreds(row: BrokerAccountRow) {
-  const apiKey = row.apiKeyVaultId
-    ? await getSecretFromVault(row.apiKeyVaultId)
-    : decryptBrokerCredential(row.apiKeyEncrypted);
-  const apiSecret = row.apiSecretVaultId
-    ? await getSecretFromVault(row.apiSecretVaultId)
-    : decryptBrokerCredential(row.apiSecretEncrypted);
-  if (!apiKey || !apiSecret) throw new Error('Failed to retrieve exchange credentials.');
-  return { apiKey, apiSecret };
-}
 
 const bybitTriggerBySchema = z.enum(['MarkPrice', 'LastPrice', 'IndexPrice']);
 
@@ -74,7 +64,7 @@ tradeRouter.post('/bybit/linear-order', async (req: AuthedRequest, res) => {
 
   let creds: { apiKey: string; apiSecret: string };
   try {
-    creds = await resolveRowCreds(row);
+    creds = await resolveBrokerCredentials(row);
   } catch (e) {
     res.status(500).json({ error: 'Failed to retrieve exchange credentials.' });
     return;
@@ -83,7 +73,7 @@ tradeRouter.post('/bybit/linear-order', async (req: AuthedRequest, res) => {
   try {
     await bybitAdapter.ensureTradeEnabled(creds);
   } catch (e) {
-    const msg = e instanceof Error ? e.message : 'Trade not allowed for this key.';
+    const msg = clientSafeExchangeError(e, 'Trade not allowed for this key.');
     log('warn', 'Bybit trade permission check failed.', { error: msg });
     res.status(403).json({ error: 'API key does not have trading permission' });
     return;
@@ -128,8 +118,8 @@ tradeRouter.post('/bybit/linear-order', async (req: AuthedRequest, res) => {
       note: `Order accepted by Bybit — confirm fill and position via portfolio sync.${tpSlNote}`,
     });
   } catch (e) {
-    const msg = e instanceof Error ? e.message : 'Order failed';
-    log('warn', 'Bybit order failed.', { error: msg });
+    const msg = clientSafeExchangeError(e, 'Order failed');
+    log('warn', 'Bybit order failed.', { error: e instanceof Error ? e.message : String(e) });
     res.status(400).json({ error: msg });
   }
 });
@@ -166,7 +156,7 @@ tradeRouter.post('/bybit/linear-trading-stop', async (req: AuthedRequest, res) =
 
   let creds: { apiKey: string; apiSecret: string };
   try {
-    creds = await resolveRowCreds(row);
+    creds = await resolveBrokerCredentials(row);
   } catch (e) {
     res.status(500).json({ error: 'Failed to retrieve exchange credentials.' });
     return;
@@ -175,7 +165,7 @@ tradeRouter.post('/bybit/linear-trading-stop', async (req: AuthedRequest, res) =
   try {
     await bybitAdapter.ensureTradeEnabled(creds);
   } catch (e) {
-    const msg = e instanceof Error ? e.message : 'Trade not allowed for this key.';
+    const msg = clientSafeExchangeError(e, 'Trade not allowed for this key.');
     log('warn', 'Bybit trade permission check failed.', { error: msg });
     res.status(403).json({ error: 'API key does not have trading permission' });
     return;
@@ -197,7 +187,7 @@ tradeRouter.post('/bybit/linear-trading-stop', async (req: AuthedRequest, res) =
       note: 'TP/SL updated on Bybit (full position, market trigger) — confirm on the exchange.',
     });
   } catch (e) {
-    const msg = e instanceof Error ? e.message : 'Trading stop failed';
+    const msg = clientSafeExchangeError(e, 'Trading stop failed');
     if (isBybitTradingStopNoopError(msg)) {
       res.json({
         ok: true,
@@ -238,7 +228,7 @@ tradeRouter.post('/bybit/set-leverage', async (req: AuthedRequest, res) => {
 
   let creds: { apiKey: string; apiSecret: string };
   try {
-    creds = await resolveRowCreds(row);
+    creds = await resolveBrokerCredentials(row);
   } catch (e) {
     res.status(500).json({ error: 'Failed to retrieve exchange credentials.' });
     return;
@@ -247,7 +237,7 @@ tradeRouter.post('/bybit/set-leverage', async (req: AuthedRequest, res) => {
   try {
     await bybitAdapter.ensureTradeEnabled(creds);
   } catch (e) {
-    const msg = e instanceof Error ? e.message : 'Trade not allowed for this key.';
+    const msg = clientSafeExchangeError(e, 'Trade not allowed for this key.');
     log('warn', 'Bybit trade permission check failed.', { error: msg });
     res.status(403).json({ error: 'API key does not have trading permission' });
     return;
@@ -262,7 +252,7 @@ tradeRouter.post('/bybit/set-leverage', async (req: AuthedRequest, res) => {
       note: 'Leverage updated on Bybit for this symbol.',
     });
   } catch (e) {
-    const msg = e instanceof Error ? e.message : 'Set leverage failed';
+    const msg = clientSafeExchangeError(e, 'Set leverage failed');
     log('warn', 'Bybit set-leverage failed.', { symbol: p.symbol, error: msg });
     res.status(400).json({ error: msg });
   }
@@ -289,7 +279,7 @@ tradeRouter.post('/bybit/spot-order', async (req: AuthedRequest, res) => {
 
   let creds: { apiKey: string; apiSecret: string };
   try {
-    creds = await resolveRowCreds(row);
+    creds = await resolveBrokerCredentials(row);
   } catch (e) {
     res.status(500).json({ error: 'Failed to retrieve exchange credentials.' });
     return;
@@ -298,7 +288,7 @@ tradeRouter.post('/bybit/spot-order', async (req: AuthedRequest, res) => {
   try {
     await bybitAdapter.ensureTradeEnabled(creds);
   } catch (e) {
-    const msg = e instanceof Error ? e.message : 'Trade not allowed for this key.';
+    const msg = clientSafeExchangeError(e, 'Trade not allowed for this key.');
     log('warn', 'Bybit trade permission check failed.', { error: msg });
     res.status(403).json({ error: 'API key does not have trading permission' });
     return;
@@ -323,7 +313,7 @@ tradeRouter.post('/bybit/spot-order', async (req: AuthedRequest, res) => {
       note: 'Spot order accepted by Bybit — confirm fill via portfolio sync.',
     });
   } catch (e) {
-    const msg = e instanceof Error ? e.message : 'Order failed';
+    const msg = clientSafeExchangeError(e, 'Order failed');
     log('warn', 'Bybit spot order failed.', { error: msg });
     res.status(400).json({ error: msg });
   }
@@ -364,7 +354,7 @@ tradeRouter.post('/mexc/linear-order', async (req: AuthedRequest, res) => {
 
   let creds: { apiKey: string; apiSecret: string };
   try {
-    creds = await resolveRowCreds(row);
+    creds = await resolveBrokerCredentials(row);
   } catch (e) {
     res.status(500).json({ error: 'Failed to retrieve exchange credentials.' });
     return;
@@ -392,7 +382,7 @@ tradeRouter.post('/mexc/linear-order', async (req: AuthedRequest, res) => {
       note: 'Order accepted by MEXC — confirm fill and position via portfolio sync.',
     });
   } catch (e) {
-    const msg = e instanceof Error ? e.message : 'Order failed';
+    const msg = clientSafeExchangeError(e, 'Order failed');
     log('warn', 'MEXC order failed.', { error: msg });
     res.status(400).json({ error: msg });
   }
@@ -434,7 +424,7 @@ tradeRouter.post('/mexc/linear-trading-stop', async (req: AuthedRequest, res) =>
 
   let creds: { apiKey: string; apiSecret: string };
   try {
-    creds = await resolveRowCreds(row);
+    creds = await resolveBrokerCredentials(row);
   } catch (e) {
     res.status(500).json({ error: 'Failed to retrieve exchange credentials.' });
     return;
@@ -468,7 +458,7 @@ tradeRouter.post('/mexc/linear-trading-stop', async (req: AuthedRequest, res) =>
       note: 'TP/SL stop orders placed on MEXC — they trigger and close the position at the specified prices.',
     });
   } catch (e) {
-    const msg = e instanceof Error ? e.message : 'Trading stop failed';
+    const msg = clientSafeExchangeError(e, 'Trading stop failed');
     log('warn', 'MEXC trading-stop failed.', { error: msg });
     res.status(400).json({ error: msg });
   }

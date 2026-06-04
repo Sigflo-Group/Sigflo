@@ -167,6 +167,30 @@ export async function postMexcLinearOrder(body: {
   });
 }
 
+export type MexcLinearTradingStopResponse = {
+  ok: true;
+  exchange: string;
+  orderIds: string[];
+  note?: string;
+};
+
+/**
+ * Set full-position TP/SL on an open MEXC futures position. Implemented via stop-market
+ * orders. Pass "0" (or omit) for a side to skip / clear it.
+ */
+export async function postMexcLinearTradingStop(body: {
+  symbol: string;
+  positionSide: 'long' | 'short';
+  qty: string;
+  takeProfit?: string;
+  stopLoss?: string;
+}): Promise<MexcLinearTradingStopResponse> {
+  return apiJson<MexcLinearTradingStopResponse>('/trade/mexc/linear-trading-stop', {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+}
+
 export async function postBybitSpotOrder(body: {
   symbol: string;
   side: 'Buy' | 'Sell';

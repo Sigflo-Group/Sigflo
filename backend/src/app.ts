@@ -57,6 +57,7 @@ export function createApp() {
     cors({
       credentials: true,
       origin(origin, callback) {
+        // Non-browser clients (no Origin) are allowed; Bearer auth still required on protected routes.
         if (!origin) return callback(null, true);
         if (origin === 'null') return callback(new Error('CORS blocked'));
         if (allowedOrigins.includes(origin)) return callback(null, true);

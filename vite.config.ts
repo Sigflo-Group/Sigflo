@@ -86,8 +86,19 @@ function readBody(req: IncomingMessage): Promise<string> {
   });
 }
 
+function assertNoBrowserOpenAiKeyInProduction(mode: string, env: Record<string, string>) {
+  if (mode !== 'production') return;
+  if (env.VITE_AI_API_KEY?.trim()) {
+    throw new Error('VITE_AI_API_KEY must not be set for production builds (keys belong on the server only).');
+  }
+  if (env.VITE_AI_ALLOW_BROWSER_OPENAI === 'true') {
+    throw new Error('VITE_AI_ALLOW_BROWSER_OPENAI must not be enabled for production builds.');
+  }
+}
+
 export default defineConfig(({ mode }) => {
   const envFromFiles = { ...loadEnv(mode, __dirname, '') };
+  assertNoBrowserOpenAiKeyInProduction(mode, envFromFiles);
   mergeDotenvFile(path.join(__dirname, 'backend', '.env'), envFromFiles);
   const aiSecretsFromDisk = loadAiSecretsFromDisk(mode, __dirname);
   const devAiEnv = (): NodeJS.ProcessEnv => ({ ...process.env, ...envFromFiles, ...aiSecretsFromDisk });
@@ -143,6 +154,30 @@ export default defineConfig(({ mode }) => {
 
             try {
               const body = await readBody(req as IncomingMessage);
+              const needsAuth =
+                pathname === '/api/ai/suggest' ||
+                pathname === '/api/ai/news-scan' ||
+                pathname.endsWith('/api/ai/suggest') ||
+                pathname.endsWith('/api/ai/news-scan');
+              if (needsAuth) {
+                const { verifySupabaseBearer } = (await import(
+                  './netlify/functions/lib/verify-supabase-auth.mjs'
+                )) as {
+                  verifySupabaseBearer: (
+                    h: string | undefined,
+                    env: NodeJS.ProcessEnv,
+                  ) => Promise<{ ok: boolean; statusCode?: number; error?: string }>;
+                };
+                const authHeader =
+                  typeof req.headers.authorization === 'string' ? req.headers.authorization : undefined;
+                const auth = await verifySupabaseBearer(authHeader, devAiEnv());
+                if (!auth.ok) {
+                  out.statusCode = auth.statusCode ?? 401;
+                  out.setHeader('Content-Type', 'application/json');
+                  out.end(JSON.stringify({ error: auth.error ?? 'Unauthorized' }));
+                  return;
+                }
+              }
               if (isAdminBeta) {
                 const { runAdminBeta } = (await import(
                   // @ts-expect-error TS7016 — untyped .mjs Netlify module

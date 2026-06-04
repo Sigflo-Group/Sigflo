@@ -11,7 +11,21 @@ const envSchema = z.object({
   FRONTEND_ORIGIN: z
     .string()
     .optional()
-    .transform((v) => (v == null || v.trim() === '' ? 'http://localhost:3999' : v.trim())),
+    .transform((v, ctx) => {
+      const trimmed = (v ?? '').trim();
+      const isProd = process.env.NODE_ENV === 'production';
+      if (!trimmed) {
+        if (isProd) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: 'FRONTEND_ORIGIN is required in production (comma-separated allowed origins).',
+          });
+          return z.NEVER;
+        }
+        return 'http://localhost:3999';
+      }
+      return trimmed;
+    }),
   /**
    * Postgres connection string only (`postgres://` / `postgresql://`). Never the Supabase dashboard
    * `https://…supabase.co` URL — that belongs in SUPABASE_URL.

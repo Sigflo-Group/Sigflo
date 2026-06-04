@@ -28,10 +28,15 @@ export const handler = async (event) => {
     : '';
   const targetUrl = `${BACKEND_ORIGIN}/api/exchange${origPath}${qs}`;
 
+  const allowHeaders = new Set([
+    'authorization',
+    'content-type',
+    'accept',
+    'x-request-id',
+    'x-idempotency-key',
+  ]);
   const headers = Object.fromEntries(
-    Object.entries(event.headers ?? {}).filter(
-      ([k]) => !['host', 'x-forwarded-host', 'x-forwarded-proto', 'x-forwarded-port', 'x-netlify-original-pathname'].includes(k.toLowerCase()),
-    ),
+    Object.entries(event.headers ?? {}).filter(([k]) => allowHeaders.has(k.toLowerCase())),
   );
 
   try {
@@ -57,7 +62,7 @@ export const handler = async (event) => {
       statusCode: 502,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        error: `Exchange API unreachable at ${BACKEND_ORIGIN}: ${e instanceof Error ? e.message : 'Unknown error'}`,
+        error: 'Exchange API is temporarily unreachable. Try again shortly.',
       }),
     };
   }

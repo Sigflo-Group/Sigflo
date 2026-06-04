@@ -1,6 +1,7 @@
 import type { PositionItem } from '@/types/integrations';
 import type { SimulatedActivePosition } from '@/types/activePosition';
 import type { MarketMode, TradeSide } from '@/types/trade';
+import { entryNotionalUsd, marginBaseForRoe } from '@/lib/positionRoe';
 
 /**
  * Maps a live Bybit linear position into the trade UI shape used by exit guidance and chart overlays.
@@ -12,10 +13,16 @@ export function syntheticFromExchangePosition(
   fallbackLeverage: number,
 ): SimulatedActivePosition {
   const mark = p.markPrice != null && p.markPrice > 0 ? p.markPrice : p.entryPrice;
-  const notional = Math.abs(p.size) * mark;
+  const notional = entryNotionalUsd({ size: p.size, entryPrice: p.entryPrice, markPrice: mark });
   const lev = p.leverage != null && p.leverage > 0 ? p.leverage : fallbackLeverage;
   const margin =
-    p.positionIM != null && p.positionIM > 0 ? p.positionIM : notional / Math.max(1, lev);
+    marginBaseForRoe({
+      size: p.size,
+      entryPrice: p.entryPrice,
+      markPrice: mark,
+      leverage: lev,
+      positionIM: p.positionIM,
+    }) ?? (notional > 0 ? notional : 1e-9);
   return {
     id: `bybit:${p.symbol}:${p.side}`,
     symbol: displayPair,

@@ -1,12 +1,15 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { SecurityState } from '@/types/auth';
 import { getCurrentSessionState } from '@/lib/api/session';
+import { computeStepUpRequired } from '@/lib/sessionSecurityUi';
 import { useAuthProvider } from '@/providers/AuthProvider';
 
 type SessionProviderValue = {
   securityState: SecurityState | null;
   sessionReady: boolean;
+  /** True when step-up is required or security state could not be loaded (fail-closed). */
   stepUpRequired: boolean;
+  securityStateUnknown: boolean;
   refreshSecurityState: () => Promise<void>;
 };
 
@@ -16,10 +19,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const { user } = useAuthProvider();
   const [sessionReady, setSessionReady] = useState(false);
   const [securityState, setSecurityState] = useState<SecurityState | null>(null);
+  const [securityStateUnknown, setSecurityStateUnknown] = useState(false);
 
   const refreshSecurityState = useCallback(async () => {
     if (!user) {
       setSecurityState(null);
+      setSecurityStateUnknown(false);
       setSessionReady(true);
       return;
     }
@@ -27,10 +32,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     try {
       const state = await getCurrentSessionState();
       setSecurityState(state);
+      setSecurityStateUnknown(false);
     } catch {
-      // Network / server error — treat step-up as required so protected
-      // routes don't silently pass through with unknown security state.
+      // Fail closed: block step-up-protected routes when security state is unknown.
       setSecurityState(null);
+      setSecurityStateUnknown(true);
     } finally {
       setSessionReady(true);
     }
@@ -44,10 +50,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     () => ({
       securityState,
       sessionReady,
-      stepUpRequired: Boolean(securityState?.stepUp.required),
+      securityStateUnknown,
+      stepUpRequired: computeStepUpRequired(securityState, securityStateUnknown),
       refreshSecurityState,
     }),
-    [securityState, sessionReady, refreshSecurityState],
+    [securityState, sessionReady, securityStateUnknown, refreshSecurityState],
   );
 
   return <SessionProviderContext.Provider value={value}>{children}</SessionProviderContext.Provider>;

@@ -43,7 +43,7 @@ async function verifyWithJwks(token: string): Promise<VerifiedAuthUser | null> {
   if (!jwks) return null;
   try {
     const base = normalizeUrl(env.SUPABASE_URL!);
-    const { payload } = await jwtVerify(token, jwks);
+    const { payload } = await jwtVerify(token, jwks, { algorithms: ['RS256'] });
     const iss = typeof payload.iss === 'string' ? payload.iss : '';
     if (iss && !iss.startsWith(`${base}/auth/v1`)) return null;
     const id = typeof payload.sub === 'string' ? payload.sub : null;
@@ -55,14 +55,18 @@ async function verifyWithJwks(token: string): Promise<VerifiedAuthUser | null> {
 }
 
 export async function verifySupabaseAccessToken(token: string): Promise<VerifiedAuthUser | null> {
+  let alg: string | undefined;
   try {
-    const hdr = decodeProtectedHeader(token);
-    if (hdr.alg === 'RS256') {
-      const rs = await verifyWithJwks(token);
-      if (rs) return rs;
-    }
+    alg = decodeProtectedHeader(token).alg;
   } catch {
-    // ignore
+    return null;
   }
-  return (await verifyWithHs256(token)) ?? (await verifyWithJwks(token));
+
+  if (alg === 'RS256') {
+    return verifyWithJwks(token);
+  }
+  if (alg === 'HS256') {
+    return verifyWithHs256(token);
+  }
+  return null;
 }

@@ -1,4 +1,7 @@
 node_modules
+
+# WhatsApp session material — never commit
+whatsapp-auth/
 dist
 *.local
 .env

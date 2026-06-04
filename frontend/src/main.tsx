@@ -13,15 +13,15 @@ createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <BrowserRouter basename={import.meta.env.BASE_URL}>
       <AppErrorBoundary>
-        <ArchitectureAuthProvider>
-          <SessionProvider>
-            <AuthProvider>
+        <AuthProvider>
+          <ArchitectureAuthProvider>
+            <SessionProvider>
               <TradingControlModeProvider>
                 <App />
               </TradingControlModeProvider>
-            </AuthProvider>
-          </SessionProvider>
-        </ArchitectureAuthProvider>
+            </SessionProvider>
+          </ArchitectureAuthProvider>
+        </AuthProvider>
       </AppErrorBoundary>
     </BrowserRouter>
   </StrictMode>,

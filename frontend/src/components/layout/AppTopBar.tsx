@@ -66,17 +66,18 @@ export function AppTopBar() {
             </div>
           </div>
         </div>
-        <div className="ml-2 flex shrink-0 items-center gap-1.5">
+        <div className="ml-2 flex shrink-0 items-center gap-1">
           <Link
             to={feedActionablePath()}
-            className="inline-flex h-7 min-w-fit shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border border-sigflo-accent/25 bg-sigflo-accentDim px-2 py-0 text-[10px] font-bold uppercase leading-none tracking-wider text-sigflo-accent transition hover:border-sigflo-accent/40 hover:bg-sigflo-accent/14 sm:px-2.5"
+            className="inline-flex h-7 min-w-fit shrink-0 items-center gap-1 whitespace-nowrap rounded-full border border-sigflo-accent/25 bg-sigflo-accentDim px-1.5 py-0 text-[9px] font-bold uppercase leading-none tracking-[0.08em] text-sigflo-accent transition hover:border-sigflo-accent/40 hover:bg-sigflo-accent/14 sm:gap-1.5 sm:px-2.5 sm:text-[10px] sm:tracking-wider"
             aria-label="Open feed and view triggered setups"
           >
             <span className="relative flex h-1.5 w-1.5">
               <span className="absolute inline-flex h-full w-full animate-pulse-dot rounded-full bg-sigflo-accent [animation-duration:1.8s]" />
               <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-sigflo-accent" />
             </span>
-            <span>{loading ? 'Syncing...' : `Triggered ${triggeredPairCount}`}</span>
+            <span className="sm:hidden">{loading ? '...' : `${triggeredPairCount} triggered`}</span>
+            <span className="hidden sm:inline">{loading ? 'Syncing...' : `Triggered ${triggeredPairCount}`}</span>
           </Link>
           <button
             type="button"
@@ -92,7 +93,7 @@ export function AppTopBar() {
                   : 'Default streamlined view restored.',
               });
             }}
-            className={`inline-flex h-7 shrink-0 items-center rounded-full border px-2 py-1 text-[10px] font-bold uppercase tracking-[0.12em] transition ${
+            className={`inline-flex h-7 shrink-0 items-center rounded-full border px-1.5 py-1 text-[10px] font-bold uppercase tracking-[0.12em] transition sm:px-2 ${
               proIntelligenceMode
                 ? 'border-cyan-300/35 bg-cyan-500/12 text-cyan-100 hover:bg-cyan-500/18'
                 : 'border-white/[0.1] bg-white/[0.04] text-sigflo-muted hover:text-sigflo-text'

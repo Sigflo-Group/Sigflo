@@ -1,11 +1,11 @@
 import { secureStorage } from '@/lib/storage';
-import { dismissFirstTradeGuide, isFirstTradeGuideDismissed } from '@/lib/firstTradeGuide';
+
 import { ariaExpanded, ariaPressed, ariaSelected } from '@/a11y/ariaBoolean';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { AssistedExitConfirmBar } from '@/components/trade/AssistedExitConfirmBar';
 import { ExitAutomationControls } from '@/components/trade/ExitAutomationControls';
-import { TradeChartScenarioStrip, computeScenarioProbabilities } from '@/components/trade/TradeChartScenarioStrip';
+
 import { MarketToggle } from '@/components/trade/MarketToggle';
 import { ActivePositionsPanel } from '@/components/trade/ActivePositionsPanel';
 import { CloseAllPositionsModal } from '@/components/trade/CloseAllPositionsModal';
@@ -60,11 +60,12 @@ import { useAppAnnouncementsEnabled } from '@/hooks/useAppAnnouncementsEnabled';
 import { usePaperTrading } from '@/hooks/usePaperTrading';
 import { emitGlobalAnnouncement } from '@/lib/globalAnnouncements';
 import { useAccountSnapshot } from '@/hooks/useAccountSnapshot';
+import { useExchangeIntegrations } from '@/hooks/useExchangeIntegrations';
 import { useSignalEngine } from '@/hooks/useSignalEngine';
 import { useLiveTradeMarket, type TradeChartInterval } from '@/hooks/useLiveTradeMarket';
 import { useThrottledLiveUnrealized } from '@/hooks/useThrottledLiveUnrealized';
 import { managePnlFromPrices, parseManageTradeContext } from '@/lib/manageTradeContext';
-import { buildManageTradeQueryFromLinearPosition, buildTradeQueryString } from '@/lib/tradeNavigation';
+import { buildManageTradeQueryFromLinearPosition, buildPortfolioPositionTradeQuery, buildTradeQueryString } from '@/lib/tradeNavigation';
 import { isTradePairFavorite, normalizeTradePairBase, toggleTradePairFavorite } from '@/lib/tradePairFavorites';
 import {
   readAppAnnouncementsEnabled,
@@ -84,6 +85,7 @@ import {
 } from '@/lib/marketScannerRows';
 import { formatElapsedAgo, postedAgoToSeconds, uiSignalStateClasses, uiSignalStateFromMarketStatus, uiSignalStateLabel } from '@/lib/signalState';
 import { EXIT_AI_MODE_LABEL, EXIT_STRATEGY_LABEL } from '@/lib/aiExitAutomation';
+import { EntryGuidanceCard, ExitGuidanceCard } from '@/components/trade/TradeGuidanceCards';
 import { TRADE_CHART_LEVEL_COLORS } from '@/lib/tradeChartLevels';
 import {
   readPersistedTradeChartInterval,
@@ -96,6 +98,7 @@ import {
 } from '@/lib/exitFlowDisplayStabilize';
 import { buildExitAiCoPilotModel, buildManageAiExitZoneAuxLines } from '@/lib/exitAiCoPilot';
 import { resolveExitGuidanceFlow } from '@/lib/tradeExitGuidanceFlow';
+import { computeTradeEntryGuidance } from '@/lib/tradeEntryGuidance';
 import {
   buildTradeTimingUiModel,
   getExecutionQuality,
@@ -117,6 +120,7 @@ import {
   resolveTradeAnchorPrice,
 } from '@/lib/tradeViewFromSignal';
 import { syntheticFromExchangePosition, syntheticFromSpotHolding } from '@/lib/exchangePositionSynthetic';
+import { entryNotionalUsd, livePnlPercent } from '@/lib/positionRoe';
 import { formatBybitTradeErrorMessage, resolveBybitTradeError } from '@/lib/bybitUserFacingError';
 import { formatLinearPriceStringForBybit, linearTpSlStringsForOpen } from '@/lib/bybitLinearTpSl';
 import { DEFAULT_BYBIT_TPSL_TRIGGER, type BybitTpSlTriggerBy } from '@/lib/bybitTpSlTrigger';
@@ -136,6 +140,7 @@ import {
   postBybitLinearTradingStop,
   postBybitSpotOrder,
   postMexcLinearOrder,
+  postMexcLinearTradingStop,
   putExitAutomationWatch,
 } from '@/services/api/tradeClient';
 import { fetchLinearMaxLeverage } from '@/services/bybit/client';
@@ -359,8 +364,6 @@ export function TradeScreen() {
 
   /** When reviewing an open Sigflo row without an engine opportunity, skip workspace setup hints. */
   const hideFreshSetupTradeHint = Boolean(positionReviewFromQuery && !opportunityIdFromQuery);
-  const [showTradeGuide, setShowTradeGuide] = useState(() => !hideFreshSetupTradeHint && !isFirstTradeGuideDismissed());
-
   useEffect(() => {
     if (!botsTradeOpp) return;
     setSide(botsTradeOpp.direction === 'LONG' ? 'long' : 'short');
@@ -376,6 +379,7 @@ export function TradeScreen() {
   /** Bybit linear `instruments-info` max leverage for the active symbol (futures only). */
   const [symbolMaxLeverage, setSymbolMaxLeverage] = useState<number | null>(null);
   const [side, setSide] = useState<TradeSide>('long');
+  const manualSideRef = useRef(false);
   const [stopStr, setStopStr] = useState('');
   const [targetStr, setTargetStr] = useState('');
   /** Futures: Bybit TP/SL trigger (mark / last / index) for new orders + manage TP/SL apply. */
@@ -578,17 +582,15 @@ export function TradeScreen() {
 
   const tradeScreenOpps = useMemo(() => signalsToOpportunities(liveSignals, oppPrices, {}), [liveSignals, oppPrices]);
 
+  const reviewOppId = botsReviewContext?.opportunityId?.trim();
+  const matchedOpp = useMemo(
+    () => (reviewOppId ? tradeScreenOpps.find((o) => o.id === reviewOppId) ?? null : undefined),
+    [reviewOppId, tradeScreenOpps],
+  );
   useEffect(() => {
-    const id = botsReviewContext?.opportunityId?.trim();
-    if (!id) {
-      setBotsTradeOpp(undefined);
-      setBotsTradeOppLoading(false);
-      return;
-    }
-    setBotsTradeOppLoading(true);
-    setBotsTradeOpp(tradeScreenOpps.find((o) => o.id === id) ?? null);
+    setBotsTradeOpp(matchedOpp);
     setBotsTradeOppLoading(false);
-  }, [botsReviewContext?.opportunityId, tradeScreenOpps]);
+  }, [matchedOpp]);
 
   const selectedSignal = useMemo(() => {
     const fromQuery = buildSignalContextFromQuery(params, signalId);
@@ -655,7 +657,12 @@ export function TradeScreen() {
   }, [pairFromQuery, selectedSignal, liveSignals]);
 
   useEffect(() => {
+    manualSideRef.current = false;
+  }, [signalId]);
+
+  useEffect(() => {
     if (isManageMode || signalId.startsWith('pf-')) return;
+    if (manualSideRef.current) return;
     if (positionReviewFromQuery) {
       const sym = pairBaseToLinearSymbol(positionReviewFromQuery.pairRaw);
       const row = getPositionRepository().getActivePositionByPair(sym);
@@ -735,6 +742,7 @@ export function TradeScreen() {
   }, [liveSignals]);
 
   const { items: accountSnapshots, refresh: refreshAccountSnapshots } = useAccountSnapshot({ pollMs: 12_000 });
+  const { items: exchangeIntegrations } = useExchangeIntegrations();
   const bybitSnap = useMemo(
     () => accountSnapshots.find((s) => s.exchange === 'bybit' && s.status === 'connected'),
     [accountSnapshots],
@@ -743,7 +751,20 @@ export function TradeScreen() {
     () => accountSnapshots.find((s) => s.exchange === 'mexc' && s.status === 'connected'),
     [accountSnapshots],
   );
-  const activeExchange: 'bybit' | 'mexc' | null = bybitSnap ? 'bybit' : mexcSnap ? 'mexc' : null;
+  const preferredActiveExchange = useMemo((): 'bybit' | 'mexc' | null => {
+    const active = exchangeIntegrations.find((item) => item.isActive && item.status === 'connected');
+    return active?.exchange ?? null;
+  }, [exchangeIntegrations]);
+  const activeExchange: 'bybit' | 'mexc' | null = useMemo(() => {
+    if (preferredActiveExchange === 'bybit' && bybitSnap) return 'bybit';
+    if (preferredActiveExchange === 'mexc' && mexcSnap) return 'mexc';
+    return bybitSnap ? 'bybit' : mexcSnap ? 'mexc' : null;
+  }, [preferredActiveExchange, bybitSnap, mexcSnap]);
+  const activeExchangeSnap = useMemo(() => {
+    if (activeExchange === 'bybit') return bybitSnap ?? null;
+    if (activeExchange === 'mexc') return mexcSnap ?? null;
+    return bybitSnap ?? mexcSnap ?? null;
+  }, [activeExchange, bybitSnap, mexcSnap]);
 
   const live = useLiveTradeMarket(liveSymbol, chartInterval, {
     uiThrottleMs: isManageMode ? 16 : undefined,
@@ -757,6 +778,7 @@ export function TradeScreen() {
       setManageFastMark(undefined);
       return;
     }
+    let rafId: number;
     const push = () => {
       const snap = live.tickSnapshotRef.current;
       const next =
@@ -769,9 +791,12 @@ export function TradeScreen() {
         setManageFastMark((prev) => (prev !== next ? next : prev));
       }
     };
-    push();
-    const id = window.setInterval(push, 25);
-    return () => window.clearInterval(id);
+    const loop = () => {
+      push();
+      rafId = requestAnimationFrame(loop);
+    };
+    rafId = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(rafId);
   }, [isManageMode, live.tickSnapshotRef, live.lastPrice]);
 
   const liveMarketTickerItems = useMemo(
@@ -789,56 +814,74 @@ export function TradeScreen() {
   );
 
   const tradeBalance = useMemo(() => {
-    const bybit = accountSnapshots.find((s) => s.exchange === 'bybit' && s.status === 'connected');
-    const overview = bybit?.accountBreakdown?.overview;
-    if (overview) {
-      const unifiedBucket = bybit?.accountBreakdown?.buckets?.find((b) => b.kind === 'unified');
-      const utaUnrealizedPnl = unifiedBucket?.metrics?.unrealizedPnl;
-      return {
-        exchange: 'bybit' as const,
-        availableToTrade: coerceUsdField(overview.availableToTrade),
-        totalWalletBalance: coerceUsdField(overview.totalWalletBalance),
-        totalEquity: coerceUsdField(overview.totalEquity),
-        marginInUseUsd: coerceUsdField(overview.unifiedMarginInUseUsd ?? null),
-        utaUnrealizedPnl: utaUnrealizedPnl != null ? coerceUsdField(utaUnrealizedPnl) : null,
-        fundingWalletBalance: coerceUsdField(overview.fundingWalletBalance ?? null),
-        fundingPrimaryAsset: overview.fundingPrimaryAsset ?? null,
-      };
-    }
-    const mexc = accountSnapshots.find((s) => s.exchange === 'mexc' && s.status === 'connected');
-    if (!mexc) return null;
-    const mexcOverview = mexc.accountBreakdown?.overview;
-    if (mexcOverview) {
+    const balanceExchangeOrder: Array<'bybit' | 'mexc'> =
+      activeExchange === 'mexc' ? ['mexc', 'bybit'] : ['bybit', 'mexc'];
+    for (const exchange of balanceExchangeOrder) {
+      if (exchange === 'bybit') {
+        const overview = bybitSnap?.accountBreakdown?.overview;
+        if (!overview) continue;
+        const unifiedBucket = bybitSnap.accountBreakdown?.buckets?.find((b) => b.kind === 'unified');
+        const utaUnrealizedPnl = unifiedBucket?.metrics?.unrealizedPnl;
+        return {
+          exchange: 'bybit' as const,
+          availableToTrade: coerceUsdField(overview.availableToTrade),
+          totalWalletBalance: coerceUsdField(overview.totalWalletBalance),
+          totalEquity: coerceUsdField(overview.totalEquity),
+          marginInUseUsd: coerceUsdField(overview.unifiedMarginInUseUsd ?? null),
+          utaUnrealizedPnl: utaUnrealizedPnl != null ? coerceUsdField(utaUnrealizedPnl) : null,
+          fundingWalletBalance: coerceUsdField(overview.fundingWalletBalance ?? null),
+          fundingPrimaryAsset: overview.fundingPrimaryAsset ?? null,
+        };
+      }
+
+      if (!mexcSnap) continue;
+      const mexcOverview = mexcSnap.accountBreakdown?.overview;
+      if (mexcOverview) {
+        return {
+          exchange: 'mexc' as const,
+          availableToTrade: coerceUsdField(mexcOverview.availableToTrade),
+          totalWalletBalance: coerceUsdField(mexcOverview.totalWalletBalance),
+          totalEquity: coerceUsdField(mexcOverview.totalEquity),
+          marginInUseUsd: null,
+          utaUnrealizedPnl: null,
+          fundingWalletBalance: coerceUsdField(mexcOverview.fundingWalletBalance ?? null),
+          fundingPrimaryAsset: mexcOverview.fundingPrimaryAsset ?? null,
+        };
+      }
+      const usdt = mexcSnap.balances?.find((b) => b.asset.toUpperCase() === 'USDT');
+      if (!usdt) continue;
       return {
         exchange: 'mexc' as const,
-        availableToTrade: coerceUsdField(mexcOverview.availableToTrade),
-        totalWalletBalance: coerceUsdField(mexcOverview.totalWalletBalance),
-        totalEquity: coerceUsdField(mexcOverview.totalEquity),
+        availableToTrade: usdt.free,
+        totalWalletBalance: usdt.total,
+        totalEquity: usdt.total,
         marginInUseUsd: null,
         utaUnrealizedPnl: null,
-        fundingWalletBalance: coerceUsdField(mexcOverview.fundingWalletBalance ?? null),
-        fundingPrimaryAsset: mexcOverview.fundingPrimaryAsset ?? null,
+        fundingWalletBalance: null,
+        fundingPrimaryAsset: null,
       };
     }
-    const usdt = mexc.balances?.find((b) => b.asset.toUpperCase() === 'USDT');
-    if (!usdt) return null;
-    return {
-      exchange: 'mexc' as const,
-      availableToTrade: usdt.free,
-      totalWalletBalance: usdt.total,
-      totalEquity: usdt.total,
-      marginInUseUsd: null,
-      utaUnrealizedPnl: null,
-      fundingWalletBalance: null,
-      fundingPrimaryAsset: null,
-    };
-  }, [accountSnapshots]);
+    return null;
+  }, [activeExchange, bybitSnap, mexcSnap]);
 
   const paperSnapshot = usePaperTrading();
   const paperCashUsd = useMemo(() => paperSnapshot?.cashUsd ?? 10_000, [paperSnapshot]);
   const [forcePaperMode, setForcePaperMode] = useState(false);
+  const riskSettings = useRiskSettings();
+  const dailyRiskGuard = useDailyRiskGuard();
+
+  /** Manage mode still posts closes/adds via exchange API when an exchange is linked. MEXC only supports futures. */
+  const useRealExecution =
+    Boolean(bybitSnap && (market === 'futures' || market === 'spot')) ||
+    Boolean(mexcSnap && market === 'futures');
+  /** User opt-in from Risk controls — when false, Sigflo does not submit opens or TP/SL updates (closes use their own path). */
+  const liveOrderSubmitEnabled = useRealExecution && riskSettings.allowLiveExecution;
+  const paperModeActive = forcePaperMode || (!isManageMode && !liveOrderSubmitEnabled);
 
   const tradeBalanceHelper = useMemo(() => {
+    if (paperModeActive) {
+      return 'Paper mode is active. Position sizing and available balance use your simulated cash.';
+    }
     if (!tradeBalance) return undefined;
     if (tradeBalance.exchange === 'mexc') {
       if (market === 'futures') {
@@ -850,7 +893,7 @@ export function TradeScreen() {
       return 'Balances above update from your connected Bybit account. In Futures mode, Long/Short and Close place live orders.';
     }
     return 'Balances above update from your connected Bybit account. In Spot mode, Buy/Sell and Close place live orders.';
-  }, [tradeBalance, market]);
+  }, [paperModeActive, tradeBalance, market]);
 
   /**
    * Single raw cap for linked UTA: max of sizing + display paths (they can diverge on edge API shapes).
@@ -864,18 +907,18 @@ export function TradeScreen() {
   }, [tradeBalance]);
 
   const displayBalanceUsd = useMemo((): number | null => {
-    if (linkedUtaRawMaxUsd != null && linkedUtaRawMaxUsd > 0 && !forcePaperMode) {
+    if (linkedUtaRawMaxUsd != null && linkedUtaRawMaxUsd > 0 && !paperModeActive) {
       return roundUsdAmount(linkedUtaRawMaxUsd);
     }
     return paperCashUsd;
-  }, [linkedUtaRawMaxUsd, forcePaperMode, paperCashUsd]);
+  }, [linkedUtaRawMaxUsd, paperModeActive, paperCashUsd]);
 
   const balanceForModel = useMemo(() => {
-    if (tradeBalance && linkedUtaRawMaxUsd != null && linkedUtaRawMaxUsd > 0 && !forcePaperMode) {
+    if (tradeBalance && linkedUtaRawMaxUsd != null && linkedUtaRawMaxUsd > 0 && !paperModeActive) {
       return roundUsdAmount(linkedUtaRawMaxUsd);
     }
     return paperCashUsd;
-  }, [tradeBalance, linkedUtaRawMaxUsd, forcePaperMode, paperCashUsd]);
+  }, [tradeBalance, linkedUtaRawMaxUsd, paperModeActive, paperCashUsd]);
 
   const [tradePriceAnchor, setTradePriceAnchor] = useState<number | null>(null);
   useEffect(() => {
@@ -1013,24 +1056,15 @@ export function TradeScreen() {
     };
   }, [market, mergedModel.pair]);
 
-  const riskSettings = useRiskSettings();
-  const dailyRiskGuard = useDailyRiskGuard();
   const dailyReviewLocked = Boolean(isBotsReviewCockpit && dailyRiskGuard.status === 'locked');
-  const exchangeOpenLegCount = useMemo(() => countExchangeOpenLegs((bybitSnap ?? mexcSnap)?.positions), [(bybitSnap ?? mexcSnap)?.positions]);
+  const exchangeOpenLegCount = countExchangeOpenLegs(activeExchangeSnap?.positions);
   const riskMonitoredOpenCount = useMemo(
     () => activePositionCountForRisk(exchangeOpenLegCount),
     [exchangeOpenLegCount],
   );
   const maxOpenPositionsReached = riskMonitoredOpenCount >= riskSettings.maxOpenPositions;
-  /** Manage mode still posts closes/adds via exchange API when an exchange is linked. MEXC only supports futures. */
-  const useRealExecution =
-    Boolean(bybitSnap && (market === 'futures' || market === 'spot')) ||
-    Boolean(mexcSnap && market === 'futures');
-  /** User opt-in from Risk controls — when false, Sigflo does not submit opens or TP/SL updates (closes use their own path). */
-  const liveOrderSubmitEnabled = useRealExecution && riskSettings.allowLiveExecution;
-  const paperModeActive = forcePaperMode || (!isManageMode && !liveOrderSubmitEnabled);
   const exchangePositionForSymbol = useMemo((): PositionItem | null => {
-    const snap = bybitSnap ?? mexcSnap;
+    const snap = activeExchangeSnap;
     if (!snap?.positions?.length) return null;
     const sym = pairBaseToLinearSymbol(mergedModel.pair);
     const open = snap.positions.filter((x) => x.symbol === sym && x.size > 0);
@@ -1038,7 +1072,7 @@ export function TradeScreen() {
     /** Hedge mode (Bybit): same symbol can have long + short; managing uses URL leg, else UI `side`. */
     const legSide = isManageMode && manageCtx ? manageCtx.side : side;
     return open.find((x) => x.side === legSide) ?? open[0];
-  }, [bybitSnap, mexcSnap, isManageMode, manageCtx, mergedModel.pair, side]);
+  }, [activeExchangeSnap, isManageMode, manageCtx, mergedModel.pair, side]);
 
   const spotBaseAsset = useMemo(
     () => spotBaseAssetFromOrderSymbol(pairBaseToLinearSymbol(mergedModel.pair)),
@@ -1168,14 +1202,14 @@ export function TradeScreen() {
     const next = { ...mergedModel };
     if (Number.isFinite(stopParsed) && stopParsed > 0) next.stop = stopParsed;
     if (Number.isFinite(targetParsed) && targetParsed > 0) next.target = targetParsed;
-    if (tradeBalance && linkedUtaRawMaxUsd != null && linkedUtaRawMaxUsd > 0 && !forcePaperMode) {
+    if (tradeBalance && linkedUtaRawMaxUsd != null && linkedUtaRawMaxUsd > 0 && !paperModeActive) {
       next.balanceUsd = roundUsdAmount(linkedUtaRawMaxUsd);
     }
     if (!Number.isFinite(next.balanceUsd) || next.balanceUsd < 0) {
-      next.balanceUsd = forcePaperMode || !tradeBalance ? paperCashUsd : 0;
+      next.balanceUsd = paperModeActive || !tradeBalance ? paperCashUsd : 0;
     }
     return next;
-  }, [mergedModel, stopParsed, targetParsed, tradeBalance, linkedUtaRawMaxUsd, forcePaperMode, paperCashUsd]);
+  }, [mergedModel, stopParsed, targetParsed, tradeBalance, linkedUtaRawMaxUsd, paperModeActive, paperCashUsd]);
 
   // Prefer mark price for PnL (exchanges use mark price, not last price).
   const markForManage = manageFastMark ?? live.markPrice ?? manageCtx?.markPrice ?? live.lastPrice ?? mergedModel.lastPrice;
@@ -1198,7 +1232,6 @@ export function TradeScreen() {
     if (market === 'futures' && exchangePositionForSymbol) {
       const pos = exchangePositionForSymbol;
       const entry = pos.entryPrice > 0 ? pos.entryPrice : manageCtx.entryPrice;
-      const notional = Math.abs(pos.size) * (entry > 0 ? entry : manageCtx.entryPrice);
       // Prefer exchange-reported unrealizedPnl (authoritative) when available.
       if (pos.unrealizedPnl != null && Number.isFinite(pos.unrealizedPnl)) {
         const markPx =
@@ -1207,14 +1240,15 @@ export function TradeScreen() {
             : typeof markForManage === 'number' && Number.isFinite(markForManage) && markForManage > 0
               ? markForManage
               : entry;
-        const lev = pos.leverage ?? manageCtx.leverage;
-        const marginBase =
-          pos.positionIM != null && pos.positionIM > 0
-            ? pos.positionIM
-            : lev && lev > 1 && notional > 0
-              ? notional / lev
-              : null;
-        const pnlPct = marginBase != null ? (pos.unrealizedPnl / marginBase) * 100 : 0;
+        const pnlPct = livePnlPercent({
+          side: pos.side,
+          unrealizedPnl: pos.unrealizedPnl,
+          size: pos.size,
+          entryPrice: entry,
+          markPrice: markPx,
+          leverage: pos.leverage ?? manageCtx.leverage,
+          positionIM: pos.positionIM,
+        });
         return { pnlUsd: pos.unrealizedPnl, pnlPct };
       }
       const markPx =
@@ -1223,16 +1257,18 @@ export function TradeScreen() {
           : pos.markPrice != null && pos.markPrice > 0
             ? pos.markPrice
             : entry;
+      const notional = entryNotionalUsd({ size: pos.size, entryPrice: entry, markPrice: markPx });
       const usd = notional > 0 ? notional : manageCtx.positionUsd;
       const { pnlUsd } = managePnlFromPrices(pos.side, entry, markPx, usd);
-      const lev = pos.leverage ?? manageCtx.leverage;
-      const marginBase =
-        pos.positionIM != null && pos.positionIM > 0
-          ? pos.positionIM
-          : lev && lev > 1 && notional > 0
-            ? notional / lev
-            : null;
-      const pnlPct = marginBase != null ? (pnlUsd / marginBase) * 100 : (pnlUsd / usd) * 100;
+      const pnlPct = livePnlPercent({
+        side: pos.side,
+        unrealizedPnl: pnlUsd,
+        size: pos.size,
+        entryPrice: entry,
+        markPrice: markPx,
+        leverage: pos.leverage ?? manageCtx.leverage,
+        positionIM: pos.positionIM,
+      });
       return { pnlUsd, pnlPct };
     }
     const result = managePnlFromPrices(manageCtx.side, manageCtx.entryPrice, markForManage, manageCtx.positionUsd);
@@ -1643,22 +1679,10 @@ export function TradeScreen() {
     ? { pnlUsd: throttledOpenPnl.pnlUsd, movePct: throttledOpenPnl.movePct }
     : liveUnrealizedPre;
 
-  /**
-   * Match Portfolio behavior first: when an exchange leg is open, prefer the snapshot `unrealizedPnl`
-   * (same field Portfolio renders) for display-facing PnL labels. Keep live throttled path as fallback.
-   */
-  const portfolioAlignedLiveUnrealized = useMemo(() => {
-    if (!hasActiveTradePosition) return liveUnrealized;
-    const snapshotPnl = exchangePositionForSymbol?.unrealizedPnl;
-    if (!(snapshotPnl != null && Number.isFinite(snapshotPnl))) return liveUnrealized;
-    const notional = primaryChartOpenPosition?.positionNotionalUsd ?? 0;
-    const movePct =
-      Number.isFinite(notional) && Math.abs(notional) > 1e-9 ? (snapshotPnl / notional) * 100 : liveUnrealized.movePct;
-    return {
-      pnlUsd: snapshotPnl,
-      movePct,
-    };
-  }, [exchangePositionForSymbol?.unrealizedPnl, hasActiveTradePosition, liveUnrealized, primaryChartOpenPosition?.positionNotionalUsd]);
+  // Use the live RAF-throttled value throughout: position card and scenario strip share the
+  // same source so they never diverge. The exchange snapshot is only polled every ~12 s and
+  // would otherwise cause the scenario strip to lag the position card for several seconds.
+  const portfolioAlignedLiveUnrealized = liveUnrealized;
 
   const adjustRiskSnapshot = useMemo((): AdjustRiskPositionSnapshot | null => {
     if (!chartModelForPlot) return null;
@@ -1943,16 +1967,6 @@ export function TradeScreen() {
     targetParsed,
   ]);
 
-  const scenarioProb = useMemo(
-    () =>
-      computeScenarioProbabilities({
-        tradeScore: metrics.riskSummary.tradeScore,
-        setupScore: selectedSignal.setupScore,
-        side: side === 'long' ? 'long' : 'short',
-      }),
-    [metrics.riskSummary.tradeScore, selectedSignal.setupScore, side],
-  );
-
   const timingUi = useMemo(
     () =>
       buildTradeTimingUiModel({
@@ -2155,6 +2169,33 @@ export function TradeScreen() {
     exitFlowDisplayStashRef.current = stash;
     return stash.displayed;
   }, [exitFlowRaw, exitFlowDisplayTick]);
+
+  const entryGuidance = useMemo(
+    () =>
+      computeTradeEntryGuidance({
+        marketStatus: scannerStatus,
+        tradeScore: metrics.riskSummary.tradeScore,
+        setupScore: selectedSignal.setupScore,
+        side: side === 'long' ? 'long' : 'short',
+        lastPrice:
+          typeof mergedModel.lastPrice === 'number' && Number.isFinite(mergedModel.lastPrice)
+            ? mergedModel.lastPrice
+            : modelForMetrics.entry,
+        planEntry: modelForMetrics.entry,
+        hasOpenPosition: hasActiveTradePosition,
+        executionQuality: executionQuality ?? null,
+      }),
+    [
+      scannerStatus,
+      metrics.riskSummary.tradeScore,
+      selectedSignal.setupScore,
+      side,
+      mergedModel.lastPrice,
+      modelForMetrics.entry,
+      hasActiveTradePosition,
+      executionQuality,
+    ],
+  );
 
   const serverExitEligible = useMemo(
     () =>
@@ -2556,6 +2597,14 @@ export function TradeScreen() {
     [],
   );
 
+  const onSideChange = useCallback(
+    (next: TradeSide) => {
+      setSide(next);
+      manualSideRef.current = true;
+    },
+    [],
+  );
+
   const onLeverageChange = useCallback(
     (n: number) => {
       const cap = futuresLevCap > 0 ? futuresLevCap : 200;
@@ -2785,6 +2834,11 @@ export function TradeScreen() {
         | { kind: 'spot'; symbol: string; freeBase: number; fraction: number },
     ) => {
       setOrderPending('close');
+      if (paperModeActive) {
+        flashTradeToast('Paper mode is active — close via Paper / Demo portfolio.');
+        setOrderPending(null);
+        return;
+      }
       const fraction = args.fraction;
       try {
         if (args.kind === 'spot') {
@@ -2947,7 +3001,7 @@ export function TradeScreen() {
         return false;
       }
 
-      if (liveOrderSubmitEnabled) {
+      if (!paperModeActive && liveOrderSubmitEnabled) {
         setOrderPending('open');
         try {
           let linearReverseAwaitPostSyncClear = false;
@@ -3044,6 +3098,24 @@ export function TradeScreen() {
                   ...(tpSl.takeProfit ? { takeProfit: tpSl.takeProfit } : {}),
                   ...(tpSl.stopLoss ? { stopLoss: tpSl.stopLoss } : {}),
                 });
+                // MEXC order/create does not accept TP/SL on market orders, so place
+                // them as separate stop-market orders after the entry fills.
+                if (tpSl.takeProfit || tpSl.stopLoss) {
+                  try {
+                    await postMexcLinearTradingStop({
+                      symbol: orderSymbol,
+                      positionSide: nextSide,
+                      qty: qtyStr,
+                      takeProfit: tpSl.takeProfit,
+                      stopLoss: tpSl.stopLoss,
+                    });
+                  } catch (e) {
+                    flashTradeToast(
+                      `Position opened but MEXC TP/SL placement failed: ${e instanceof Error ? e.message : String(e)}`,
+                      7000,
+                    );
+                  }
+                }
               }
             } else {
               // ── Bybit futures path ─────────────────────────────────────────
@@ -3230,6 +3302,7 @@ export function TradeScreen() {
               }
             }
           }
+          tradeScrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
           return true;
         } catch (e) {
           reverseOrderInProgressRef.current = false;
@@ -3257,6 +3330,7 @@ export function TradeScreen() {
         });
         if (open?.ok) {
           flashTradeToast('Paper trade opened — simulated portfolio updated.');
+          tradeScrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
           return true;
         }
         flashTradeToast(open?.error ?? 'Paper trade unavailable right now.');
@@ -3519,20 +3593,33 @@ export function TradeScreen() {
 
   const openManagePositionView = useCallback(() => {
     const pos = exchangePositionForSymbol;
-    if (!pos || market !== 'futures') return;
-    const mark =
-      hasActiveTradePosition && Number.isFinite(throttledOpenPnl.mark) && throttledOpenPnl.mark > 0
-        ? throttledOpenPnl.mark
-        : live.lastPrice != null && live.lastPrice > 0
-          ? live.lastPrice
-          : Number.isFinite(mergedModel.lastPrice) && mergedModel.lastPrice > 0
-            ? mergedModel.lastPrice
-            : undefined;
-    const q = buildManageTradeQueryFromLinearPosition(pos, {
-      markPrice: mark,
-      leverageFallback: effectiveFuturesLeverage,
-    });
-    navigate(`/trade?${q}`);
+    if (pos && market === 'futures') {
+      const mark =
+        hasActiveTradePosition && Number.isFinite(throttledOpenPnl.mark) && throttledOpenPnl.mark > 0
+          ? throttledOpenPnl.mark
+          : live.lastPrice != null && live.lastPrice > 0
+            ? live.lastPrice
+            : Number.isFinite(mergedModel.lastPrice) && mergedModel.lastPrice > 0
+              ? mergedModel.lastPrice
+              : undefined;
+      const q = buildManageTradeQueryFromLinearPosition(pos, {
+        markPrice: mark,
+        leverageFallback: effectiveFuturesLeverage,
+      });
+      navigate(`/trade?${q}`);
+      return;
+    }
+    if (sigfloRepoPosition && market === 'futures') {
+      const symbol = sigfloRepoPosition.pair.replace(/ \/ /g, '');
+      const q = buildPortfolioPositionTradeQuery(symbol, sigfloRepoPosition.direction, {
+        positionUsd: Math.max(1, Math.round(Math.abs(sigfloRepoPosition.size * sigfloRepoPosition.entryPrice))),
+        entryPrice: sigfloRepoPosition.entryPrice,
+        posSize: sigfloRepoPosition.size,
+        markPrice: sigfloRepoPosition.markPrice,
+        leverage: sigfloRepoPosition.leverage,
+      });
+      navigate(`/trade?${q}`);
+    }
   }, [
     effectiveFuturesLeverage,
     exchangePositionForSymbol,
@@ -3541,6 +3628,7 @@ export function TradeScreen() {
     market,
     mergedModel.lastPrice,
     navigate,
+    sigfloRepoPosition,
     throttledOpenPnl.mark,
   ]);
 
@@ -3868,7 +3956,11 @@ export function TradeScreen() {
       Number.isFinite(portfolioAlignedLiveUnrealized.movePct)
     ) {
       const pnl = portfolioAlignedLiveUnrealized.pnlUsd;
-      const pct = portfolioAlignedLiveUnrealized.movePct;
+      // Show ROE (leverage-adjusted) for futures; raw price-move % for spot.
+      const posLev = primaryChartOpenPosition?.leverage ?? 1;
+      const pct = market === 'futures' && posLev > 1
+        ? portfolioAlignedLiveUnrealized.movePct * posLev
+        : portfolioAlignedLiveUnrealized.movePct;
       const sign = pnl >= 0 ? '+' : '−';
       const tone = pnl > 0 ? 'positive' : pnl < 0 ? 'negative' : 'neutral';
       return {
@@ -3881,8 +3973,10 @@ export function TradeScreen() {
     hasActiveTradePosition,
     hasManageOpenExposure,
     isManageMode,
+    market,
     portfolioAlignedLiveUnrealized.movePct,
     portfolioAlignedLiveUnrealized.pnlUsd,
+    primaryChartOpenPosition?.leverage,
     managePnlDisplay,
   ]);
 
@@ -4290,7 +4384,7 @@ export function TradeScreen() {
                       <rect x="3" y="3" width="18" height="18" rx="2" strokeLinejoin="round" />
                       <path d="M9 12l2 2 4-4" strokeLinecap="round" strokeLinejoin="round" />
                     </svg>
-                    Paper
+                    Live
                   </button>
                 ) : null}
                 {forcePaperMode ? (
@@ -4304,7 +4398,7 @@ export function TradeScreen() {
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
                       <path d="M12 3v3m0 12v3M3 12h3m12 0h3M5.64 5.64l2.12 2.12m8.48 8.48l2.12 2.12M5.64 18.36l2.12-2.12m8.48-8.48l2.12-2.12" strokeLinecap="round" />
                     </svg>
-                    Live
+                    Paper
                   </button>
                 ) : null}
                 <button
@@ -4465,7 +4559,7 @@ export function TradeScreen() {
 
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         {isManageMode ? (
-          <div className="shrink-0 border-b border-emerald-400/40 bg-landing-bg pt-2 shadow-[0_8px_28px_-8px_rgba(0,0,0,0.45)]">
+          <div className="shrink-0 border-b border-emerald-400/40 bg-landing-bg shadow-[0_8px_28px_-8px_rgba(0,0,0,0.45)]">
             <div className="mx-auto w-full min-w-0 max-w-lg px-1.5">
               {/* Manage chart: boolean setupMode + live preset so PriceChartCard syncs overlays (undefined = uncontrolled, levels stuck off). */}
               <TradeChartPanel
@@ -4532,7 +4626,7 @@ export function TradeScreen() {
         >
           <div className="flex flex-col gap-1">
             {!isManageMode && !isBotsReviewCockpit ? <MarketToggle value={market} onChange={setMarket} /> : null}
-            {paperModeActive ? (
+            {forcePaperMode ? (
               <div className="rounded-lg border border-violet-400/25 bg-violet-500/[0.08] px-2.5 py-1.5 text-[10px] font-semibold tracking-wide text-violet-100">
                 Paper Trading Mode · Simulated Portfolio
               </div>
@@ -4541,32 +4635,6 @@ export function TradeScreen() {
               <p className="rounded-lg border border-white/[0.06] bg-white/[0.03] px-2 py-1.5 text-[9px] leading-snug text-zinc-400">
                 Review position · Managing exits · Suggestion only · Live changes require confirmation
               </p>
-            ) : null}
-            {showTradeGuide && !isManageMode && !hideFreshSetupTradeHint ? (
-              <div className="rounded-xl border border-cyan-400/20 bg-cyan-500/[0.06] px-3 py-2.5">
-                <div className="flex items-start justify-between gap-2">
-                  <p className="text-[11px] font-semibold text-cyan-100">How to review a setup</p>
-                  <button
-                    type="button"
-                    onClick={() => { dismissFirstTradeGuide(); setShowTradeGuide(false); }}
-                    className="text-[10px] text-zinc-500 hover:text-zinc-300"
-                    aria-label="Dismiss trade guide"
-                  >
-                    Dismiss
-                  </button>
-                </div>
-                <div className="mt-2 space-y-1.5">
-                  <p className="text-[11px] leading-relaxed text-zinc-300">
-                    <span className="text-cyan-200/80">1.</span> Review the signal thesis and score in the cards below.
-                  </p>
-                  <p className="text-[11px] leading-relaxed text-zinc-300">
-                    <span className="text-cyan-200/80">2.</span> The chart shows price action — set your entry, stop, and target on the plan.
-                  </p>
-                  <p className="text-[11px] leading-relaxed text-zinc-300">
-                    <span className="text-cyan-200/80">3.</span> Use <span className="font-semibold text-white">Paper trade</span> to try a position without real funds.
-                  </p>
-                </div>
-              </div>
             ) : null}
             {!isManageMode ? (
               <ActivePositionsPanel
@@ -4584,7 +4652,7 @@ export function TradeScreen() {
                 }
                 onRequestCloseAllModal={onRequestActiveCloseAllModal}
                 onOpenManagePosition={
-                  market === 'futures' && exchangePositionForSymbol ? openManagePositionView : undefined
+                  market === 'futures' && (exchangePositionForSymbol || sigfloRepoPosition) ? openManagePositionView : undefined
                 }
                 exitAiModeLabel={exitAiModeLabel}
                 exitStrategyLabel={exitStrategyLabel}
@@ -4847,46 +4915,10 @@ export function TradeScreen() {
               <WhyThisTradePanel model={whyThisTradeModel} />
             ) : null}
             {!isManageMode && !isBotsReviewCockpit ? (
-              <TradeChartScenarioStrip
-                mode="trade"
-                side={primaryChartOpenPosition?.side ?? side}
-                estimatedPnlUsd={portfolioAlignedLiveUnrealized.pnlUsd}
-                estimatedPnlPct={portfolioAlignedLiveUnrealized.movePct}
-                targetProfitUsd={metrics.targetProfitUsd}
-                stopLossUsd={metrics.stopLossUsd}
-                riskReward={mergedModel.riskReward}
-                probUp={scenarioProb.probUp}
-                probDown={scenarioProb.probDown}
-                marginUsd={primaryChartOpenPosition?.marginUsd ?? metrics.amountUsedUsd}
-                estFeeUsd={estFeeUsd}
-                liqPrice={
-                  market === 'futures'
-                    ? (primaryChartOpenPosition?.liquidationPrice ?? metrics.liquidation)
-                    : null
-                }
-                entry={primaryChartOpenPosition?.entryPrice ?? modelForMetrics.entry}
-                stop={modelForMetrics.stop}
-                target={modelForMetrics.target}
-                positionSizeUsd={primaryChartOpenPosition?.positionNotionalUsd ?? metrics.positionSizeUsd}
-                leverage={primaryChartOpenPosition?.leverage ?? leverage}
-                isFutures={market === 'futures'}
-                tradeScore={metrics.riskSummary.tradeScore}
-                setupScore={selectedSignal.setupScore}
-                trendAlignment={selectedSignal.scoreBreakdown.trendAlignment}
-                momentumQuality={selectedSignal.scoreBreakdown.momentumQuality}
-                exitAiMode={exitAuto.mode}
-                exitStrategyPreset={exitAuto.strategy}
-                automationSafeguards={exitAuto.safeguards}
-                customStrategyThresholds={exitAuto.customStrategyThresholds}
-                scannerStatus={scannerStatus}
-                lastPrice={
-                  typeof mergedModel.lastPrice === 'number' && Number.isFinite(mergedModel.lastPrice)
-                    ? mergedModel.lastPrice
-                    : modelForMetrics.entry
-                }
-                hasOpenPosition={hasActiveTradePosition}
-                executionQuality={executionQuality}
-              />
+              <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+                <EntryGuidanceCard g={entryGuidance} />
+                <ExitGuidanceCard eg={exitFlow?.effective ?? null} />
+              </div>
             ) : null}
           </div>
           {isManageMode && managePnlDisplay && manageCtx && hasManageOpenExposure ? (
@@ -5042,12 +5074,13 @@ export function TradeScreen() {
           targetStr={targetStr}
           onAmountChange={onAmountUsdChange}
           onLeverageChange={onLeverageChange}
+          onSideChange={isManageMode ? undefined : onSideChange}
           onStopStrChange={onStopStrForTrade}
           onTargetStrChange={onTargetStrForTrade}
           metrics={metrics}
           estFeeUsd={estFeeUsd}
           balanceLabel={
-            forcePaperMode || !tradeBalance
+            paperModeActive || !tradeBalance
               ? 'Simulated Cash (Paper)'
               : tradeBalance?.exchange === 'mexc'
                 ? 'Available (USDT)'

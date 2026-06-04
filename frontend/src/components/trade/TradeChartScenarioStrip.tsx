@@ -452,8 +452,8 @@ function TradeStripTradeHero(
             {fmtUsdSigned(props.estimatedPnlUsd)}
           </span>
           <span className={`text-xs font-semibold tabular-nums sm:text-sm ${pnlClass}`}>
-            ({props.estimatedPnlPct >= 0 ? '+' : ''}
-            {props.estimatedPnlPct.toFixed(1)}%)
+            ({roiPct >= 0 ? '+' : ''}
+            {roiPct.toFixed(1)}%)
           </span>
         </div>
       </ScenarioMetricCell>

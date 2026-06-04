@@ -97,7 +97,7 @@ export function ActivePositionsPanel({
               {header}
             </span>
             <div className="ml-auto flex shrink-0 flex-wrap items-center justify-end gap-1.5">
-              {showExchangeFutures && onOpenManagePosition ? (
+              {onOpenManagePosition ? (
                 <button
                   type="button"
                   onClick={onOpenManagePosition}

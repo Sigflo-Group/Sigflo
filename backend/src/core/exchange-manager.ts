@@ -1,5 +1,5 @@
 import { listBrokerAccountsForUser } from '../db/queries/brokerAccounts.js';
-import { decryptBrokerCredential } from '../services/exchangeKey.service.js';
+import { resolveBrokerCredentials } from '../services/brokerCredentials.js';
 import { getAdapter } from './exchange-registry.js';
 import type { ConnectInput, ExchangeAdapter, ExchangeId } from './exchange-interface.js';
 
@@ -19,10 +19,7 @@ export async function getActiveExchange(userId: string): Promise<ActiveExchangeC
   if (!account) return null;
   const exchange = account.broker as ExchangeId;
 
-  const creds: ConnectInput = {
-    apiKey: decryptBrokerCredential(account.apiKeyEncrypted),
-    apiSecret: decryptBrokerCredential(account.apiSecretEncrypted),
-  };
+  const creds = await resolveBrokerCredentials(account);
 
   return { exchange, adapter: getAdapter(exchange), creds };
 }

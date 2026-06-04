@@ -599,6 +599,7 @@ function useSignalEngineValue(): SignalEngineState {
           triggerType: signal.signal.triggerType,
           suppressReason: 'cooldown',
         });
+        clearStaleSignalsForSymbol(symbol);
         signalBookRef.current[key] = signal.signal;
         lifecycleRef.current[key] = signal.lifecycle;
         dirtyPersistRef.current.lifecycle = true;
@@ -666,6 +667,7 @@ function useSignalEngineValue(): SignalEngineState {
         suppressReason: null,
       });
       lastSignalRef.current[key] = { emittedAt: now, setupScore: signal.signal.setupScore, refPrice: priceNow, atr: atrNow };
+      clearStaleSignalsForSymbol(symbol);
       signalBookRef.current[key] = signal.signal;
       lifecycleRef.current[key] = signal.lifecycle;
       dirtyPersistRef.current.lifecycle = true;

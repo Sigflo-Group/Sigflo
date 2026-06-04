@@ -25,7 +25,7 @@ export async function pollForMexcPositionLeg<T>(
   let leg = readLeg(snap);
   while (!leg && Date.now() < deadline) {
     await new Promise<void>((r) => {
-      window.setTimeout(r, interval);
+      globalThis.setTimeout(r, interval);
     });
     snap = await poll();
     leg = readLeg(snap);
@@ -60,7 +60,7 @@ export async function attachMexcTpSlAfterEntry(p: AttachMexcTpSlParams): Promise
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     if (attempt > 1) {
       await new Promise<void>((r) => {
-        window.setTimeout(r, 400 * attempt);
+        globalThis.setTimeout(r, 400 * attempt);
       });
     }
     try {

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { performStepUpCheck } from '@/lib/api/session';
+import { useAuthProvider } from '@/providers/AuthProvider';
 import { useSession } from '@/hooks/useSession';
 import {
   currentAuthenticatorAssuranceLevel,
@@ -13,6 +14,7 @@ export default function StepUpVerificationScreen() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { refreshSecurityState } = useSession();
+  const { refreshSession } = useAuthProvider();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [factors, setFactors] = useState<MfaFactor[]>([]);
@@ -60,6 +62,7 @@ export default function StepUpVerificationScreen() {
       const aal = await currentAuthenticatorAssuranceLevel();
       if (aal !== 'aal2') {
         await verifyTotpStepUp(factorId, totpCode);
+        await refreshSession();
       }
 
       await performStepUpCheck();

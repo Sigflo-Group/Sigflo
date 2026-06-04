@@ -227,6 +227,7 @@ function useSignalEngineValue(): SignalEngineState {
   const pendingWSCandlesRef = useRef<NormalizedKline[]>([]);
   const biasSideBySymbolRef = useRef<Record<string, 'long' | 'short'>>({});
   const userAdaptationRef = useRef<UserAdaptationStore>(loadUserAdaptationStore());
+  const [adaptationTick, setAdaptationTick] = useState(0);
   const strategyPersonalityModeRef = useRef<StrategyPersonalityMode>(strategyPersonalityMode);
   strategyPersonalityModeRef.current = strategyPersonalityMode;
   const persistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -262,6 +263,7 @@ function useSignalEngineValue(): SignalEngineState {
     });
     dirtyPersistRef.current.userAdaptation = true;
     schedulePersistRef.current();
+    setAdaptationTick((n) => n + 1);
     setState((prev) => ({ ...prev }));
   }, []);
 
@@ -628,7 +630,7 @@ function useSignalEngineValue(): SignalEngineState {
           },
           healthCtx(),
         );
-      if (mode !== 'WS') pushState(mode, wsConnectedRef.current ? 'connected' : 'disconnected');
+      pushState(mode, wsConnectedRef.current ? 'connected' : 'disconnected');
       return;
     }
     userAdaptationRef.current = registerSignalImpression(userAdaptationRef.current, {
@@ -638,6 +640,7 @@ function useSignalEngineValue(): SignalEngineState {
         counterTrend: signal.signal.facts?.counterTrend === 'yes',
       });
       dirtyPersistRef.current.userAdaptation = true;
+      setAdaptationTick((n) => n + 1);
       const prevLifecycleStateOnEmit = lifecycleRef.current[key]?.state;
       const nextLifecycleStateOnEmit = signal.lifecycle.state;
       const lifecycleTransitionOnEmit =
@@ -880,6 +883,7 @@ function useSignalEngineValue(): SignalEngineState {
       isAdvancedPanelExpanded,
       setAdvancedPanelExpanded,
       registerSignalFollowed,
+      adaptationTick,
     ],
   );
 }

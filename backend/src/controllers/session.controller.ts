@@ -47,6 +47,7 @@ export async function postStepUp(req: AuthedRequest, res: Response) {
   });
   await markStepUpVerified(req.user.userId, session.sessionIdentifier);
   const state = await getSessionStateForUser(req.user.userId);
+  const mfaSessionActive = hasAal2(req.user.claims);
   return res.json({
     userId: req.user.userId,
     stepUp: {
@@ -55,7 +56,7 @@ export async function postStepUp(req: AuthedRequest, res: Response) {
       validUntil: state.stepUpValidUntil,
     },
     oneTapEnabled: state.oneTapEnabled,
-    mfaEnabled: state.mfaEnabled,
+    mfaEnabled: mfaSessionActive,
     sessions: state.sessions,
   });
 }

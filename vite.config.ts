@@ -160,14 +160,9 @@ export default defineConfig(({ mode }) => {
                 pathname.endsWith('/api/ai/suggest') ||
                 pathname.endsWith('/api/ai/news-scan');
               if (needsAuth) {
-                const { verifySupabaseBearer } = (await import(
-                  './netlify/functions/lib/verify-supabase-auth.mjs'
-                )) as {
-                  verifySupabaseBearer: (
-                    h: string | undefined,
-                    env: NodeJS.ProcessEnv,
-                  ) => Promise<{ ok: boolean; statusCode?: number; error?: string }>;
-                };
+                const { verifySupabaseBearer } = await import(
+                  './netlify/functions/lib/verify-supabase-auth.mjs',
+                );
                 const authHeader =
                   typeof req.headers.authorization === 'string' ? req.headers.authorization : undefined;
                 const auth = await verifySupabaseBearer(authHeader, devAiEnv());

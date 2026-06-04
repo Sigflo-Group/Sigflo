@@ -8,7 +8,11 @@ export function getPositionRepository(): PositionRepository {
   return singleton;
 }
 
-export { normalizePositionPairKey, type PositionRepository } from '@/services/positions/positionRepository';
+export {
+  buildPaperMarkByPairFromSymbols,
+  normalizePositionPairKey,
+  type PositionRepository,
+} from '@/services/positions/positionRepository';
 export { DemoPositionRepository } from '@/services/positions/demoPositionRepository';
 export {
   sigfloActivePositionFromExchange,

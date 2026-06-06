@@ -84,6 +84,8 @@ export type PortfolioPositionTradeExtras = {
   ticketIntent?: 'close' | 'add';
   /** Open Trade with Adjust Risk sheet once (manage mode). */
   focusAdjust?: boolean;
+  /** Exchange that owns this leg — avoids routing to the wrong venue when multiple are connected. */
+  exchange?: 'bybit' | 'mexc';
 };
 
 /**
@@ -128,6 +130,9 @@ export function buildPortfolioPositionTradeQuery(
   if (extras?.focusAdjust === true) {
     qp.set('focusAdjust', '1');
   }
+  if (extras?.exchange === 'bybit' || extras?.exchange === 'mexc') {
+    qp.set('exchange', extras.exchange);
+  }
 
   /** Manage mode only when leg data is complete; otherwise Trade falls back to entry-style shell. */
   if (hasUsd && hasEntry && extras) {
@@ -158,7 +163,7 @@ export function buildManageClosedEntryQuery(ctx: { pair: string; side: 'long' | 
 
 export function buildManageTradeQueryFromLinearPosition(
   pos: PositionItem,
-  options?: { markPrice?: number; leverageFallback?: number },
+  options?: { markPrice?: number; leverageFallback?: number; exchange?: 'bybit' | 'mexc' },
 ): string {
   const notional = Math.abs(pos.size * pos.entryPrice);
   const mark =
@@ -175,6 +180,7 @@ export function buildManageTradeQueryFromLinearPosition(
         : options?.leverageFallback != null && options.leverageFallback > 0
           ? Math.round(options.leverageFallback)
           : undefined,
+    ...(options?.exchange ? { exchange: options.exchange } : {}),
   };
   return buildPortfolioPositionTradeQuery(pos.symbol, pos.side, tradeExtras);
 }

@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, type MutableRefObject } from 'react';
+import type { LiveTradeTickSnapshot } from '@/hooks/useLiveTradeMarket';
 import type { SimulatedActivePosition } from '@/types/activePosition';
 import { LIVE_MARKET_UI_THROTTLE_MS } from '@/lib/liveMarketTickConstants';
 
@@ -17,14 +18,31 @@ function computeFromMark(pos: SimulatedActivePosition, mark: number): LiveUnreal
   return { pnlUsd, movePct, mark };
 }
 
+function resolveLiveMark(
+  lastPriceRef: MutableRefObject<number | undefined>,
+  tickSnapshotRef?: MutableRefObject<LiveTradeTickSnapshot | null>,
+): number | undefined {
+  const snap = tickSnapshotRef?.current;
+  if (snap?.markPrice != null && Number.isFinite(snap.markPrice) && snap.markPrice > 0) {
+    return snap.markPrice;
+  }
+  const last = lastPriceRef.current;
+  if (last != null && Number.isFinite(last) && last > 0) return last;
+  if (snap?.lastPrice != null && Number.isFinite(snap.lastPrice) && snap.lastPrice > 0) {
+    return snap.lastPrice;
+  }
+  return undefined;
+}
+
 /**
- * Reads `lastPriceRef` on a RAF loop and commits PnL to React at {@link LIVE_MARKET_UI_THROTTLE_MS}.
- * Keeps high-frequency ticks out of the render path while staying visually real-time.
+ * Reads live mark (futures mark price when available, else last) on a RAF loop and commits PnL
+ * to React at {@link LIVE_MARKET_UI_THROTTLE_MS}. Keeps high-frequency ticks out of the render path.
  */
 export function useThrottledLiveUnrealized(
   lastPriceRef: MutableRefObject<number | undefined>,
   position: SimulatedActivePosition | null,
   enabled: boolean,
+  tickSnapshotRef?: MutableRefObject<LiveTradeTickSnapshot | null>,
 ): LiveUnrealizedBundle {
   const posRef = useRef(position);
   useLayoutEffect(() => {
@@ -39,8 +57,8 @@ export function useThrottledLiveUnrealized(
       return;
     }
 
-    const mark0 = lastPriceRef.current;
-    if (mark0 != null && Number.isFinite(mark0) && mark0 > 0) {
+    const mark0 = resolveLiveMark(lastPriceRef, tickSnapshotRef);
+    if (mark0 != null) {
       setBundle(computeFromMark(position, mark0));
     }
 
@@ -53,8 +71,8 @@ export function useThrottledLiveUnrealized(
       if (!pos) return;
       const now = performance.now();
       if (now - lastCommit < LIVE_MARKET_UI_THROTTLE_MS) return;
-      const mark = lastPriceRef.current;
-      if (mark == null || !Number.isFinite(mark) || mark <= 0) return;
+      const mark = resolveLiveMark(lastPriceRef, tickSnapshotRef);
+      if (mark == null) return;
       const next = computeFromMark(pos, mark);
       lastCommit = now;
       setBundle((prev) =>
@@ -68,7 +86,7 @@ export function useThrottledLiveUnrealized(
 
     raf = window.requestAnimationFrame(loop);
     return () => window.cancelAnimationFrame(raf);
-  }, [enabled, position, lastPriceRef]);
+  }, [enabled, position, lastPriceRef, tickSnapshotRef]);
 
   return bundle;
 }

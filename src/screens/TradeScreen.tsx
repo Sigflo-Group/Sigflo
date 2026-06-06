@@ -1254,25 +1254,7 @@ export function TradeScreen() {
     if (market === 'futures' && exchangePositionForSymbol) {
       const pos = exchangePositionForSymbol;
       const entry = pos.entryPrice > 0 ? pos.entryPrice : manageCtx.entryPrice;
-      // Prefer exchange-reported unrealizedPnl (authoritative) when available.
-      if (pos.unrealizedPnl != null && Number.isFinite(pos.unrealizedPnl)) {
-        const markPx =
-          pos.markPrice != null && pos.markPrice > 0
-            ? pos.markPrice
-            : typeof markForManage === 'number' && Number.isFinite(markForManage) && markForManage > 0
-              ? markForManage
-              : entry;
-        const pnlPct = livePnlPercent({
-          side: pos.side,
-          unrealizedPnl: pos.unrealizedPnl,
-          size: pos.size,
-          entryPrice: entry,
-          markPrice: markPx,
-          leverage: pos.leverage ?? manageCtx.leverage,
-          positionIM: pos.positionIM,
-        });
-        return { pnlUsd: pos.unrealizedPnl, pnlPct };
-      }
+      // Reprice from live mark ticks — exchange snapshot uPnL only refreshes on portfolio sync (~12s).
       const markPx =
         typeof markForManage === 'number' && Number.isFinite(markForManage) && markForManage > 0
           ? markForManage
@@ -1696,6 +1678,7 @@ export function TradeScreen() {
     live.lastPriceRef,
     primaryChartOpenPosition,
     hasActiveTradePosition,
+    market === 'futures' ? live.tickSnapshotRef : undefined,
   );
 
   const liveUnrealized = hasActiveTradePosition

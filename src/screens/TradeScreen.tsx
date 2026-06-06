@@ -3024,6 +3024,19 @@ export function TradeScreen() {
     ],
   );
 
+  /** After a new entry: dismiss entry chrome and show the active-position header at the top. */
+  const focusTradeScreenAfterEntry = useCallback(() => {
+    setGuidedExecutionOpen(false);
+    setChartDockOpen(false);
+    setChartDockMaximized(false);
+    setDockPartialOpen(false);
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        tradeScrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+      });
+    });
+  }, []);
+
   const executeTrade = useCallback(
     async (nextSide: TradeSide, opts?: { manageIntent?: 'add' | 'reverse'; bypassGuidedExecution?: boolean }) => {
       if (!isManageMode && isBotsReviewCockpit && dailyRiskGuard.status === 'locked') {
@@ -3284,6 +3297,9 @@ export function TradeScreen() {
           }
           flashTradeToast('Order submitted — syncing account…');
           const snapshotsAfter = await refreshAccountSnapshots({ silent: false });
+          if (!isManageMode) {
+            focusTradeScreenAfterEntry();
+          }
           if (linearReverseAwaitPostSyncClear) {
             reverseOrderInProgressRef.current = false;
           }
@@ -3461,7 +3477,6 @@ export function TradeScreen() {
               }
             }
           }
-          tradeScrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
           return true;
         } catch (e) {
           reverseOrderInProgressRef.current = false;
@@ -3489,7 +3504,7 @@ export function TradeScreen() {
         });
         if (open?.ok) {
           flashTradeToast('Paper trade opened — simulated portfolio updated.');
-          tradeScrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+          focusTradeScreenAfterEntry();
           return true;
         }
         flashTradeToast(open?.error ?? 'Paper trade unavailable right now.');
@@ -3517,6 +3532,7 @@ export function TradeScreen() {
       canExecute,
       exchangePositionForSymbol,
       flashTradeToast,
+      focusTradeScreenAfterEntry,
       futuresLevCap,
       futuresTpSlTriggerBy,
       dailyRiskGuard.status,

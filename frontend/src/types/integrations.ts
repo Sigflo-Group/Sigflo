@@ -66,6 +66,7 @@ export type PositionItem = {
   takeProfitPrice?: number;
   stopLossPrice?: number;
   openedAtMs?: number;
+  marginMode?: 'cross' | 'isolated';
 };
 
 export type ExchangeSnapshot = {

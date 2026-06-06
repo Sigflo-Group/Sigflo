@@ -1,72 +1,97 @@
-# sigflo
-Smart Trader
+# Sigflo
 
-## Local development
+> Learn Trading By Doing.
 
-- Default local run (recommended): `npm run dev`
-  - Starts Netlify Dev and proxies the Vite app plus serverless functions.
-  - This keeps `/api/ai/suggest` working exactly like production.
-- Direct Vite run (UI only): `npm run dev:vite`
+Sigflo is an open-source trading workspace designed to help people learn the language of trading through practice, experimentation, and real-world experience.
 
-### Frontend Docker copy sync
+Most trading platforms assume you already know what you're doing. Sigflo starts from a different belief: **trading is a skill that can be learned.**
 
-The root `src/` directory is the source of truth. `frontend/src/` is a Docker-only copy.
+Instead of overwhelming new traders with charts, indicators, and complexity, Sigflo provides an environment where users can explore markets, test ideas, understand risk, and develop their own approach over time. Whether you're placing your first paper trade or refining automated strategies, Sigflo is built to support the journey from curiosity to competence.
 
-- Run `npm run sync:frontend-src` to mirror `src/` into `frontend/src/`.
-- This replaces `frontend/src/` so it matches root `src/` exactly.
-- Use `npm run docker:up` (or `npm run docker:up:build`) so sync always runs before Docker starts.
+## Our Mission
 
-### AI env vars for local Netlify Dev
+To make trading education practical, transparent, and accessible.
 
-Set these in your local environment (or a local `.env` loaded by Netlify CLI):
+We believe the best way to learn trading is not through expensive courses, influencers, or unrealistic promises. You learn by observing markets, experimenting safely, making mistakes, reviewing outcomes, and improving through repetition.
 
-- `OPENAI_API_KEY` (required for live AI)
-- `OPENAI_MODEL` (optional, defaults to `gpt-4o-mini`)
-- `OPENAI_API_ENDPOINT` (optional, defaults to OpenAI chat completions endpoint)
+Sigflo exists to support that process.
 
-## Bybit/MEXC read-only backend (phase 1)
+## What Sigflo Provides
 
-This repo now includes a backend service in `backend/` for secure exchange integrations.
+**Paper trading** — Practice without risking capital. Learn how markets move, test ideas, and build confidence before transitioning to live trading.
 
-- Exchange secrets are submitted once and encrypted at rest.
-- Secrets are never returned to the frontend.
-- Connect flow validates key permissions as read-only and rejects keys with withdrawals enabled.
-- Account snapshots are read-only (balances and positions only).
+**Live trading** — Connect supported exchanges and manage real positions from a unified workspace.
 
-### Run backend locally
+**Trading bots** — Explore automated trading strategies and understand how algorithmic systems operate. Bots are not presented as shortcuts to success; they are tools for learning, experimentation, and disciplined execution.
 
-1. Copy `backend/.env.example` to `backend/.env` and fill values:
-   - `DATABASE_URL`
-   - `SUPABASE_JWT_SECRET` (Supabase Dashboard → Project Settings → API → JWT Secret)
-   - `CREDENTIAL_ENCRYPTION_KEY` (64-char hex)
-2. Run Postgres and apply SQL in `backend/migrations/001_init.sql`.
-3. Start backend:
-   - `cd backend`
-   - `npm install`
-   - `npm run dev`
+**Performance analytics** — Review your results, identify strengths and weaknesses, and learn from both winning and losing trades.
 
-### Frontend to backend wiring
+**Open development** — Sigflo is developed in public. Our roadmap, discussions, and code are open for anyone to inspect, improve, and contribute to.
 
-Set frontend env values (for local):
+## Why Open Source?
 
-- `VITE_BACKEND_API_BASE=http://localhost:8787/api`
-- `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` (Supabase project; enable Google provider under Authentication → Providers)
-- Optional affiliate wiring for exchange account links:
-  - `VITE_BYBIT_AFFILIATE_CODE` and `VITE_MEXC_AFFILIATE_CODE`
-  - or full override URLs: `VITE_BYBIT_AFFILIATE_SIGNUP_URL` and `VITE_MEXC_AFFILIATE_SIGNUP_URL`
-- Optional dev fallback (no Supabase): `VITE_DEV_USER_ID=demo-user` — backend must omit `SUPABASE_JWT_SECRET` and run outside `NODE_ENV=production` to accept `x-user-id`.
+Trust matters. Financial software should not be a black box.
 
-In Supabase, add redirect URLs for your app origin (e.g. `http://localhost:3999/profile` when using Netlify Dev; matches `netlify.toml` `[dev] port`).
+By building Sigflo in the open, we allow users to understand how the platform works, verify its behavior, and contribute to its future. We believe transparency creates better software and stronger communities.
 
-Signed-in users send `Authorization: Bearer <access_token>`; the backend verifies it with `SUPABASE_JWT_SECRET` and upserts the user row before exchange integrations.
+## Who Is Sigflo For?
 
-## Deploy (Netlify)
+- New traders seeking a safe place to learn
+- Intermediate traders looking to improve
+- Developers interested in trading systems
+- Builders who believe financial education should be accessible
+- Anyone curious about how markets work
 
-Production config lives in `netlify.toml` (build, functions, SPA redirects, asset caching). Step-by-step env vars and checks: **[docs/NETLIFY.md](docs/NETLIFY.md)**.
+## Our Philosophy
 
-Brief checklist:
+Learn first. Trade second.
 
-1. Connect the repo in Netlify; keep default build `npm run build` / publish `dist`.
-2. Set `OPENAI_API_KEY` (or `AI_API_KEY`) for serverless AI if you use those features.
-3. Set `VITE_SUPABASE_*` and, if applicable, `VITE_BACKEND_API_BASE` for your hosted API.
-4. Add **https://sigflo.group** (and `www` if used) to Supabase auth redirect allowlist, plus `http://localhost:3999` for local Netlify Dev.
+The goal is not to create more traders. The goal is to create better traders — thoughtful traders, disciplined traders, traders who understand risk, and traders who understand *why* they are making decisions.
+
+The market will always be uncertain. Learning should not be.
+
+## Contributing
+
+Sigflo is an open-source project and welcomes contributions of all kinds — bug fixes, documentation, design, testing, and new ideas. Your work helps make trading education more accessible.
+
+See [Contributing to Sigflo](CONTRIBUTING.md), [The Sigflo Manifesto](MANIFESTO.md), the [Roadmap](ROADMAP.md), and [Introducing Sigflo](FIRST_RELEASE.md).
+
+Together, we can build better tools for learning.
+
+---
+
+## For developers
+
+**Stack:** React 19, TypeScript, Vite, Tailwind · Node/Express backend · Bybit & MEXC integrations · Netlify deploy
+
+| Task | Command |
+| --- | --- |
+| Frontend (recommended) | `npm run dev` — Netlify Dev on `:3999` with AI routes |
+| Frontend (UI only) | `npm run dev:vite` — Vite on `:5173` |
+| Backend API | `npm run dev:backend` — Express on `:8787` |
+| Tests | `npm test` |
+| Production build | `npm run build` |
+
+**Docs**
+
+- [Dev quickstart](docs/DEV_QUICKSTART.md) — local setup, env vars, common issues
+- [Netlify deploy](docs/NETLIFY.md) — production env and checklist
+- [Backend README](backend/README.md) — Postgres, migrations, exchange credentials
+- [Security policy](SECURITY.md) — reporting vulnerabilities responsibly
+- [Disclaimer](DISCLAIMER.md) — educational use, risk, and liability
+
+**Project layout**
+
+- `src/` — frontend SPA (source of truth)
+- `backend/` — optional Express API for live exchange trading and portfolio sync
+- `netlify/functions/` — serverless AI and admin routes in production
+
+The signal engine runs client-side in the browser; the backend holds encrypted exchange keys and executes trades server-side when connected.
+
+---
+
+## Disclaimer
+
+Sigflo is for educational and informational purposes only. It does not provide financial advice, investment recommendations, or guarantees of any kind. Trading involves substantial risk.
+
+See the full [Disclaimer](DISCLAIMER.md).

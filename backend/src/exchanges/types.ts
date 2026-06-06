@@ -81,6 +81,8 @@ export type PositionItem = {
   stopLossPrice?: number;
   /** First open time on symbol (ms), from Bybit `createdTime`. */
   openedAtMs?: number;
+  /** Futures margin mode when the venue exposes it (e.g. MEXC `openType`). */
+  marginMode?: 'cross' | 'isolated';
 };
 
 /** One closed position PnL row from the exchange (e.g. Bybit linear closed-pnl). */

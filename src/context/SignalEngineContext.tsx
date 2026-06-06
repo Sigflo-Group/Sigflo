@@ -213,6 +213,7 @@ function useSignalEngineValue(): SignalEngineState {
     return true;
   }, [advancedPanelsExpanded]);
   const lastSignalRef = useRef<Record<string, { emittedAt: number; setupScore: number; refPrice: number; atr: number }>>({});
+  const lastEmittedCandleTsRef = useRef<Record<string, number>>({});
   const signalBookRef = useRef<Record<string, CryptoSignal>>({});
   const lifecycleRef = useRef<Record<string, CandidateLifecycle>>(loadLifecycleRef());
   const marketMemoryRef = useRef<Record<string, MarketMemorySnapshot>>(loadMarketMemoryStore());
@@ -552,10 +553,17 @@ function useSignalEngineValue(): SignalEngineState {
       const key = signalEmitKey(symbol, signal.signal.setupType, signal.signal.side);
       const now = Date.now();
       const prev = lastSignalRef.current[key];
+      const lastClosedTs = candles15m.at(-1)?.ts ?? 0;
+      const prevCandleTs = lastEmittedCandleTsRef.current[symbol];
+      const newClosedBar = prevCandleTs == null || lastClosedTs > prevCandleTs;
       const atrNow = Math.max(0.000001, atr(candles15m, 14).at(-1) ?? 1);
       const priceNow = ticker.lastPrice;
-      const scoreImproved = prev ? signal.signal.setupScore - prev.setupScore >= SCORE_IMPROVE_BYPASS : false;
-      const priceMoved = prev ? Math.abs(priceNow - prev.refPrice) / Math.max(atrNow, 0.000001) >= ATR_MOVE_BYPASS : false;
+      const scoreImproved =
+        newClosedBar && prev ? signal.signal.setupScore - prev.setupScore >= SCORE_IMPROVE_BYPASS : false;
+      const priceMoved =
+        newClosedBar && prev
+          ? Math.abs(priceNow - prev.refPrice) / Math.max(atrNow, 0.000001) >= ATR_MOVE_BYPASS
+          : false;
       const cooldownPassed =
         !prev ||
         now - prev.emittedAt >= COOLDOWN_MS * (STRATEGY_PERSONALITY_PROFILES[strategyPersonalityModeRef.current]?.cooldownMultiplier ?? 1);

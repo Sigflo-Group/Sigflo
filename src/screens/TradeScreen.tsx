@@ -778,24 +778,37 @@ export function TradeScreen() {
     const active = exchangeIntegrations.find((item) => item.isActive && item.status === 'connected');
     return active?.exchange ?? null;
   }, [exchangeIntegrations]);
+  const managePositionExchange = useMemo((): 'bybit' | 'mexc' | null => {
+    if (!isManageMode || !manageCtx) return null;
+    const sym = pairBaseToLinearSymbol(manageCtx.pair).trim().toUpperCase();
+    const legSide = manageCtx.side;
+    const onBybit = bybitSnap?.positions?.some(
+      (p) => p.symbol.trim().toUpperCase() === sym && p.side === legSide && Math.abs(p.size) > 0,
+    );
+    if (onBybit) return 'bybit';
+    const onMexc = mexcSnap?.positions?.some(
+      (p) => p.symbol.trim().toUpperCase() === sym && p.side === legSide && Math.abs(p.size) > 0,
+    );
+    if (onMexc) return 'mexc';
+    return null;
+  }, [isManageMode, manageCtx, bybitSnap, mexcSnap]);
   const activeExchange: 'bybit' | 'mexc' | null = useMemo(() => {
-    if (tradeExchangeFromQuery) return tradeExchangeFromQuery;
+    if (managePositionExchange) return managePositionExchange;
+    if (!isManageMode && tradeExchangeFromQuery) return tradeExchangeFromQuery;
     if (preferredActiveExchange === 'bybit' && bybitSnap) return 'bybit';
     if (preferredActiveExchange === 'mexc' && mexcSnap) return 'mexc';
     return bybitSnap ? 'bybit' : mexcSnap ? 'mexc' : null;
-  }, [tradeExchangeFromQuery, preferredActiveExchange, bybitSnap, mexcSnap]);
+  }, [managePositionExchange, isManageMode, tradeExchangeFromQuery, preferredActiveExchange, bybitSnap, mexcSnap]);
   const activeExchangeSnap = useMemo(() => {
-    if (tradeExchangeFromQuery === 'bybit') return bybitSnap ?? null;
-    if (tradeExchangeFromQuery === 'mexc') return mexcSnap ?? null;
     if (activeExchange === 'bybit') return bybitSnap ?? null;
     if (activeExchange === 'mexc') return mexcSnap ?? null;
     return bybitSnap ?? mexcSnap ?? null;
-  }, [tradeExchangeFromQuery, activeExchange, bybitSnap, mexcSnap]);
+  }, [activeExchange, bybitSnap, mexcSnap]);
 
   const live = useLiveTradeMarket(liveSymbol, chartInterval, {
     uiThrottleMs: isManageMode ? 16 : undefined,
     immediateUiOnTick: isManageMode,
-    exchange: tradeExchangeFromQuery ?? activeExchange ?? 'bybit',
+    exchange: activeExchange ?? 'bybit',
   });
   const [manageFastMark, setManageFastMark] = useState<number | undefined>(undefined);
 
@@ -1109,12 +1122,12 @@ export function TradeScreen() {
     [mergedModel.pair],
   );
   const exchangeSpotFreeBaseQty = useMemo(() => {
-    if (!bybitSnap?.balances?.length) return null;
+    if (!activeExchangeSnap?.balances?.length) return null;
     const want = spotBaseAsset.toUpperCase();
-    const row = bybitSnap.balances.find((b) => b.asset.toUpperCase() === want);
+    const row = activeExchangeSnap.balances.find((b) => b.asset.toUpperCase() === want);
     if (!row || !Number.isFinite(row.free) || row.free <= 0) return null;
     return row.free;
-  }, [bybitSnap, spotBaseAsset]);
+  }, [activeExchangeSnap, spotBaseAsset]);
 
   /** Manage-mode PnL UI only while the exchange still shows an open leg (perps or spot balance). */
   const hasManageOpenExposure = useMemo(() => {
@@ -1360,6 +1373,7 @@ export function TradeScreen() {
     mergedModel.lastPrice,
     mergedModel.pair,
     useRealExecution,
+    activeExchange,
   ]);
 
   const sigfloRepoPosition = useMemo(() => {
@@ -1479,15 +1493,6 @@ export function TradeScreen() {
       (market === 'futures' && exchangePositionForSymbol != null) ||
       (market === 'spot' && exchangeSpotFreeBaseQty != null && exchangeSpotFreeBaseQty > 0),
     [exchangePositionForSymbol, exchangeSpotFreeBaseQty, market],
-  );
-
-  /** Still in a position (live, demo, or manage) — avoid Exit AI decision spam after flat. */
-  const shouldSurfaceAutoExitPopups = useMemo(
-    () =>
-      exitAutoCanExchangeExecute ||
-      hasActiveTradePosition ||
-      (isManageMode && hasManageOpenExposure),
-    [exitAutoCanExchangeExecute, hasActiveTradePosition, hasManageOpenExposure, isManageMode],
   );
 
   const tradeTimingScopeKey = `${selectedSignal.id}:${mergedModel.pair}`;
@@ -2221,10 +2226,11 @@ export function TradeScreen() {
     () =>
       exitAuto.mode === 'auto' &&
       useRealExecution &&
+      activeExchange === 'bybit' &&
       market === 'futures' &&
       Boolean(exchangePositionForSymbol) &&
       bybitSnap?.status === 'connected',
-    [exitAuto.mode, useRealExecution, market, exchangePositionForSymbol, bybitSnap?.status],
+    [activeExchange, exitAuto.mode, useRealExecution, market, exchangePositionForSymbol, bybitSnap?.status],
   );
 
   useEffect(() => {
@@ -2269,10 +2275,10 @@ export function TradeScreen() {
       symbol: orderSymbol,
       side: exchangePositionForSymbol.side,
       positionIdx: exchangePositionForSymbol.positionIdx ?? 0,
-      exchange: activeExchange === 'mexc' ? 'mexc' : 'bybit',
+      exchange: 'bybit',
     }).catch((e) => { console.error("[Caught Promise Error]", e); });
     setServerExitOvernightEnabled(false);
-  }, [serverExitEligible, serverExitOvernightEnabled, exchangePositionForSymbol, market, orderSymbol, activeExchange]);
+  }, [serverExitEligible, serverExitOvernightEnabled, exchangePositionForSymbol, market, orderSymbol]);
 
   useEffect(() => {
     const until = exitFlowDisplayStashRef.current?.pendingHoldUntil;
@@ -2687,11 +2693,13 @@ export function TradeScreen() {
       if (!bybitSnap || bybitSnap.status !== 'connected') return;
 
       window.clearTimeout(leverageExchangeSyncTimerRef.current);
+      const symbolForLeverageSync = orderSymbol;
       leverageExchangeSyncTimerRef.current = window.setTimeout(() => {
         void (async () => {
+          if (orderSymbol !== symbolForLeverageSync) return;
           if (!hasOpenLinearForOrderSymbolRef.current) return;
           try {
-            await postBybitSetLinearLeverage({ symbol: orderSymbol, leverage: lev });
+            await postBybitSetLinearLeverage({ symbol: symbolForLeverageSync, leverage: lev });
             flashTradeToast('Leverage updated on Bybit.');
             await refreshAccountSnapshots({ silent: true });
           } catch (e) {
@@ -2822,7 +2830,7 @@ export function TradeScreen() {
         customStrategyThresholds: exitAuto.strategy === 'custom' ? exitAuto.customStrategyThresholds : null,
         safeguards: exitAuto.safeguards,
         lastGuidanceState: exitFlow.effective.state,
-        exchange: activeExchange === 'mexc' ? 'mexc' : 'bybit',
+        exchange: 'bybit',
         market: 'linear',
       }).catch((err: unknown) => {
         const msg = err instanceof Error ? err.message : 'Could not sync server exit automation.';
@@ -2912,9 +2920,18 @@ export function TradeScreen() {
         setOrderPending(null);
         return;
       }
+      if (!riskSettings.allowLiveExecution) {
+        flashTradeToast('Live execution is disabled in Risk controls.');
+        setOrderPending(null);
+        return;
+      }
       const fraction = args.fraction;
       try {
         if (args.kind === 'spot') {
+          if (activeExchange !== 'bybit') {
+            flashTradeToast('Spot close is only supported on Bybit.');
+            return;
+          }
           const qtyBase = args.freeBase * Math.min(1, Math.max(0, fraction));
           if (!(qtyBase > 0)) {
             flashTradeToast('No spot balance to sell for this pair.');
@@ -2999,12 +3016,14 @@ export function TradeScreen() {
             pos.positionIdx ?? 0,
             { deadlineMs: 15_000, intervalMs: 400 },
           );
-          const repo = getPositionRepository();
-          if (typeof repo.closePositionByPair === 'function') {
-            repo.closePositionByPair(normalizePositionPairKey(pos.symbol), {
-              markPrice: mark > 0 ? mark : undefined,
-              reason: 'manual_close',
-            });
+          if (forcePaperMode) {
+            const repo = getPositionRepository();
+            if (typeof repo.closePositionByPair === 'function') {
+              repo.closePositionByPair(normalizePositionPairKey(pos.symbol), {
+                markPrice: mark > 0 ? mark : undefined,
+                reason: 'manual_close',
+              });
+            }
           }
           if (isManageMode && manageCtx) {
             hadFuturesManagePositionRef.current = false;
@@ -3050,6 +3069,7 @@ export function TradeScreen() {
       throttledOpenPnl.mark,
       forcePaperMode,
       liveOrderSubmitEnabled,
+      riskSettings.allowLiveExecution,
     ],
   );
 
@@ -4022,9 +4042,13 @@ export function TradeScreen() {
     const curr = exitFlow.effective.state;
     const prev = prevAutoStateRef.current;
     const openedAtMs =
-      primaryChartOpenPosition?.openedAtMs != null && Number.isFinite(primaryChartOpenPosition.openedAtMs)
-        ? primaryChartOpenPosition.openedAtMs
-        : positionOpenedAtMs;
+      isManageMode &&
+      exchangeSyntheticForManageChart?.openedAtMs != null &&
+      Number.isFinite(exchangeSyntheticForManageChart.openedAtMs)
+        ? exchangeSyntheticForManageChart.openedAtMs
+        : primaryChartOpenPosition?.openedAtMs != null && Number.isFinite(primaryChartOpenPosition.openedAtMs)
+          ? primaryChartOpenPosition.openedAtMs
+          : positionOpenedAtMs;
     const withinAutoTrimWarmup =
       curr === 'trim' &&
       openedAtMs != null &&
@@ -4046,22 +4070,13 @@ export function TradeScreen() {
         exitAuto.safeguards.allowFullAutoClose &&
         (prev === 'hold' || prev === 'trim');
 
-      if ((trimEdge || exitEdge) && shouldSurfaceAutoExitPopups) {
-        emitGlobalAnnouncement({
-          id: `auto-exit-decision-${Date.now()}`,
-          kind: 'ai_action',
-          title: 'Auto Exit AI Decision',
-          subtitle: `${prev.toUpperCase()} → ${curr.toUpperCase()} near $${formatQuoteNumber(exitFlow.lastPrice)} · ${exitFlow.nextPlanned}`,
-        });
-      }
-
       if (trimEdge || exitEdge) {
         const edgeKey = `${prev}->${curr}`;
         if (orderPending) {
           blockedAdvancePrev = true;
         } else if (lastAutoExitEdgeRef.current === edgeKey) {
           blockedAdvancePrev = true;
-        } else if (useRealExecution && exitAutoCanExchangeExecute) {
+        } else if (useRealExecution && riskSettings.allowLiveExecution && exitAutoCanExchangeExecute) {
           lastAutoExitEdgeRef.current = edgeKey;
           if (trimEdge) {
             exitAuto.pushActivity({
@@ -4110,10 +4125,12 @@ export function TradeScreen() {
     onActiveCloseAllConfirm,
     onActivePartialClose,
     orderPending,
+    exchangeSyntheticForManageChart?.openedAtMs,
+    isManageMode,
     positionOpenedAtMs,
     primaryChartOpenPosition?.openedAtMs,
+    riskSettings.allowLiveExecution,
     useRealExecution,
-    shouldSurfaceAutoExitPopups,
     exitAutoCanExchangeExecute,
   ]);
 
@@ -5092,7 +5109,7 @@ export function TradeScreen() {
                                           symbol: orderSymbol,
                                           side: exchangePositionForSymbol.side,
                                           positionIdx: exchangePositionForSymbol.positionIdx ?? 0,
-                                          exchange: activeExchange === 'mexc' ? 'mexc' : 'bybit',
+                                          exchange: 'bybit',
                                         }).catch((e) => { console.error("[Caught Promise Error]", e); });
                                       }
                                       setServerExitOvernightEnabled(on);
@@ -5302,7 +5319,7 @@ export function TradeScreen() {
                                 symbol: orderSymbol,
                                 side: exchangePositionForSymbol.side,
                                 positionIdx: exchangePositionForSymbol.positionIdx ?? 0,
-                                exchange: activeExchange === 'mexc' ? 'mexc' : 'bybit',
+                                exchange: 'bybit',
                               }).catch((e) => { console.error("[Caught Promise Error]", e); });
                             }
                             setServerExitOvernightEnabled(on);

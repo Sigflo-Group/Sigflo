@@ -27,7 +27,7 @@ const filterChips: { id: FeedFilter; label: string }[] = [
 ];
 
 export function FeedScreen() {
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const queryFilter = searchParams.get('filter');
   const initialFilter: FeedFilter =
     queryFilter === 'strong' || queryFilter === 'actionable' || queryFilter === 'risky' || queryFilter === 'all'
@@ -64,8 +64,15 @@ export function FeedScreen() {
     }
     if (next == null || next === '') {
       setFilter('all');
+      return;
     }
-  }, [searchParams]);
+    setFilter('all');
+    setSearchParams((prev) => {
+      const qp = new URLSearchParams(prev);
+      qp.delete('filter');
+      return qp;
+    }, { replace: true });
+  }, [searchParams, setSearchParams]);
 
   const signals = useMemo(() => {
     if (filter === 'strong') return feedSignalsBase.filter((s) => s.setupScore >= 75);
@@ -197,7 +204,18 @@ export function FeedScreen() {
               <button
                 key={chip.id}
                 type="button"
-                onClick={() => setFilter(chip.id)}
+                onClick={() => {
+                  setFilter(chip.id);
+                  setSearchParams(
+                    (prev) => {
+                      const qp = new URLSearchParams(prev);
+                      if (chip.id === 'all') qp.delete('filter');
+                      else qp.set('filter', chip.id);
+                      return qp;
+                    },
+                    { replace: true },
+                  );
+                }}
                 className={`rounded-full px-4 py-1.5 text-xs font-semibold transition ${
                   active
                     ? 'bg-[#0f1f1a] text-sigflo-accent ring-1 ring-sigflo-accent/30'

@@ -1,4 +1,5 @@
 import type { Request, Response, NextFunction } from 'express';
+import { env } from '../config/env.js';
 import { log } from '../lib/logger.js';
 import { upsertUser } from '../repositories/usersRepo.js';
 import { verifySupabaseAccessToken } from '../services/supabaseAuth.service.js';

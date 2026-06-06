@@ -61,7 +61,7 @@ export function sigfloActivePositionFromExchange(
     markPrice: mark > 0 ? mark : p.entryPrice,
     size: p.size,
     leverage: lev,
-    marginMode: 'cross',
+    marginMode: p.marginMode ?? (exchange === 'mexc' ? 'isolated' : 'cross'),
     unrealizedPnl: pnlUsd,
     unrealizedPnlPct: pnlPct,
     stopPrice: p.stopLossPrice ?? null,

@@ -12,6 +12,7 @@
     "dev:vite": "vite --host",
     "dev:backend": "cross-env NODE_OPTIONS=--use-system-ca npm run dev --prefix backend",
     "sync:frontend-src": "node scripts/sync-frontend-src.mjs",
+    "check:frontend-src": "node scripts/check-frontend-src-sync.mjs",
     "docker:up": "docker compose up",
     "docker:up:build": "docker compose up --build",
     "docker:down": "docker compose down",

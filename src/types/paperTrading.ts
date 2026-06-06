@@ -47,7 +47,7 @@ export type PaperTradeOpenInput = {
   leverage: number;
   stopPrice?: number | null;
   targets?: number[];
-  source?: TradeSource | 'demo' | 'bybit';
+  source?: TradeSource | 'demo' | 'bybit' | 'mexc';
   openedAt?: number;
 };
 

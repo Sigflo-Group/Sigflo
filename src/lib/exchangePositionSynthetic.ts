@@ -25,7 +25,7 @@ export function syntheticFromExchangePosition(
       positionIM: p.positionIM,
     }) ?? (notional > 0 ? notional : 1e-9);
   return {
-    id: `${exchange}:${p.symbol}:${p.side}`,
+    id: `${exchange}:${p.symbol}:${p.side}:${p.positionIdx ?? 0}`,
     symbol: displayPair,
     side: p.side as TradeSide,
     market,

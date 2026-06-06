@@ -135,6 +135,7 @@ import {
   mexcQtyFromLeg,
   pollForMexcPositionLeg,
 } from '@/lib/mexcTpSlAttach';
+import { pollUntilExchangeLinearLegClosed } from '@/lib/exchangePositionSync';
 import { DEFAULT_BYBIT_TPSL_TRIGGER, type BybitTpSlTriggerBy } from '@/lib/bybitTpSlTrigger';
 import {
   applyOpenOrderNotionalBuffer,
@@ -461,6 +462,11 @@ export function TradeScreen() {
   const ticketIntent = params.get('ticketIntent');
   const modeRaw = params.get('mode');
   const manageCtx = useMemo(() => parseManageTradeContext(params), [params]);
+  const tradeExchangeFromQuery = useMemo((): 'bybit' | 'mexc' | null => {
+    const v = params.get('exchange')?.trim().toLowerCase();
+    if (v === 'bybit' || v === 'mexc') return v;
+    return null;
+  }, [params]);
   const requestedManage = modeRaw === 'manage';
   const isManageMode = Boolean(requestedManage && manageCtx);
   const manageDataInvalid = requestedManage && manageCtx === null;
@@ -773,20 +779,23 @@ export function TradeScreen() {
     return active?.exchange ?? null;
   }, [exchangeIntegrations]);
   const activeExchange: 'bybit' | 'mexc' | null = useMemo(() => {
+    if (tradeExchangeFromQuery) return tradeExchangeFromQuery;
     if (preferredActiveExchange === 'bybit' && bybitSnap) return 'bybit';
     if (preferredActiveExchange === 'mexc' && mexcSnap) return 'mexc';
     return bybitSnap ? 'bybit' : mexcSnap ? 'mexc' : null;
-  }, [preferredActiveExchange, bybitSnap, mexcSnap]);
+  }, [tradeExchangeFromQuery, preferredActiveExchange, bybitSnap, mexcSnap]);
   const activeExchangeSnap = useMemo(() => {
+    if (tradeExchangeFromQuery === 'bybit') return bybitSnap ?? null;
+    if (tradeExchangeFromQuery === 'mexc') return mexcSnap ?? null;
     if (activeExchange === 'bybit') return bybitSnap ?? null;
     if (activeExchange === 'mexc') return mexcSnap ?? null;
     return bybitSnap ?? mexcSnap ?? null;
-  }, [activeExchange, bybitSnap, mexcSnap]);
+  }, [tradeExchangeFromQuery, activeExchange, bybitSnap, mexcSnap]);
 
   const live = useLiveTradeMarket(liveSymbol, chartInterval, {
     uiThrottleMs: isManageMode ? 16 : undefined,
     immediateUiOnTick: isManageMode,
-    exchange: activeExchange ?? 'bybit',
+    exchange: tradeExchangeFromQuery ?? activeExchange ?? 'bybit',
   });
   const [manageFastMark, setManageFastMark] = useState<number | undefined>(undefined);
 
@@ -1147,6 +1156,7 @@ export function TradeScreen() {
       }
       if (!hadFuturesManagePositionRef.current) return;
       if (reverseOrderInProgressRef.current) return;
+      if (orderPending === 'close') return;
       hadFuturesManagePositionRef.current = false;
       if (!manageCtx) return;
       navigate(`/trade?${buildManageClosedEntryQuery(manageCtx)}`, { replace: true });
@@ -1171,6 +1181,7 @@ export function TradeScreen() {
     manageCtx,
     market,
     navigate,
+    orderPending,
   ]);
 
   /** Sync SL/TP fields when computed plan changes, not only on pair (avoids stale stop after anchor moves from fallback to live). */
@@ -1325,6 +1336,7 @@ export function TradeScreen() {
         mergedModel.pair,
         market,
         effectiveFuturesLeverage,
+        activeExchange ?? 'bybit',
       );
     }
     if (
@@ -1413,8 +1425,10 @@ export function TradeScreen() {
       mergedModel.pair,
       market,
       effectiveFuturesLeverage,
+      activeExchange ?? 'bybit',
     );
   }, [
+    activeExchange,
     effectiveFuturesLeverage,
     exchangePositionForSymbol,
     isManageMode,
@@ -2628,6 +2642,7 @@ export function TradeScreen() {
                 `/trade?${buildManageTradeQueryFromLinearPosition(pos, {
                   markPrice: mark,
                   leverageFallback: effectiveFuturesLeverage,
+                  exchange: 'mexc',
                 })}`,
               );
               return;
@@ -2974,7 +2989,37 @@ export function TradeScreen() {
             message: `Manual partial close ${pct}% submitted — syncing exchange fill…`,
           });
         }
-        await refreshAccountSnapshots({ silent: false });
+        if (fraction >= 0.995 && args.kind === 'linear' && activeExchange) {
+          const pos = args.pos;
+          const { closed } = await pollUntilExchangeLinearLegClosed(
+            () => refreshAccountSnapshots({ silent: true }),
+            activeExchange,
+            pos.symbol,
+            pos.side,
+            pos.positionIdx ?? 0,
+            { deadlineMs: 15_000, intervalMs: 400 },
+          );
+          const repo = getPositionRepository();
+          if (typeof repo.closePositionByPair === 'function') {
+            repo.closePositionByPair(normalizePositionPairKey(pos.symbol), {
+              markPrice: mark > 0 ? mark : undefined,
+              reason: 'manual_close',
+            });
+          }
+          if (isManageMode && manageCtx) {
+            hadFuturesManagePositionRef.current = false;
+            navigate(`/trade?${buildManageClosedEntryQuery(manageCtx)}`, { replace: true });
+          }
+          if (!closed) {
+            flashTradeToast(
+              'Close filled on the exchange — account sync is still catching up. Tap Account → Sync if this pair still shows open.',
+              7000,
+            );
+          }
+          await refreshAccountSnapshots({ silent: false });
+        } else {
+          await refreshAccountSnapshots({ silent: false });
+        }
       } catch (e) {
         if (pendingManualPartialClosePctRef.current != null) {
           const pct = Math.round((pendingManualPartialClosePctRef.current ?? fraction) * 100);
@@ -2996,12 +3041,13 @@ export function TradeScreen() {
       flashTradeToast,
       isManageMode,
       live.lastPrice,
+      manageCtx,
       mergedModel.lastPrice,
+      navigate,
       paperModeActive,
       primaryOpenPosition,
       refreshAccountSnapshots,
       throttledOpenPnl.mark,
-      paperModeActive,
       forcePaperMode,
       liveOrderSubmitEnabled,
     ],
@@ -3130,8 +3176,14 @@ export function TradeScreen() {
                   orderType: 'Market',
                 });
                 suppressExternalPositionCloseFeedbackUntilRef.current = Date.now() + 12_000;
-                // Brief settle wait before opening the new leg
-                await new Promise<void>((r) => { window.setTimeout(r, 800); });
+                await pollUntilExchangeLinearLegClosed(
+                  () => refreshAccountSnapshots({ silent: true }),
+                  'mexc',
+                  orderSymbol,
+                  pos.side,
+                  0,
+                  { deadlineMs: 8_000, intervalMs: 250 },
+                );
                 await postMexcLinearOrder({
                   symbol: orderSymbol,
                   side: sideBybit,
@@ -3786,6 +3838,7 @@ export function TradeScreen() {
       const q = buildManageTradeQueryFromLinearPosition(pos, {
         markPrice: mark,
         leverageFallback: effectiveFuturesLeverage,
+        ...(activeExchange ? { exchange: activeExchange } : {}),
       });
       navigate(`/trade?${q}`);
       return;
@@ -3830,12 +3883,12 @@ export function TradeScreen() {
       }
       pendingManualPartialClosePctRef.current = null;
       flashTradeToast(
-        bybitSnap
+        activeExchangeSnap
           ? 'No matching open position on the exchange for this symbol — check pair and sync.'
-          : 'Connect Bybit in Account to manage positions.',
+          : `Connect ${activeExchange === 'mexc' ? 'MEXC' : 'Bybit'} in Account to manage positions.`,
       );
     },
-    [bybitSnap, exchangePositionForSymbol, exchangeSpotFreeBaseQty, flashTradeToast, market, orderSymbol, submitExchangeClose],
+    [activeExchange, activeExchangeSnap, exchangePositionForSymbol, exchangeSpotFreeBaseQty, flashTradeToast, market, orderSymbol, submitExchangeClose],
   );
 
   const partialScaleOutEligible = useMemo(
@@ -3921,11 +3974,11 @@ export function TradeScreen() {
       return;
     }
     flashTradeToast(
-      bybitSnap
+      activeExchangeSnap
         ? 'No matching open position on the exchange for this pair.'
-        : 'Connect Bybit in Account to manage positions.',
+        : `Connect ${activeExchange === 'mexc' ? 'MEXC' : 'Bybit'} in Account to manage positions.`,
     );
-  }, [bybitSnap, exchangePositionForSymbol, exchangeSpotFreeBaseQty, flashTradeToast, market, orderSymbol, submitExchangeClose]);
+  }, [activeExchange, activeExchangeSnap, exchangePositionForSymbol, exchangeSpotFreeBaseQty, flashTradeToast, market, orderSymbol, submitExchangeClose]);
 
   const onCloseAllDemoPositionsConfirm = useCallback(() => {
     const repo = getPositionRepository();
@@ -4433,25 +4486,32 @@ export function TradeScreen() {
                   <p className="mt-0.5 truncate text-sm font-bold text-white">{mergedModel.pair}</p>
                 </div>
                 <div
-                  className={`flex shrink-0 flex-col items-end gap-0.5 text-right text-[10px] font-semibold leading-tight ${uiStateStyle.text}`}
-                  aria-label={`Signal status: ${uiSignalStateLabel(uiState)}`}
+                  className={`flex shrink-0 flex-col items-end gap-0.5 text-right text-[10px] font-semibold leading-tight ${
+                    triggeredPairCount > 0 ? uiSignalStateClasses('triggered').text : uiStateStyle.text
+                  }`}
+                  aria-label={`Triggered pairs: ${triggeredPairCount}`}
                 >
                   <span className="inline-flex items-center justify-end gap-1">
                     <LiveIndicator
-                      pulse={uiStateStyle.pulse}
-                      dotClassName={uiStateStyle.dot}
-                      size={isTriggered ? 'md' : 'sm'}
-                      pulseDurationSec={isTriggered ? 2.4 : 2.8}
+                      pulse={triggeredPairCount > 0}
+                      dotClassName={
+                        triggeredPairCount > 0 ? uiSignalStateClasses('triggered').dot : uiStateStyle.dot
+                      }
+                      size={triggeredPairCount > 0 ? 'md' : 'sm'}
+                      pulseDurationSec={2.4}
                     />
-                    <span className={`truncate uppercase tracking-[0.11em] ${isTriggered ? 'text-[#b2ffef]' : ''}`}>
-                      {uiSignalStateLabel(uiState)}
+                    <span
+                      className={`truncate uppercase tracking-[0.11em] ${
+                        triggeredPairCount > 0 ? 'text-[#b2ffef]' : ''
+                      }`}
+                    >
+                      Triggered {triggeredPairCount}
                     </span>
-                    {isTriggered ? (
-                      <span className="shrink-0 font-normal text-sigflo-muted">· {stateAgeLabel}</span>
-                    ) : null}
                   </span>
                   <span className="max-w-full truncate font-normal text-sigflo-muted">
-                    {isTriggered ? `Triggered ${triggeredPairCount}` : `${live.mode} · ${live.connection}`}
+                    {isTriggered
+                      ? `${uiSignalStateLabel(uiState)} · ${stateAgeLabel}`
+                      : `${uiSignalStateLabel(uiState)} · ${live.mode} · ${live.connection}`}
                   </span>
                 </div>
                 <button
@@ -4854,6 +4914,7 @@ export function TradeScreen() {
               <ActivePositionsPanel
                 market={market}
                 exchangePosition={exchangePositionForSymbol}
+                exchange={activeExchange ?? undefined}
                 exchangeSpotDisplay={exchangeSpotPanelModel}
                 displayPair={mergedModel.pair}
                 leverageFallback={leverage}

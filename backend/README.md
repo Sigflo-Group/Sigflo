@@ -58,7 +58,8 @@ Optional: `DATABASE_SSL_REJECT_UNAUTHORIZED`, `NODE_ENV`, `PORT`, `HOST`.
 ## Authentication
 
 - **Production / normal:** SPA sends **`Authorization: Bearer <supabase access_token>`**. Configure **`SUPABASE_JWT_SECRET`** and/or **`SUPABASE_URL`**.
-- **Local dev without JWT:** If **`SUPABASE_JWT_SECRET` is unset** and **`NODE_ENV` is not `production`**, the server accepts **`x-user-id`** (and optional **`x-user-email`**). The Vite app can set **`VITE_DEV_USER_ID`** so the client sends that header.
+- **Local dev without JWT:** If **`SUPABASE_JWT_SECRET` and `SUPABASE_URL` are unset** and **`NODE_ENV` is not `production`**, the server accepts **`x-user-id`** (and optional **`x-user-email`**). The Vite app can set **`VITE_DEV_USER_ID`** so the client sends that header.
+- **Dev step-up bypass (optional):** Set **`SIGFLO_ALLOW_DEV_STEP_UP_BYPASS=true`** in non-production to skip server-side step-up on protected routes (trading, exchange link). Do not enable in staging/production.
 
 If JWT secret is set but the client sends no Bearer token, you will see **`Auth rejected: missing bearer token.`** in logs.
 

@@ -7,6 +7,7 @@ import { requestId } from './middleware/requestId.js';
 import { auditContext } from './middleware/auditContext.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import { requireAuth } from './middleware/auth.js';
+import { requireStepUp } from './middleware/requireStepUp.js';
 import { authRouteLimiter } from './middleware/rateLimit.js';
 import { portfolioRouter } from './routes/portfolio.js';
 import { tradeRouter } from './routes/trade.js';
@@ -90,7 +91,7 @@ export function createApp() {
   app.use('/api/mexc-public', mexcPublicRouter);
   app.use('/api/auth', authRouteLimiter, authRouter);
   app.use('/api/portfolio', requireAuth, portfolioRouter);
-  app.use('/api/trade', requireAuth, tradeRouter);
+  app.use('/api/trade', requireAuth, requireStepUp, tradeRouter);
   app.use('/api/exit-watch', requireAuth, exitWatchRouter);
 
   app.use('/api/session', requireAuth, sessionRouter);
@@ -98,7 +99,7 @@ export function createApp() {
   // secureTradeRouter handles intent/execute flows — mounted on /api/trade/managed
   // to avoid sharing a prefix with tradeRouter (/api/trade/bybit/*) which would
   // make route conflicts invisible until a path clash actually occurs.
-  app.use('/api/trade/managed', requireAuth, secureTradeRouter);
+  app.use('/api/trade/managed', requireAuth, requireStepUp, secureTradeRouter);
   app.get('/api/trades', requireAuth, (req, res, next) => {
     listTrades(req as Parameters<typeof listTrades>[0], res).catch(next);
   });

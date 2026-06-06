@@ -24,7 +24,6 @@ export async function upsertUserSession(input: {
      on conflict (user_id, session_identifier) do update
        set ip_address = excluded.ip_address,
            user_agent = excluded.user_agent,
-           revoked_at = null,
            updated_at = now()
      returning id, user_id as "userId", session_identifier as "sessionIdentifier",
       step_up_verified_at as "stepUpVerifiedAt",
@@ -33,6 +32,23 @@ export async function upsertUserSession(input: {
     [input.userId, input.sessionIdentifier, input.ipAddress ?? null, input.userAgent ?? null],
   );
   return rows[0]!;
+}
+
+export async function getSessionByIdentifier(
+  userId: string,
+  sessionIdentifier: string,
+): Promise<UserSessionRow | null> {
+  const { rows } = await db.query<UserSessionRow>(
+    `select id, user_id as "userId", session_identifier as "sessionIdentifier",
+      step_up_verified_at as "stepUpVerifiedAt",
+      revoked_at as "revokedAt", ip_address as "ipAddress", user_agent as "userAgent",
+      created_at as "createdAt", updated_at as "updatedAt"
+     from user_sessions
+     where user_id = $1 and session_identifier = $2
+     limit 1`,
+    [userId, sessionIdentifier],
+  );
+  return rows[0] ?? null;
 }
 
 export async function getActiveSessionForUser(userId: string): Promise<UserSessionRow | null> {
@@ -65,7 +81,7 @@ export async function markStepUpForSession(userId: string, sessionIdentifier: st
   await db.query(
     `update user_sessions
      set step_up_verified_at = now(), updated_at = now()
-     where user_id = $1 and session_identifier = $2`,
+     where user_id = $1 and session_identifier = $2 and revoked_at is null`,
     [userId, sessionIdentifier],
   );
 }

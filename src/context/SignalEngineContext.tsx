@@ -456,6 +456,8 @@ function useSignalEngineValue(): SignalEngineState {
       if (import.meta.env.DEV && openCandleStripped) {
         console.log(`[Sigflo][Engine] ${symbol} stripped open 15m candle ts=${raw15m.at(-1)?.ts}, running on ${candles15m.length} closed bars`);
       }
+      const raw5m = symbolCandles['5'] ?? [];
+      const candles5m = raw5m.at(-1)?.isClosed === false ? raw5m.slice(0, -1) : raw5m;
       const rejectCounters: Record<string, number> = {};
       const regime = inferMarketRegime({ btc15m: btc15, eth15m: eth15 });
       const signal = buildSignalFromMarket({
@@ -463,7 +465,7 @@ function useSignalEngineValue(): SignalEngineState {
         exchange: 'Bybit',
         ticker,
         candles15m,
-        candles5m: symbolCandles['5'],
+        candles5m,
         regime,
         previousLifecycleForSetupSide: (setupType, side) =>
           lifecycleRef.current[signalEmitKey(symbol, setupType, side)],

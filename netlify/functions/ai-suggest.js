@@ -1,6 +1,6 @@
 import { ensureRootEnvLoaded } from './lib/load-root-env.mjs';
 import { runAiSuggest } from './lib/ai-suggest-core.mjs';
-import { verifySupabaseBearer, getClientIp } from './lib/verify-supabase-auth.mjs';
+import { verifySupabaseBearer } from './lib/verify-supabase-auth.mjs';
 import { consumeRateLimit } from './lib/rate-limit.mjs';
 
 export const handler = async (event) => {
@@ -19,7 +19,7 @@ export const handler = async (event) => {
     return { statusCode: auth.statusCode, body: JSON.stringify({ error: auth.error }) };
   }
 
-  const rlKey = `ai-suggest:${auth.userId}:${getClientIp(event)}`;
+  const rlKey = `ai-suggest:${auth.userId}`;
   if (!consumeRateLimit(rlKey, { windowMs: 60_000, max: 20 })) {
     return { statusCode: 429, body: JSON.stringify({ error: 'Too many AI requests. Try again shortly.' }) };
   }

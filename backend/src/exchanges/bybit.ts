@@ -194,7 +194,9 @@ function normalizeQtyToStep(
   qtyStepStr: string,
   minQtyStr: string,
   maxQtyStr: string,
+  opts?: { bumpToMin?: boolean },
 ): string {
+  const bumpToMin = opts?.bumpToMin !== false;
   const n = Number(String(qtyRaw).trim().replace(/,/g, ''));
   const step = Number(qtyStepStr);
   const minQ = Number(minQtyStr);
@@ -209,6 +211,11 @@ function normalizeQtyToStep(
   let k = Math.floor(n / step + tol);
   let adj = k * step;
   if (adj < minQ - tol) {
+    if (!bumpToMin) {
+      throw new Error(
+        `Order size is below Bybit minimum (${minQtyStr}, step ${qtyStepStr}). Increase size or close fully.`,
+      );
+    }
     const minK = Math.ceil(minQ / step - tol);
     adj = minK * step;
   }
@@ -694,23 +701,39 @@ export class BybitAdapter implements ExchangeAdapter {
   }
 
   async fetchPositions(input: ConnectInput): Promise<PositionItem[]> {
-    const result = await privateGet<{
-      list?: Array<{
-        symbol: string;
-        side: string;
-        size: string;
-        avgPrice: string;
-        markPrice?: string;
-        unrealisedPnl?: string;
-        leverage?: string;
-        positionIM?: string;
-        liqPrice?: string;
-        positionIdx?: number;
-        takeProfit?: string;
-        stopLoss?: string;
-        createdTime?: string;
-      }>;
-    }>('/v5/position/list', { category: 'linear', settleCoin: 'USDT' }, input);
+    type RawPos = {
+      symbol: string;
+      side: string;
+      size: string;
+      avgPrice: string;
+      markPrice?: string;
+      unrealisedPnl?: string;
+      leverage?: string;
+      positionIM?: string;
+      liqPrice?: string;
+      positionIdx?: number;
+      takeProfit?: string;
+      stopLoss?: string;
+      createdTime?: string;
+    };
+    const [usdtRes, usdcRes] = await Promise.all([
+      privateGet<{ list?: RawPos[] }>(
+        '/v5/position/list',
+        { category: 'linear', settleCoin: 'USDT' },
+        input,
+      ),
+      privateGet<{ list?: RawPos[] }>(
+        '/v5/position/list',
+        { category: 'linear', settleCoin: 'USDC' },
+        input,
+      ).catch(() => ({ list: [] as RawPos[] })),
+    ]);
+    const merged = new Map<string, RawPos>();
+    for (const p of [...(usdtRes.list ?? []), ...(usdcRes.list ?? [])]) {
+      const key = `${p.symbol}:${p.positionIdx ?? 0}:${String(p.side).toLowerCase()}`;
+      merged.set(key, p);
+    }
+    const result = { list: [...merged.values()] };
     const parsePositionTpSl = (raw: string | undefined): number | undefined => {
       if (raw == null) return undefined;
       const t = String(raw).trim();
@@ -819,7 +842,9 @@ export class BybitAdapter implements ExchangeAdapter {
     let qty = String(params.qty).trim();
     const lot = await fetchLotSizeFilter('linear', sym);
     if (lot?.qtyStep && lot.minOrderQty != null && lot.maxOrderQty != null) {
-      qty = normalizeQtyToStep(qty, lot.qtyStep, lot.minOrderQty, lot.maxOrderQty);
+      qty = normalizeQtyToStep(qty, lot.qtyStep, lot.minOrderQty, lot.maxOrderQty, {
+        bumpToMin: params.reduceOnly !== true,
+      });
     }
     const body: Record<string, unknown> = {
       category: 'linear',

@@ -260,6 +260,56 @@ tradeRouter.post('/bybit/set-leverage', async (req: AuthedRequest, res) => {
   }
 });
 
+const mexcSetLeverageSchema = z.object({
+  symbol: z.string().min(4).max(32),
+  leverage: z.number().min(1).max(200),
+  positionSide: z.enum(['long', 'short']),
+});
+
+/** Update leverage for an open MEXC futures leg. */
+tradeRouter.post('/mexc/set-leverage', async (req: AuthedRequest, res) => {
+  if (!req.user) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+
+  const parsed = mexcSetLeverageSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: formatZodIssuesForApi(parsed.error.issues) });
+    return;
+  }
+
+  const accounts = await listBrokerAccountsForUser(req.user.userId);
+  const row = accounts.find((a) => a.broker === 'mexc' && a.status === 'connected');
+  if (!row) {
+    res.status(400).json({ error: 'Connect MEXC in Account first.' });
+    return;
+  }
+
+  let creds: { apiKey: string; apiSecret: string };
+  try {
+    creds = await resolveBrokerCredentials(row);
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to retrieve exchange credentials.' });
+    return;
+  }
+
+  const p = parsed.data;
+  try {
+    await mexcAdapter.ensureTradeEnabled(creds);
+    await mexcAdapter.setLinearLeverage(creds, p.symbol, p.leverage, p.positionSide);
+    res.json({
+      ok: true,
+      exchange: 'mexc',
+      note: 'Leverage updated on MEXC for this position.',
+    });
+  } catch (e) {
+    const msg = clientSafeExchangeError(e, 'Set leverage failed');
+    log('warn', 'MEXC set-leverage failed.', { symbol: p.symbol, error: msg });
+    res.status(400).json({ error: msg });
+  }
+});
+
 tradeRouter.post('/bybit/spot-order', async (req: AuthedRequest, res) => {
   if (!req.user) {
     res.status(401).json({ error: 'Unauthorized' });
@@ -364,6 +414,7 @@ tradeRouter.post('/mexc/linear-order', async (req: AuthedRequest, res) => {
 
   const p = parsed.data;
   try {
+    await mexcAdapter.ensureTradeEnabled(creds);
     const result = await mexcAdapter.placeLinearOrder(creds, {
       symbol: p.symbol,
       side: p.side,
@@ -434,7 +485,11 @@ tradeRouter.post('/mexc/linear-trading-stop', async (req: AuthedRequest, res) =>
   const p = parsed.data;
   const hasTp = p.takeProfit != null && Number(p.takeProfit) > 0;
   const hasSl = p.stopLoss != null && Number(p.stopLoss) > 0;
-  if (!hasTp && !hasSl) {
+  const wantsClear =
+    (p.takeProfit != null && Number(p.takeProfit) <= 0) ||
+    (p.stopLoss != null && Number(p.stopLoss) <= 0);
+
+  if (!hasTp && !hasSl && !wantsClear) {
     res.json({
       ok: true,
       exchange: 'mexc',
@@ -445,12 +500,13 @@ tradeRouter.post('/mexc/linear-trading-stop', async (req: AuthedRequest, res) =>
   }
 
   try {
+    await mexcAdapter.ensureTradeEnabled(creds);
     const result = await mexcAdapter.setPositionTpSl(creds, {
       symbol: p.symbol,
       positionSide: p.positionSide,
       qty: p.qty.trim(),
-      takeProfit: hasTp ? p.takeProfit!.trim() : '0',
-      stopLoss: hasSl ? p.stopLoss!.trim() : '0',
+      takeProfit: p.takeProfit?.trim() ?? '0',
+      stopLoss: p.stopLoss?.trim() ?? '0',
     });
     const partial = result.warnings.length > 0;
     res.json({

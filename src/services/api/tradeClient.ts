@@ -146,6 +146,17 @@ export type MexcLinearOrderResponse = {
   note?: string;
 };
 
+export async function postMexcSetLinearLeverage(body: {
+  symbol: string;
+  leverage: number;
+  positionSide: 'long' | 'short';
+}): Promise<BybitSetLeverageResponse> {
+  return apiJson<BybitSetLeverageResponse>('/trade/mexc/set-leverage', {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+}
+
 export async function postMexcLinearOrder(body: {
   symbol: string;
   side: 'Buy' | 'Sell';

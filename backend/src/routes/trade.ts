@@ -9,8 +9,10 @@ import { listBrokerAccountsForUser } from '../db/queries/brokerAccounts.js';
 import { log } from '../lib/logger.js';
 import { formatZodIssuesForApi } from '../lib/formatZodError.js';
 import { isBybitTradingStopNoopError } from '../lib/bybitNoopErrors.js';
+import { requireIdempotency } from '../middleware/requireIdempotency.js';
 
 export const tradeRouter = Router();
+tradeRouter.use(requireIdempotency);
 
 const bybitTriggerBySchema = z.enum(['MarkPrice', 'LastPrice', 'IndexPrice']);
 
@@ -85,10 +87,10 @@ tradeRouter.post('/bybit/linear-order', async (req: AuthedRequest, res) => {
       try {
         await bybitAdapter.setLinearLeverage(creds, p.symbol, p.leverage);
       } catch (levErr) {
-        log('warn', 'Bybit set-leverage skipped or failed.', {
-          symbol: p.symbol,
-          error: String(levErr),
-        });
+        const msg = clientSafeExchangeError(levErr, 'Set leverage failed');
+        log('warn', 'Bybit set-leverage failed before order.', { symbol: p.symbol, error: msg });
+        res.status(400).json({ error: msg });
+        return;
       }
     }
 

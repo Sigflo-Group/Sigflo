@@ -36,7 +36,7 @@ export async function postTradeIntent(req: AuthedRequest, res: Response) {
     brokerAccountId: account.id,
     symbol: body.symbol,
     direction: body.direction,
-    entryPrice: null,
+    entryPrice: body.entryPrice ?? null,
     stopPrice: body.stopPrice ?? null,
     targetPrice: body.targetPrice ?? null,
     positionSizeUsd: body.positionSizeUsd,
@@ -80,7 +80,10 @@ export async function postTradeExecute(req: AuthedRequest, res: Response) {
   if (intent.usedAt) return res.status(409).json({ error: 'Execution intent already used' });
   if (Date.parse(intent.expiresAt) <= Date.now()) return res.status(410).json({ error: 'Execution intent expired' });
   const idempotent = await consumeIdempotencyKey(`${req.user.userId}:${body.idempotencyKey}`, SECURITY.idempotencyTtlSec * 1000);
-  if (!idempotent) return res.status(409).json({ error: 'Duplicate execution request' });
+  if (idempotent === 'unavailable') {
+    return res.status(503).json({ error: 'Idempotency store unavailable. Try again shortly.' });
+  }
+  if (idempotent === 'duplicate') return res.status(409).json({ error: 'Duplicate execution request' });
   const policy = validateTradePolicy({
     symbol: intent.symbol,
     direction: intent.direction,
@@ -94,7 +97,7 @@ export async function postTradeExecute(req: AuthedRequest, res: Response) {
   const account = await getBrokerAccountForUser(req.user.userId, intent.brokerAccountId);
   if (!account) return res.status(404).json({ error: 'Broker account not found' });
 
-  const entryPrice = Number(intent.entryPrice);
+  const entryPrice = Number(body.entryPrice ?? intent.entryPrice);
   if (!Number.isFinite(entryPrice) || entryPrice <= 0) {
     return res.status(422).json({ error: 'Execution intent is missing a valid entry price' });
   }

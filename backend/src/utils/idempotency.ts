@@ -1,12 +1,14 @@
 import { db } from '../db/index.js';
 import { log } from '../lib/logger.js';
 
+export type IdempotencyConsumeResult = 'accepted' | 'duplicate' | 'unavailable';
+
 /**
- * Returns true when the key is new (caller may proceed). False when duplicate within TTL.
- * Uses Postgres when available so multiple app instances share state.
- * Fails closed when Postgres is unreachable.
+ * Returns accepted when the key is new (caller may proceed).
+ * duplicate when key is still within TTL.
+ * unavailable when Postgres is unreachable (fail closed).
  */
-export async function consumeIdempotencyKey(key: string, ttlMs: number): Promise<boolean> {
+export async function consumeIdempotencyKey(key: string, ttlMs: number): Promise<IdempotencyConsumeResult> {
   const expiresAt = new Date(Date.now() + ttlMs);
   try {
     const { rowCount } = await db.query(
@@ -17,7 +19,7 @@ export async function consumeIdempotencyKey(key: string, ttlMs: number): Promise
     );
     if ((rowCount ?? 0) > 0) {
       void db.query('delete from idempotency_keys where expires_at < now()').catch(() => {});
-      return true;
+      return 'accepted';
     }
 
     const { rows } = await db.query<{ key: string }>(
@@ -27,11 +29,11 @@ export async function consumeIdempotencyKey(key: string, ttlMs: number): Promise
        returning key`,
       [key, expiresAt.toISOString()],
     );
-    return rows.length > 0;
+    return rows.length > 0 ? 'accepted' : 'duplicate';
   } catch (error) {
     log('error', 'Idempotency store unavailable; rejecting duplicate-risk request.', {
       error: error instanceof Error ? error.message : String(error),
     });
-    return false;
+    return 'unavailable';
   }
 }

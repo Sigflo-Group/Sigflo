@@ -399,9 +399,8 @@ const mexcLinearTradingStopSchema = z.object({
 });
 
 /**
- * Apply full-position TP/SL to an open MEXC futures position by creating stop-market
- * orders. Pass "0" (or omit) to skip a side. Each side becomes an independent stop
- * order that closes the position when triggered.
+ * Apply full-position TP/SL to an open MEXC futures position via position-level
+ * stoporder/place. Pass "0" (or omit) to skip a side.
  */
 tradeRouter.post('/mexc/linear-trading-stop', async (req: AuthedRequest, res) => {
   if (!req.user) {

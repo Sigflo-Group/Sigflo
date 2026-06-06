@@ -40,7 +40,7 @@ type MexcOpenPosition = {
   positionId: number;
   symbol: string;              // e.g. "BTC_USDT"
   positionType: 1 | 2;         // 1=long, 2=short
-  holdVol: string;             // size in base asset
+  holdVol: string;             // position size in contracts (张)
   holdAvgPrice: string;        // avg entry price
   openAvgPrice: string;
   liquidatePrice: string;
@@ -174,11 +174,27 @@ export type MexcOrderResponse = {
 export type MexcContractDetail = {
   symbol: string;
   priceUnit: string;
+  /** Contract volume step (`volUnit` on MEXC contract/detail). */
   volumeUnit: string;
   minVol: string;
   maxVol: string;
   contractSize: string;
 };
+
+/** MEXC contract/detail uses `volUnit`; older typings called it `volumeUnit`. */
+function parseContractDetail(row: Record<string, unknown>): MexcContractDetail | null {
+  const symbol = typeof row.symbol === 'string' ? row.symbol : '';
+  if (!symbol) return null;
+  const volUnit = row.volUnit ?? row.volumeUnit;
+  return {
+    symbol,
+    priceUnit: String(row.priceUnit ?? ''),
+    volumeUnit: String(volUnit ?? ''),
+    minVol: String(row.minVol ?? ''),
+    maxVol: String(row.maxVol ?? ''),
+    contractSize: String(row.contractSize ?? ''),
+  };
+}
 
 type CachedLot = { expiryMs: number; lot: MexcContractDetail };
 const instrumentLotCache = new Map<string, CachedLot>();
@@ -235,21 +251,32 @@ async function fetchInstrumentLot(symbol: string): Promise<MexcContractDetail | 
   const hit = instrumentLotCache.get(sym);
   if (hit && hit.expiryMs > now) return hit.lot;
   try {
-    const res = await getJson<{ success: boolean; data: MexcContractDetail[] }>(
+    const res = await getJson<{ success: boolean; data: Array<Record<string, unknown>> }>(
       `${FUTURES_BASE}/api/v1/contract/detail`,
       {},
     );
     if (res.success && Array.isArray(res.data)) {
-      const row = res.data.find((c) => c.symbol === sym);
-      if (row) {
-        instrumentLotCache.set(sym, { expiryMs: now + LOT_CACHE_TTL_MS, lot: row });
-        return row;
+      const raw = res.data.find((c) => c.symbol === sym);
+      const lot = raw ? parseContractDetail(raw) : null;
+      if (lot) {
+        instrumentLotCache.set(sym, { expiryMs: now + LOT_CACHE_TTL_MS, lot });
+        return lot;
       }
     }
     return null;
   } catch {
     return null;
   }
+}
+
+/** Convert base-asset qty string → MEXC contract `vol` string (step/min applied). */
+function baseQtyToContractVol(baseQty: string, lot: MexcContractDetail): string {
+  const contractSize = Number(lot.contractSize);
+  const raw =
+    Number.isFinite(contractSize) && contractSize > 0
+      ? String(Number(baseQty) / contractSize)
+      : baseQty;
+  return normalizeQtyToStep(raw, lot.volumeUnit, lot.minVol);
 }
 
 /** "BTCUSDT" → "BTC_USDT" (inserts underscore before USDT) */
@@ -357,9 +384,22 @@ export class MexcAdapter implements ExchangeAdapter {
     if (open.length === 0) return [];
 
     const markPriceMap = await fetchContractMarkPrices(open.map((p) => p.symbol));
+    const lotBySymbol = new Map<string, MexcContractDetail>();
+    await Promise.all(
+      [...new Set(open.map((p) => p.symbol))].map(async (mexcSym) => {
+        const lot = await fetchInstrumentLot(mexcSym);
+        if (lot) lotBySymbol.set(mexcSym, lot);
+      }),
+    );
 
     return open.map((p): PositionItem => {
-      const size = Number(p.holdVol);
+      const holdContracts = Number(p.holdVol);
+      const lot = lotBySymbol.get(p.symbol);
+      const contractSize = Number(lot?.contractSize);
+      const size =
+        Number.isFinite(contractSize) && contractSize > 0
+          ? holdContracts * contractSize
+          : holdContracts;
       const entryPrice = Number(p.holdAvgPrice || p.openAvgPrice);
       const side: 'long' | 'short' = p.positionType === 1 ? 'long' : 'short';
 
@@ -496,19 +536,15 @@ export class MexcAdapter implements ExchangeAdapter {
     let qty = params.qty;
     try {
       const lot = await fetchInstrumentLot(mexcSymbol);
-      if (lot) {
-        if (price) price = normalizePriceToStep(price, lot.priceUnit);
-        // MEXC expects vol in contracts, not base currency
-        const contractSize = Number(lot.contractSize);
-        if (Number.isFinite(contractSize) && contractSize > 0) {
-          const contractCount = String(Number(qty) / contractSize);
-          qty = normalizeQtyToStep(contractCount, lot.volumeUnit, lot.minVol);
-        } else {
-          qty = normalizeQtyToStep(qty, lot.volumeUnit, lot.minVol);
-        }
+      if (!lot) {
+        throw new Error(`Could not load MEXC contract rules for ${mexcSymbol}. Try again shortly.`);
       }
-    } catch {
-      log('warn', 'MEXC instrument lot fetch failed, sending raw values', { symbol: mexcSymbol });
+      if (price) price = normalizePriceToStep(price, lot.priceUnit);
+      qty = baseQtyToContractVol(qty, lot);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      log('warn', 'MEXC order qty normalization failed', { symbol: mexcSymbol, error: msg });
+      throw e instanceof Error ? e : new Error(msg);
     }
 
     // Map Bybit-style side+reduceOnly → MEXC side integer
@@ -604,19 +640,17 @@ export class MexcAdapter implements ExchangeAdapter {
 
     // Convert base-asset qty -> contracts (MEXC expects contracts on stop order vol).
     let contractVol = baseQty;
+    let lot: MexcContractDetail | null = null;
     try {
-      const lot = await fetchInstrumentLot(mexcSymbol);
-      if (lot) {
-        const contractSize = Number(lot.contractSize);
-        if (Number.isFinite(contractSize) && contractSize > 0) {
-          const contractCount = String(Number(baseQty) / contractSize);
-          contractVol = normalizeQtyToStep(contractCount, lot.volumeUnit, lot.minVol);
-        } else {
-          contractVol = normalizeQtyToStep(baseQty, lot.volumeUnit, lot.minVol);
-        }
+      lot = await fetchInstrumentLot(mexcSymbol);
+      if (!lot) {
+        throw new Error(`Could not load MEXC contract rules for ${mexcSymbol}. Try again shortly.`);
       }
-    } catch {
-      log('warn', 'MEXC TP/SL lot fetch failed, sending raw values', { symbol: mexcSymbol });
+      contractVol = baseQtyToContractVol(baseQty, lot);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      log('warn', 'MEXC TP/SL qty normalization failed', { symbol: mexcSymbol, error: msg });
+      throw e instanceof Error ? e : new Error(msg);
     }
 
     // MEXC side for closing: 4=close long, 2=close short.
@@ -633,13 +667,15 @@ export class MexcAdapter implements ExchangeAdapter {
     }
 
     for (const t of tasks) {
+      let stopPrice = t.price;
+      if (lot?.priceUnit) stopPrice = normalizePriceToStep(stopPrice, lot.priceUnit);
       const stopBody: Record<string, unknown> = {
         symbol: mexcSymbol,
         vol: contractVol,
         side: closeSide,
         openType: 1, // isolated
         type: 5,     // market (stop triggers a market close)
-        stopPrice: t.price,
+        stopPrice,
         stopType: t.stopType,
         trend: 1,    // 1=latest, 2=fair, 3=index
       };

@@ -4432,6 +4432,28 @@ export function TradeScreen() {
                   <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-cyan-200/90">Managing position</p>
                   <p className="mt-0.5 truncate text-sm font-bold text-white">{mergedModel.pair}</p>
                 </div>
+                <div
+                  className={`flex shrink-0 flex-col items-end gap-0.5 text-right text-[10px] font-semibold leading-tight ${uiStateStyle.text}`}
+                  aria-label={`Signal status: ${uiSignalStateLabel(uiState)}`}
+                >
+                  <span className="inline-flex items-center justify-end gap-1">
+                    <LiveIndicator
+                      pulse={uiStateStyle.pulse}
+                      dotClassName={uiStateStyle.dot}
+                      size={isTriggered ? 'md' : 'sm'}
+                      pulseDurationSec={isTriggered ? 2.4 : 2.8}
+                    />
+                    <span className={`truncate uppercase tracking-[0.11em] ${isTriggered ? 'text-[#b2ffef]' : ''}`}>
+                      {uiSignalStateLabel(uiState)}
+                    </span>
+                    {isTriggered ? (
+                      <span className="shrink-0 font-normal text-sigflo-muted">· {stateAgeLabel}</span>
+                    ) : null}
+                  </span>
+                  <span className="max-w-full truncate font-normal text-sigflo-muted">
+                    {isTriggered ? `Triggered ${triggeredPairCount}` : `${live.mode} · ${live.connection}`}
+                  </span>
+                </div>
                 <button
                   type="button"
                   onClick={() => void onBiasAlertsControl()}

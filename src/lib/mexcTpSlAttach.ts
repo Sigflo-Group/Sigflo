@@ -49,9 +49,11 @@ export type AttachMexcTpSlParams = {
   }) => Promise<void>;
   rollbackEntry: () => Promise<void>;
   onErrorToast: (message: string) => void;
+  /** When false (default), a failed SL leaves the position open — MEXC stop placement is often delayed/flaky. */
+  closeEntryOnRequiredSlFailure?: boolean;
 };
 
-/** Place MEXC stop orders after entry with retries; roll back entry when a required SL cannot be set. */
+/** Place MEXC stop orders after entry with retries; optionally roll back entry when a required SL cannot be set. */
 export async function attachMexcTpSlAfterEntry(p: AttachMexcTpSlParams): Promise<boolean> {
   if (!p.tpSl.takeProfit && !p.tpSl.stopLoss) return true;
 
@@ -79,7 +81,8 @@ export async function attachMexcTpSlAfterEntry(p: AttachMexcTpSlParams): Promise
   }
 
   const msg = lastErr instanceof Error ? lastErr.message : String(lastErr);
-  if (p.userRequiredStop && p.tpSl.stopLoss) {
+  const shouldRollback = p.closeEntryOnRequiredSlFailure === true && p.userRequiredStop && p.tpSl.stopLoss;
+  if (shouldRollback) {
     try {
       await p.rollbackEntry();
       p.onErrorToast(
@@ -93,7 +96,11 @@ export async function attachMexcTpSlAfterEntry(p: AttachMexcTpSlParams): Promise
     }
     return false;
   }
-  p.onErrorToast(`TP/SL sync on MEXC failed: ${msg}`);
+  p.onErrorToast(
+    p.userRequiredStop && p.tpSl.stopLoss
+      ? `Stop-loss could not be set on MEXC — your position is still open. Set it in Manage.${msg ? ` ${msg}` : ''}`
+      : `TP/SL sync on MEXC failed — position is still open.${msg ? ` ${msg}` : ''}`,
+  );
   return false;
 }
 

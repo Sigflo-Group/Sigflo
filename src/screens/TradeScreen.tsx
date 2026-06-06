@@ -132,6 +132,7 @@ import {
   attachMexcTpSlAfterEntry,
   findMexcOpenLeg,
   mexcQtyFromLeg,
+  pollForMexcPositionLeg,
 } from '@/lib/mexcTpSlAttach';
 import { DEFAULT_BYBIT_TPSL_TRIGGER, type BybitTpSlTriggerBy } from '@/lib/bybitTpSlTrigger';
 import {
@@ -3237,6 +3238,15 @@ export function TradeScreen() {
             (Number.isFinite(targetParsed) && targetParsed > 0) ||
             (Number.isFinite(stopParsed) && stopParsed > 0);
           if (market === 'futures' && !isManageMode && hasUserTpSl && activeExchange === 'mexc' && openedMexcEntry) {
+            suppressExternalPositionCloseFeedbackUntilRef.current = Date.now() + 30_000;
+            const mexcLeg = await pollForMexcPositionLeg(
+              () => refreshAccountSnapshots({ silent: true }),
+              (snaps) => {
+                const mexc = snaps.find((s) => s.exchange === 'mexc' && s.status === 'connected');
+                return findMexcOpenLeg(mexc?.positions, orderSymbol, openedMexcEntry!.positionSide);
+              },
+              { deadlineMs: 12_000, intervalMs: 350 },
+            );
             const mexcSnapAfter = snapshotsAfter.find((s) => s.exchange === 'mexc' && s.status === 'connected');
             const mexcPos = mexcSnapAfter?.positions?.find(
               (p) => p.symbol === orderSymbol && p.side === openedMexcEntry.positionSide && p.size > 0,
@@ -3251,38 +3261,34 @@ export function TradeScreen() {
               targetParsed,
               stopParsed,
             );
+            const tpSlToAttach = { ...synced.tpSl };
+            if (synced.skippedStop) delete tpSlToAttach.stopLoss;
             if (userRequestedStopLoss && (synced.skippedStop || !synced.tpSl.stopLoss)) {
-              try {
-                await postMexcLinearOrder({
-                  symbol: orderSymbol,
-                  side: openedMexcEntry.side === 'Buy' ? 'Sell' : 'Buy',
-                  qty: openedMexcEntry.qty,
-                  reduceOnly: true,
-                  orderType: 'Market',
-                });
-                flashTradeToast(
-                  'Stop-loss could not be applied against the fill. Entry was auto-closed on MEXC.',
-                  7600,
-                );
-              } catch (closeErr) {
-                flashTradeToast(
-                  `Stop-loss invalid and auto-close failed — close manually. ${closeErr instanceof Error ? closeErr.message : String(closeErr)}`,
-                  9000,
-                );
-              }
-              return false;
+              flashTradeToast(
+                mexcLeg
+                  ? 'Entry filled but stop-loss did not match the fill price — position stays open; set stop in Manage.'
+                  : 'Entry submitted — waiting for MEXC position sync before stop-loss can attach. Check Manage in a few seconds.',
+                9000,
+              );
             }
-            if (synced.tpSl.takeProfit || synced.tpSl.stopLoss) {
+            if (tpSlToAttach.takeProfit || tpSlToAttach.stopLoss) {
               const tpSlOk = await attachMexcTpSlAfterEntry({
                 symbol: orderSymbol,
                 positionSide: openedMexcEntry.positionSide,
                 fallbackQty: openedMexcEntry.qty,
-                tpSl: synced.tpSl,
-                userRequiredStop: userRequestedStopLoss,
+                tpSl: tpSlToAttach,
+                userRequiredStop: Boolean(tpSlToAttach.stopLoss),
+                closeEntryOnRequiredSlFailure: false,
                 resolveQty: async () => {
-                  const snaps = await refreshAccountSnapshots({ silent: true });
-                  const mexc = snaps.find((s) => s.exchange === 'mexc' && s.status === 'connected');
-                  const leg = findMexcOpenLeg(mexc?.positions, orderSymbol, openedMexcEntry!.positionSide);
+                  if (mexcLeg) return mexcQtyFromLeg(mexcLeg);
+                  const leg = await pollForMexcPositionLeg(
+                    () => refreshAccountSnapshots({ silent: true }),
+                    (snaps) => {
+                      const mexc = snaps.find((s) => s.exchange === 'mexc' && s.status === 'connected');
+                      return findMexcOpenLeg(mexc?.positions, orderSymbol, openedMexcEntry!.positionSide);
+                    },
+                    { deadlineMs: 8_000, intervalMs: 300 },
+                  );
                   return leg ? mexcQtyFromLeg(leg) : openedMexcEntry!.qty;
                 },
                 placeTpSl: async (body) => {
@@ -3292,10 +3298,19 @@ export function TradeScreen() {
                   }
                 },
                 rollbackEntry: async () => {
+                  const leg = await pollForMexcPositionLeg(
+                    () => refreshAccountSnapshots({ silent: true }),
+                    (snaps) => {
+                      const mexc = snaps.find((s) => s.exchange === 'mexc' && s.status === 'connected');
+                      return findMexcOpenLeg(mexc?.positions, orderSymbol, openedMexcEntry!.positionSide);
+                    },
+                    { deadlineMs: 6_000, intervalMs: 300 },
+                  );
+                  const qty = leg ? mexcQtyFromLeg(leg) : openedMexcEntry!.qty;
                   await postMexcLinearOrder({
                     symbol: orderSymbol,
                     side: openedMexcEntry!.side === 'Buy' ? 'Sell' : 'Buy',
-                    qty: openedMexcEntry!.qty,
+                    qty,
                     reduceOnly: true,
                     orderType: 'Market',
                   });
@@ -3303,7 +3318,9 @@ export function TradeScreen() {
                 },
                 onErrorToast: (message) => flashTradeToast(message, 7600),
               });
-              if (!tpSlOk) return false;
+              if (!tpSlOk && userRequestedStopLoss) {
+                // Position remains open — user can set stop from Manage.
+              }
             }
           }
           if (market === 'futures' && !isManageMode && hasUserTpSl && activeExchange !== 'mexc') {

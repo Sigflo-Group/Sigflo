@@ -155,13 +155,16 @@ export type MexcOrderRequest = {
   side: 1 | 2 | 3 | 4;   // 1=open long, 2=close short, 3=open short, 4=close long
   openType: 1 | 2;        // 1=isolated, 2=cross
   type: 1 | 5;            // 1=limit, 5=market
-  vol: string;             // quantity in base currency
+  vol: string;             // quantity in contracts
   leverage?: number;       // required for opening positions
   price?: string;          // limit orders only
   stopLossPrice?: string;
   takeProfitPrice?: string;
-  lossTrend?: 1 | 2 | 3;  // 1=latest, 2=fair, 3=index (required with stopLossPrice)
-  profitTrend?: 1 | 2 | 3; // (required with takeProfitPrice)
+  lossTrend?: 1 | 2 | 3;
+  profitTrend?: 1 | 2 | 3;
+  positionMode?: 1 | 2;   // 1=dual-side, 2=one-way
+  reduceOnly?: boolean;
+  positionId?: number;
 };
 
 export type MexcOrderResponse = {
@@ -234,12 +237,13 @@ function normalizeQtyToStep(
   qtyRaw: string,
   qtyStepStr: string,
   minQtyStr: string,
-  opts?: { bumpToMin?: boolean },
+  opts?: { bumpToMin?: boolean; maxQtyStr?: string },
 ): string {
   const bumpToMin = opts?.bumpToMin !== false;
   const n = Number(String(qtyRaw).trim().replace(/,/g, ''));
   const step = Number(qtyStepStr);
   const minQ = Number(minQtyStr);
+  const maxQ = opts?.maxQtyStr != null ? Number(opts.maxQtyStr) : NaN;
   if (!Number.isFinite(n) || n <= 0) throw new Error('Order qty must be a positive number');
   if (!Number.isFinite(step) || step <= 0) return qtyRaw.trim();
   const tol = 1e-12;
@@ -253,6 +257,10 @@ function normalizeQtyToStep(
     }
     const minK = Math.ceil(minQ / step - tol);
     adj = minK * step;
+  }
+  if (Number.isFinite(maxQ) && maxQ > 0 && adj > maxQ) {
+    const maxK = Math.floor(maxQ / step + tol);
+    adj = maxK * step;
   }
   if (!Number.isFinite(adj) || adj < minQ - tol || adj <= 0) {
     throw new Error(`Order qty ${qtyRaw} is below this symbol's minimum (${minQtyStr}, step ${qtyStepStr}).`);
@@ -334,7 +342,54 @@ function baseQtyToContractVol(
     Number.isFinite(contractSize) && contractSize > 0
       ? String(Number(baseQty) / contractSize)
       : baseQty;
-  return normalizeQtyToStep(raw, lot.volumeUnit, lot.minVol, opts);
+  return normalizeQtyToStep(raw, lot.volumeUnit, lot.minVol, {
+    bumpToMin: opts?.bumpToMin,
+    maxQtyStr: lot.maxVol,
+  });
+}
+
+type MexcOpenStopOrder = {
+  id: number;
+  symbol: string;
+  positionId: number;
+  stopLossPrice?: string | number;
+  takeProfitPrice?: string | number;
+  state?: number;
+};
+
+async function fetchMexcOpenStopOrders(input: ConnectInput): Promise<MexcOpenStopOrder[]> {
+  try {
+    const res = await futuresPrivateGet<MexcFuturesResponse<MexcOpenStopOrder[]>>(
+      '/api/v1/private/stoporder/open_orders',
+      {},
+      input,
+    );
+    if (!res.success || !Array.isArray(res.data)) return [];
+    return res.data.filter((o) => o.state == null || o.state === 1);
+  } catch {
+    return [];
+  }
+}
+
+async function cancelMexcPositionStopOrders(input: ConnectInput, positionId: number): Promise<void> {
+  const open = await fetchMexcOpenStopOrders(input);
+  const targets = open.filter((o) => o.positionId === positionId);
+  for (const o of targets) {
+    const res = await futuresPrivatePost<MexcStopOrderPlaceResponse>(
+      '/api/v1/private/stoporder/cancel',
+      { stopOrderId: o.id },
+      input,
+    );
+    if (!res.success) {
+      const detail = res.message ?? (res.code != null ? `code=${res.code}` : undefined);
+      throw new Error(`MEXC stop-order cancel failed${detail ? `: ${detail}` : ''}`);
+    }
+  }
+}
+
+function mexcPositionSideFromOrder(params: { side: 'Buy' | 'Sell'; reduceOnly?: boolean }): 'long' | 'short' {
+  if (params.reduceOnly) return params.side === 'Sell' ? 'long' : 'short';
+  return params.side === 'Buy' ? 'long' : 'short';
 }
 
 async function ensureLinearLeverage(
@@ -422,28 +477,44 @@ export class MexcAdapter implements ExchangeAdapter {
       if (total > 0) balances.set(b.asset, { asset: b.asset, free, locked, total });
     }
 
-    // Merge futures wallet assets — add to existing asset or create new entry
+    // Futures wallet replaces spot USDT for the same asset — Sigflo MEXC trading uses derivatives only.
     for (const a of futuresAssets) {
       const asset = (a.currency ?? '').toUpperCase();
       if (!asset) continue;
       const free = Number(a.availableBalance ?? 0);
       const locked = Number(a.frozenBalance ?? 0) + Number(a.positionMargin ?? 0);
       const total = Number(a.equity ?? 0) || free + locked;
-      if (total <= 0) continue;
-      const existing = balances.get(asset);
-      if (existing) {
-        balances.set(asset, {
-          asset,
-          free: existing.free + free,
-          locked: existing.locked + locked,
-          total: existing.total + total,
-        });
-      } else {
-        balances.set(asset, { asset, free, locked, total });
-      }
+      if (total <= 0 && free <= 0) continue;
+      balances.set(asset, { asset, free, locked, total: total > 0 ? total : free + locked });
     }
 
     return [...balances.values()];
+  }
+
+  async ensureTradeEnabled(input: ConnectInput): Promise<void> {
+    const account = await spotPrivateGet<MexcAccountResponse>('/api/v3/account', {}, input);
+    if (account.canTrade === false) {
+      throw new Error('This MEXC API key is read-only. Use a read/write key to place orders from Sigflo.');
+    }
+    const res = await futuresPrivateGet<MexcFuturesResponse<MexcContractAsset[] | MexcContractAsset>>(
+      '/api/v1/private/account/assets',
+      {},
+      input,
+    );
+    if (!res.success) {
+      throw new Error('This MEXC API key cannot access the futures wallet. Enable futures permissions on the key.');
+    }
+  }
+
+  async setLinearLeverage(
+    input: ConnectInput,
+    symbol: string,
+    leverage: number,
+    positionSide: 'long' | 'short',
+  ): Promise<void> {
+    const mexcSymbol = standardSymbolToMexc(symbol);
+    const positionType: 1 | 2 = positionSide === 'long' ? 1 : 2;
+    await ensureLinearLeverage(input, mexcSymbol, leverage, positionType);
   }
 
   async fetchPositions(input: ConnectInput): Promise<PositionItem[]> {
@@ -467,19 +538,38 @@ export class MexcAdapter implements ExchangeAdapter {
     const lotBySymbol = new Map<string, MexcContractDetail>();
     await Promise.all(
       [...new Set(open.map((p) => p.symbol))].map(async (mexcSym) => {
-        const lot = await fetchInstrumentLot(mexcSym);
+        let lot = await fetchInstrumentLot(mexcSym);
+        if (!lot) {
+          await new Promise<void>((r) => {
+            setTimeout(r, 250);
+          });
+          lot = await fetchInstrumentLot(mexcSym);
+        }
         if (lot) lotBySymbol.set(mexcSym, lot);
       }),
     );
 
-    return open.map((p): PositionItem => {
+    const stopOrders = await fetchMexcOpenStopOrders(input);
+    const tpSlByPositionId = new Map<number, { tp?: number; sl?: number }>();
+    for (const o of stopOrders) {
+      const cur = tpSlByPositionId.get(o.positionId) ?? {};
+      const tp = o.takeProfitPrice != null ? Number(o.takeProfitPrice) : NaN;
+      const sl = o.stopLossPrice != null ? Number(o.stopLossPrice) : NaN;
+      if (Number.isFinite(tp) && tp > 0) cur.tp = tp;
+      if (Number.isFinite(sl) && sl > 0) cur.sl = sl;
+      tpSlByPositionId.set(o.positionId, cur);
+    }
+
+    return open
+      .map((p): PositionItem | null => {
       const holdContracts = Number(p.holdVol);
       const lot = lotBySymbol.get(p.symbol);
       const contractSize = Number(lot?.contractSize);
-      const size =
-        Number.isFinite(contractSize) && contractSize > 0
-          ? holdContracts * contractSize
-          : holdContracts;
+      if (!Number.isFinite(contractSize) || contractSize <= 0) {
+        log('warn', 'MEXC position omitted — contract size unavailable', { symbol: p.symbol });
+        return null;
+      }
+      const size = holdContracts * contractSize;
       const entryPrice = Number(p.holdAvgPrice || p.openAvgPrice);
       const side: 'long' | 'short' = p.positionType === 1 ? 'long' : 'short';
 
@@ -506,6 +596,8 @@ export class MexcAdapter implements ExchangeAdapter {
           : (entryPrice - markPrice) * size;
       }
 
+      const tpSl = tpSlByPositionId.get(p.positionId);
+
       return {
         symbol: mexcSymbolToStandard(p.symbol),
         side,
@@ -517,8 +609,11 @@ export class MexcAdapter implements ExchangeAdapter {
         leverage: p.leverage > 0 ? p.leverage : undefined,
         positionIM: Number(p.im) > 0 ? Number(p.im) : undefined,
         openedAtMs: p.createTime > 0 ? p.createTime : undefined,
+        ...(tpSl?.tp != null ? { takeProfitPrice: tpSl.tp } : {}),
+        ...(tpSl?.sl != null ? { stopLossPrice: tpSl.sl } : {}),
       };
-    });
+    })
+      .filter((row): row is PositionItem => row != null);
   }
 
   async fetchAccountBreakdown(input: ConnectInput): Promise<ExchangeAccountBreakdown | null> {
@@ -544,7 +639,8 @@ export class MexcAdapter implements ExchangeAdapter {
     const spotUsdt = spotBalances.find((b) => b.asset.toUpperCase() === 'USDT');
     const futuresUsdt = futuresBalances.find((b) => b.asset.toUpperCase() === 'USDT');
     const totalEquity = (spotUsdt?.total ?? 0) + (futuresUsdt?.total ?? 0);
-    const availableToTrade = (spotUsdt?.free ?? 0) + (futuresUsdt?.free ?? 0);
+    /** Futures orders only spend derivatives free balance — never spot USDT. */
+    const availableToTrade = futuresUsdt?.free ?? 0;
 
     const buckets: AccountBucketSnapshot[] = [];
 
@@ -640,14 +736,23 @@ export class MexcAdapter implements ExchangeAdapter {
       await ensureLinearLeverage(input, mexcSymbol, params.leverage, positionType);
     }
 
+    const existingLeg = await fetchMexcOpenPositionLeg(
+      input,
+      params.symbol,
+      mexcPositionSideFromOrder(params),
+    );
+
     const orderBody: MexcOrderRequest = {
       symbol: mexcSymbol,
       side: mexcSide,
-      openType: 1, // isolated
+      openType: 1,
       type: params.orderType === 'Limit' ? 1 : 5,
       vol: qty,
       ...(params.leverage != null && !params.reduceOnly ? { leverage: params.leverage } : {}),
       price: price ?? '0',
+      ...(params.reduceOnly
+        ? { positionMode: 2, reduceOnly: true, ...(existingLeg ? { positionId: existingLeg.positionId } : {}) }
+        : { positionMode: 1 }),
     };
 
     // MEXC order/create rejects TP/SL on market orders — callers use setPositionTpSl after fill.
@@ -700,12 +805,12 @@ export class MexcAdapter implements ExchangeAdapter {
 
     const hasSl = params.stopLoss != null && Number(params.stopLoss) > 0;
     const hasTp = params.takeProfit != null && Number(params.takeProfit) > 0;
-    if (!hasSl && !hasTp) {
-      return { orderIds: [], placed, warnings };
-    }
+    const wantsClear =
+      (params.stopLoss != null && Number(params.stopLoss) <= 0) ||
+      (params.takeProfit != null && Number(params.takeProfit) <= 0);
 
     let leg = await fetchMexcOpenPositionLeg(input, params.symbol, params.positionSide);
-    if (!leg) {
+    if (!leg && (hasSl || hasTp || wantsClear)) {
       const deadline = Date.now() + 10_000;
       while (!leg && Date.now() < deadline) {
         await new Promise<void>((r) => {
@@ -714,8 +819,20 @@ export class MexcAdapter implements ExchangeAdapter {
         leg = await fetchMexcOpenPositionLeg(input, params.symbol, params.positionSide);
       }
     }
+
+    if (!hasSl && !hasTp) {
+      if (leg && wantsClear) {
+        await cancelMexcPositionStopOrders(input, leg.positionId);
+      }
+      return { orderIds: [], placed, warnings };
+    }
+
     if (!leg) {
       throw new Error('MEXC has no open position for this symbol — refresh Account sync and try again.');
+    }
+
+    if (wantsClear) {
+      await cancelMexcPositionStopOrders(input, leg.positionId);
     }
 
     const lot = await fetchInstrumentLot(mexcSymbol);

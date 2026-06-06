@@ -1,6 +1,18 @@
 /** Simple per-instance rate limiter for Netlify functions (best-effort). */
 const buckets = new Map();
 
+function evictBuckets(now) {
+  if (buckets.size <= 5_000) return;
+  const expired = [];
+  for (const [k, b] of buckets) {
+    if (now >= b.resetAt) expired.push(k);
+  }
+  for (const k of expired) buckets.delete(k);
+  if (buckets.size <= 5_000) return;
+  const oldest = [...buckets.entries()].sort((a, b) => a[1].resetAt - b[1].resetAt).slice(0, 1_000);
+  for (const [k] of oldest) buckets.delete(k);
+}
+
 /**
  * @param {string} key
  * @param {{ windowMs?: number, max?: number }} opts
@@ -17,10 +29,6 @@ export function consumeRateLimit(key, opts = {}) {
   }
   bucket.count += 1;
   if (bucket.count > max) return false;
-  if (buckets.size > 5_000) {
-    for (const [k, b] of buckets) {
-      if (now >= b.resetAt) buckets.delete(k);
-    }
-  }
+  evictBuckets(now);
   return true;
 }

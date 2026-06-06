@@ -4,6 +4,27 @@ const BACKEND_ORIGIN = (
   process.env.BACKEND_API_ORIGIN ?? process.env.VITE_BACKEND_API_BASE ?? ''
 ).replace(/\/+$/, '').replace(/\/api$/, '');
 
+function buildTargetUrl(event) {
+  const origPath = event.path
+    .replace(/^\/\.netlify\/functions\/exchange-proxy/, '')
+    .replace(/^\/api\/exchange/, '');
+  if (!origPath || origPath.includes('..')) return null;
+
+  const base = new URL(`${BACKEND_ORIGIN}/api/exchange/`);
+  const url = new URL(`.${origPath.startsWith('/') ? origPath : `/${origPath}`}`, base);
+  if (!url.pathname.startsWith('/api/exchange/') && url.pathname !== '/api/exchange') {
+    return null;
+  }
+
+  const qs =
+    event.rawQuery != null && String(event.rawQuery).length > 0
+      ? `?${String(event.rawQuery)}`
+      : event.queryStringParameters
+        ? `?${new URLSearchParams(event.queryStringParameters).toString()}`
+        : '';
+  return `${url.origin}${url.pathname}${qs}`;
+}
+
 export const handler = async (event) => {
   ensureRootEnvLoaded();
 
@@ -22,11 +43,14 @@ export const handler = async (event) => {
     };
   }
 
-  const origPath = event.path.replace(/^\/\.netlify\/functions\/exchange-proxy/, '').replace(/^\/api\/exchange/, '');
-  const qs = event.rawQuery ?? event.queryStringParameters
-    ? '?' + new URLSearchParams(event.queryStringParameters ?? {}).toString()
-    : '';
-  const targetUrl = `${BACKEND_ORIGIN}/api/exchange${origPath}${qs}`;
+  const targetUrl = buildTargetUrl(event);
+  if (!targetUrl) {
+    return {
+      statusCode: 400,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ error: 'Invalid exchange proxy path.' }),
+    };
+  }
 
   const allowHeaders = new Set([
     'authorization',
@@ -39,14 +63,16 @@ export const handler = async (event) => {
     Object.entries(event.headers ?? {}).filter(([k]) => allowHeaders.has(k.toLowerCase())),
   );
 
+  const hasBody = event.httpMethod !== 'GET' && event.httpMethod !== 'HEAD' && event.body;
+  if (hasBody && !headers['content-type'] && !headers['Content-Type']) {
+    headers['Content-Type'] = 'application/json';
+  }
+
   try {
     const res = await fetch(targetUrl, {
       method: event.httpMethod,
-      headers: {
-        ...headers,
-        'Content-Type': 'application/json',
-      },
-      body: event.httpMethod !== 'GET' && event.httpMethod !== 'HEAD' && event.body ? event.body : undefined,
+      headers,
+      body: hasBody ? event.body : undefined,
     });
 
     const body = await res.text();
@@ -57,7 +83,7 @@ export const handler = async (event) => {
       },
       body,
     };
-  } catch (e) {
+  } catch {
     return {
       statusCode: 502,
       headers: { 'Content-Type': 'application/json' },

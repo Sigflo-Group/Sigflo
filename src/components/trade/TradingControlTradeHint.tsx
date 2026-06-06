@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom';
 import { useTradingControlMode } from '@/context/TradingControlModeContext';
 import { TRADING_AUTO_EXECUTION_ACTIVE } from '@/lib/tradingControlMode';
 
@@ -15,6 +16,13 @@ export function TradingControlTradeHint() {
         {autoPreview ? (
           <span className="text-amber-200/85"> · Automation preview only.</span>
         ) : null}
+      </p>
+      <p className="mt-1 text-[9px] leading-snug text-sigflo-muted/70">
+        Change mode on{' '}
+        <Link to="/bots" className="font-semibold text-[#7ee8d3] underline-offset-2 hover:underline">
+          Bots
+        </Link>
+        .
       </p>
     </div>
   );

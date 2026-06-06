@@ -551,6 +551,8 @@ export default function PortfolioScreen() {
                   position: p,
                 });
                 const aiMeta = positionAiExitMeta(aiStatus);
+                const posExchange: 'bybit' | 'mexc' | undefined =
+                  p.exchange === 'bybit' || p.exchange === 'mexc' ? p.exchange : undefined;
                 const tradeExtras =
                   p.entryPrice > 0
                     ? {
@@ -559,6 +561,7 @@ export default function PortfolioScreen() {
                         posSize: p.size,
                         markPrice: current,
                         ...(p.leverage != null && p.leverage > 0 ? { leverage: p.leverage } : {}),
+                        ...(posExchange ? { exchange: posExchange } : {}),
                       }
                     : undefined;
                 const baseQuery = buildPortfolioPositionTradeQuery(p.symbol, p.side, tradeExtras);

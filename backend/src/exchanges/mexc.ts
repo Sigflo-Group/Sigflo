@@ -620,7 +620,7 @@ export class MexcAdapter implements ExchangeAdapter {
         throw new Error(`Could not load MEXC contract rules for ${mexcSymbol}. Try again shortly.`);
       }
       if (price) price = normalizePriceToStep(price, lot.priceUnit);
-      qty = baseQtyToContractVol(qty, lot, { bumpToMin: params.reduceOnly === true });
+      qty = baseQtyToContractVol(qty, lot, { bumpToMin: !params.reduceOnly });
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       log('warn', 'MEXC order qty normalization failed', { symbol: mexcSymbol, error: msg });

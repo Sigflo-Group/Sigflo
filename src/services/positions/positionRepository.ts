@@ -54,7 +54,10 @@ export type PositionRepository = {
   /** All rows the repository currently considers open (demo: mock list; future: synced open legs). */
   listActivePositions(): readonly SigfloActivePosition[];
   /** Optional mutable operations (supported by demo repository). */
-  closePositionByPair?: (pair: string) => boolean;
+  closePositionByPair?: (
+    pair: string,
+    opts?: { markPrice?: number; reason?: 'manual_close' | 'flip_position' | 'close_all' },
+  ) => boolean;
   closeAllPositions?: (opts?: { markByPair?: Record<string, number> }) => number;
   openPaperPosition?: (input: PaperTradeOpenInput) => { ok: boolean; position?: SigfloActivePosition; error?: string };
   getPaperTradingSnapshot?: (markByPair?: Record<string, number>) => PaperTradingSnapshot;

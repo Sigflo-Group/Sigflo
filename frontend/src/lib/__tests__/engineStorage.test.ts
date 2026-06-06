@@ -172,13 +172,43 @@ describe('lifecycle ref store', () => {
   });
 
   it('round-trips lifecycle states', () => {
-    const store: Record<string, { state: string; candlesSinceTrigger: number }> = {
-      'BTCUSDT:breakout:long': { state: 'triggered', candlesSinceTrigger: 2 },
+    const store = {
+      'BTCUSDT:breakout:long': {
+        state: 'triggered',
+        candlesSinceTrigger: 2,
+        trigger: {
+          triggerType: 'breakout_crossover',
+          triggerReason: 'test',
+          firstValidEntryCandleIndex: null,
+          triggerCandleTs: 1_700_000_000_000,
+          idealEntryPrice: null,
+        },
+      },
     };
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     persistLifecycleRef(store as any);
     const loaded = loadLifecycleRef();
     expect(loaded['BTCUSDT:breakout:long']).toBeDefined();
+    expect(loaded['BTCUSDT:breakout:long']?.trigger?.triggerCandleTs).toBe(1_700_000_000_000);
+  });
+
+  it('drops triggered lifecycle rows missing triggerCandleTs on load', () => {
+    const store = {
+      'BTCUSDT:breakout:long': {
+        state: 'triggered',
+        candlesSinceTrigger: 2,
+        trigger: {
+          triggerType: 'breakout_crossover',
+          triggerReason: 'test',
+          firstValidEntryCandleIndex: null,
+          triggerCandleTs: null,
+          idealEntryPrice: null,
+        },
+      },
+    };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    persistLifecycleRef(store as any);
+    expect(loadLifecycleRef()).toEqual({});
   });
 
   it('returns empty object for non-object JSON', () => {

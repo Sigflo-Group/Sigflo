@@ -252,15 +252,18 @@ export function deriveMarketStatus(signal: CryptoSignal): MarketRowStatus {
   }
   // Synthetic breakout on the movers list: still cap at developing unless clearly extreme.
   if (isSyntheticMoverSignal(signal) && signal.setupType === 'breakout') {
-    if (signal.setupScore >= 85) return 'triggered';
     if (signal.setupScore >= 45) return 'developing';
     return 'idle';
   }
-  // Only promote non-synthetic signals via score alone. Synthetic signals
-  // (any id not handled by the trend-* guards above) must have their status
-  // set by the lifecycle engine — a bare setupScore is not sufficient evidence
-  // of a confirmed trigger and would bypass the timing lifecycle entirely.
-  if (!isSyntheticMoverSignal(signal) && signal.setupScore >= 70) return 'triggered';
+  // Only promote non-synthetic signals via score alone when lifecycle evidence exists.
+  if (
+    !isSyntheticMoverSignal(signal) &&
+    signal.setupScore >= 70 &&
+    signal.triggerType != null &&
+    signal.triggerType !== 'unknown'
+  ) {
+    return 'triggered';
+  }
   if (signal.setupScore >= 45) return 'developing';
   return 'idle';
 }

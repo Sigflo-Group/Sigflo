@@ -1,5 +1,14 @@
 import { apiJson } from './http';
 
+function tradePost<T>(path: string, body: unknown): Promise<T> {
+  const idempotencyKey = crypto.randomUUID();
+  return apiJson<T>(path, {
+    method: 'POST',
+    headers: { 'X-Idempotency-Key': idempotencyKey },
+    body: JSON.stringify(body),
+  });
+}
+
 export type ExitAutomationWatchApi = {
   id: string;
   exchange: string;
@@ -40,7 +49,7 @@ export type PutExitAutomationWatchBody = {
   customStrategyThresholds: Record<string, number> | null;
   safeguards: ExitAutomationWatchApi['safeguards'];
   lastGuidanceState?: ExitAutomationWatchApi['lastGuidanceState'];
-  exchange?: 'bybit' | 'mexc';
+  exchange?: 'bybit';
   market?: 'linear';
 };
 
@@ -59,7 +68,7 @@ export async function deleteExitAutomationWatch(params: {
   symbol: string;
   side: 'long' | 'short';
   positionIdx?: number;
-  exchange?: 'bybit' | 'mexc';
+  exchange?: 'bybit';
 }): Promise<void> {
   const q = new URLSearchParams({
     exchange: params.exchange ?? 'bybit',
@@ -89,10 +98,7 @@ export async function postBybitSetLinearLeverage(body: {
   symbol: string;
   leverage: number;
 }): Promise<BybitSetLeverageResponse> {
-  return apiJson<BybitSetLeverageResponse>('/trade/bybit/set-leverage', {
-    method: 'POST',
-    body: JSON.stringify(body),
-  });
+  return tradePost<BybitSetLeverageResponse>('/trade/bybit/set-leverage', body);
 }
 
 export async function postBybitLinearOrder(body: {
@@ -104,18 +110,14 @@ export async function postBybitLinearOrder(body: {
   price?: string;
   positionIdx?: number;
   leverage?: number;
-  /** Linear perps: attached TP/SL (market exit when hit). Omitted when unset. */
   takeProfit?: string;
   stopLoss?: string;
   tpTriggerBy?: 'MarkPrice' | 'LastPrice' | 'IndexPrice';
   slTriggerBy?: 'MarkPrice' | 'LastPrice' | 'IndexPrice';
 }): Promise<BybitLinearOrderResponse> {
-  return apiJson<BybitLinearOrderResponse>('/trade/bybit/linear-order', {
-    method: 'POST',
-    body: JSON.stringify({
-      orderType: 'Market',
-      ...body,
-    }),
+  return tradePost<BybitLinearOrderResponse>('/trade/bybit/linear-order', {
+    orderType: 'Market',
+    ...body,
   });
 }
 
@@ -125,7 +127,6 @@ export type BybitLinearTradingStopResponse = {
   note?: string;
 };
 
-/** Set full-position TP/SL on an open linear perp (`"0"` clears a leg). */
 export async function postBybitLinearTradingStop(body: {
   symbol: string;
   positionIdx?: number;
@@ -134,10 +135,7 @@ export async function postBybitLinearTradingStop(body: {
   tpTriggerBy?: 'MarkPrice' | 'LastPrice' | 'IndexPrice';
   slTriggerBy?: 'MarkPrice' | 'LastPrice' | 'IndexPrice';
 }): Promise<BybitLinearTradingStopResponse> {
-  return apiJson<BybitLinearTradingStopResponse>('/trade/bybit/linear-trading-stop', {
-    method: 'POST',
-    body: JSON.stringify(body),
-  });
+  return tradePost<BybitLinearTradingStopResponse>('/trade/bybit/linear-trading-stop', body);
 }
 
 export type MexcLinearOrderResponse = {
@@ -159,12 +157,9 @@ export async function postMexcLinearOrder(body: {
   takeProfit?: string;
   stopLoss?: string;
 }): Promise<MexcLinearOrderResponse> {
-  return apiJson<MexcLinearOrderResponse>('/trade/mexc/linear-order', {
-    method: 'POST',
-    body: JSON.stringify({
-      orderType: 'Market',
-      ...body,
-    }),
+  return tradePost<MexcLinearOrderResponse>('/trade/mexc/linear-order', {
+    orderType: 'Market',
+    ...body,
   });
 }
 
@@ -177,10 +172,6 @@ export type MexcLinearTradingStopResponse = {
   note?: string;
 };
 
-/**
- * Set full-position TP/SL on an open MEXC futures position. Implemented via stop-market
- * orders. Pass "0" (or omit) for a side to skip / clear it.
- */
 export async function postMexcLinearTradingStop(body: {
   symbol: string;
   positionSide: 'long' | 'short';
@@ -188,10 +179,7 @@ export async function postMexcLinearTradingStop(body: {
   takeProfit?: string;
   stopLoss?: string;
 }): Promise<MexcLinearTradingStopResponse> {
-  return apiJson<MexcLinearTradingStopResponse>('/trade/mexc/linear-trading-stop', {
-    method: 'POST',
-    body: JSON.stringify(body),
-  });
+  return tradePost<MexcLinearTradingStopResponse>('/trade/mexc/linear-trading-stop', body);
 }
 
 export async function postBybitSpotOrder(body: {
@@ -202,11 +190,8 @@ export async function postBybitSpotOrder(body: {
   marketUnit: 'baseCoin' | 'quoteCoin';
   price?: string;
 }): Promise<BybitLinearOrderResponse> {
-  return apiJson<BybitLinearOrderResponse>('/trade/bybit/spot-order', {
-    method: 'POST',
-    body: JSON.stringify({
-      orderType: 'Market',
-      ...body,
-    }),
+  return tradePost<BybitLinearOrderResponse>('/trade/bybit/spot-order', {
+    orderType: 'Market',
+    ...body,
   });
 }

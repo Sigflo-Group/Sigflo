@@ -11,6 +11,7 @@ export function syntheticFromExchangePosition(
   displayPair: string,
   market: MarketMode,
   fallbackLeverage: number,
+  exchange: 'bybit' | 'mexc' = 'bybit',
 ): SimulatedActivePosition {
   const mark = p.markPrice != null && p.markPrice > 0 ? p.markPrice : p.entryPrice;
   const notional = entryNotionalUsd({ size: p.size, entryPrice: p.entryPrice, markPrice: mark });
@@ -24,7 +25,7 @@ export function syntheticFromExchangePosition(
       positionIM: p.positionIM,
     }) ?? (notional > 0 ? notional : 1e-9);
   return {
-    id: `bybit:${p.symbol}:${p.side}`,
+    id: `${exchange}:${p.symbol}:${p.side}`,
     symbol: displayPair,
     side: p.side as TradeSide,
     market,

@@ -9,8 +9,8 @@ function toNum(v: string | number | undefined): number {
   return typeof v === 'number' ? v : Number(v);
 }
 
-async function getJson<T>(path: string): Promise<T> {
-  const r = await fetch(`${BASE}${path}`);
+async function getJson<T>(path: string, signal?: AbortSignal): Promise<T> {
+  const r = await fetch(`${BASE}${path}`, { signal });
   if (!r.ok) throw new Error(`Bybit HTTP ${r.status}`);
   return (await r.json()) as T;
 }
@@ -45,12 +45,13 @@ export async function fetchLinearMaxLeverage(symbol: string): Promise<number | n
   }
 }
 
-export async function fetchTickers(symbols?: string[]): Promise<SymbolTicker[]> {
+export async function fetchTickers(symbols?: string[], signal?: AbortSignal): Promise<SymbolTicker[]> {
   const param = symbols?.length
     ? `&symbol=${symbols.map((s) => encodeURIComponent(s)).join(',')}`
     : '';
   const data = await getJson<BybitResp<{ list: Array<Record<string, string>> }>>(
     `/v5/market/tickers?category=linear${param}`,
+    signal,
   );
   if (data.retCode !== 0) throw new Error(data.retMsg || 'Bybit tickers failed');
   const symbolSet = symbols ? new Set(symbols) : undefined;

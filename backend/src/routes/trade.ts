@@ -3,24 +3,16 @@ import { z } from 'zod';
 import type { AuthedRequest } from '../middleware/auth.js';
 import { BybitAdapter } from '../exchanges/bybit.js';
 import { MexcAdapter } from '../exchanges/mexc.js';
-import { decryptBrokerCredential, getSecretFromVault } from '../services/exchangeKey.service.js';
-import { listBrokerAccountsForUser, type BrokerAccountRow } from '../db/queries/brokerAccounts.js';
+import { resolveBrokerCredentials } from '../services/brokerCredentials.js';
+import { clientSafeExchangeError } from '../lib/clientSafeError.js';
+import { listBrokerAccountsForUser } from '../db/queries/brokerAccounts.js';
 import { log } from '../lib/logger.js';
 import { formatZodIssuesForApi } from '../lib/formatZodError.js';
 import { isBybitTradingStopNoopError } from '../lib/bybitNoopErrors.js';
+import { requireIdempotency } from '../middleware/requireIdempotency.js';
 
 export const tradeRouter = Router();
-
-async function resolveRowCreds(row: BrokerAccountRow) {
-  const apiKey = row.apiKeyVaultId
-    ? await getSecretFromVault(row.apiKeyVaultId)
-    : decryptBrokerCredential(row.apiKeyEncrypted);
-  const apiSecret = row.apiSecretVaultId
-    ? await getSecretFromVault(row.apiSecretVaultId)
-    : decryptBrokerCredential(row.apiSecretEncrypted);
-  if (!apiKey || !apiSecret) throw new Error('Failed to retrieve exchange credentials.');
-  return { apiKey, apiSecret };
-}
+tradeRouter.use(requireIdempotency);
 
 const bybitTriggerBySchema = z.enum(['MarkPrice', 'LastPrice', 'IndexPrice']);
 
@@ -74,7 +66,7 @@ tradeRouter.post('/bybit/linear-order', async (req: AuthedRequest, res) => {
 
   let creds: { apiKey: string; apiSecret: string };
   try {
-    creds = await resolveRowCreds(row);
+    creds = await resolveBrokerCredentials(row);
   } catch (e) {
     res.status(500).json({ error: 'Failed to retrieve exchange credentials.' });
     return;
@@ -83,7 +75,7 @@ tradeRouter.post('/bybit/linear-order', async (req: AuthedRequest, res) => {
   try {
     await bybitAdapter.ensureTradeEnabled(creds);
   } catch (e) {
-    const msg = e instanceof Error ? e.message : 'Trade not allowed for this key.';
+    const msg = clientSafeExchangeError(e, 'Trade not allowed for this key.');
     log('warn', 'Bybit trade permission check failed.', { error: msg });
     res.status(403).json({ error: 'API key does not have trading permission' });
     return;
@@ -95,10 +87,10 @@ tradeRouter.post('/bybit/linear-order', async (req: AuthedRequest, res) => {
       try {
         await bybitAdapter.setLinearLeverage(creds, p.symbol, p.leverage);
       } catch (levErr) {
-        log('warn', 'Bybit set-leverage skipped or failed.', {
-          symbol: p.symbol,
-          error: String(levErr),
-        });
+        const msg = clientSafeExchangeError(levErr, 'Set leverage failed');
+        log('warn', 'Bybit set-leverage failed before order.', { symbol: p.symbol, error: msg });
+        res.status(400).json({ error: msg });
+        return;
       }
     }
 
@@ -128,8 +120,8 @@ tradeRouter.post('/bybit/linear-order', async (req: AuthedRequest, res) => {
       note: `Order accepted by Bybit — confirm fill and position via portfolio sync.${tpSlNote}`,
     });
   } catch (e) {
-    const msg = e instanceof Error ? e.message : 'Order failed';
-    log('warn', 'Bybit order failed.', { error: msg });
+    const msg = clientSafeExchangeError(e, 'Order failed');
+    log('warn', 'Bybit order failed.', { error: e instanceof Error ? e.message : String(e) });
     res.status(400).json({ error: msg });
   }
 });
@@ -166,7 +158,7 @@ tradeRouter.post('/bybit/linear-trading-stop', async (req: AuthedRequest, res) =
 
   let creds: { apiKey: string; apiSecret: string };
   try {
-    creds = await resolveRowCreds(row);
+    creds = await resolveBrokerCredentials(row);
   } catch (e) {
     res.status(500).json({ error: 'Failed to retrieve exchange credentials.' });
     return;
@@ -175,7 +167,7 @@ tradeRouter.post('/bybit/linear-trading-stop', async (req: AuthedRequest, res) =
   try {
     await bybitAdapter.ensureTradeEnabled(creds);
   } catch (e) {
-    const msg = e instanceof Error ? e.message : 'Trade not allowed for this key.';
+    const msg = clientSafeExchangeError(e, 'Trade not allowed for this key.');
     log('warn', 'Bybit trade permission check failed.', { error: msg });
     res.status(403).json({ error: 'API key does not have trading permission' });
     return;
@@ -197,7 +189,7 @@ tradeRouter.post('/bybit/linear-trading-stop', async (req: AuthedRequest, res) =
       note: 'TP/SL updated on Bybit (full position, market trigger) — confirm on the exchange.',
     });
   } catch (e) {
-    const msg = e instanceof Error ? e.message : 'Trading stop failed';
+    const msg = clientSafeExchangeError(e, 'Trading stop failed');
     if (isBybitTradingStopNoopError(msg)) {
       res.json({
         ok: true,
@@ -238,7 +230,7 @@ tradeRouter.post('/bybit/set-leverage', async (req: AuthedRequest, res) => {
 
   let creds: { apiKey: string; apiSecret: string };
   try {
-    creds = await resolveRowCreds(row);
+    creds = await resolveBrokerCredentials(row);
   } catch (e) {
     res.status(500).json({ error: 'Failed to retrieve exchange credentials.' });
     return;
@@ -247,7 +239,7 @@ tradeRouter.post('/bybit/set-leverage', async (req: AuthedRequest, res) => {
   try {
     await bybitAdapter.ensureTradeEnabled(creds);
   } catch (e) {
-    const msg = e instanceof Error ? e.message : 'Trade not allowed for this key.';
+    const msg = clientSafeExchangeError(e, 'Trade not allowed for this key.');
     log('warn', 'Bybit trade permission check failed.', { error: msg });
     res.status(403).json({ error: 'API key does not have trading permission' });
     return;
@@ -262,7 +254,7 @@ tradeRouter.post('/bybit/set-leverage', async (req: AuthedRequest, res) => {
       note: 'Leverage updated on Bybit for this symbol.',
     });
   } catch (e) {
-    const msg = e instanceof Error ? e.message : 'Set leverage failed';
+    const msg = clientSafeExchangeError(e, 'Set leverage failed');
     log('warn', 'Bybit set-leverage failed.', { symbol: p.symbol, error: msg });
     res.status(400).json({ error: msg });
   }
@@ -289,7 +281,7 @@ tradeRouter.post('/bybit/spot-order', async (req: AuthedRequest, res) => {
 
   let creds: { apiKey: string; apiSecret: string };
   try {
-    creds = await resolveRowCreds(row);
+    creds = await resolveBrokerCredentials(row);
   } catch (e) {
     res.status(500).json({ error: 'Failed to retrieve exchange credentials.' });
     return;
@@ -298,7 +290,7 @@ tradeRouter.post('/bybit/spot-order', async (req: AuthedRequest, res) => {
   try {
     await bybitAdapter.ensureTradeEnabled(creds);
   } catch (e) {
-    const msg = e instanceof Error ? e.message : 'Trade not allowed for this key.';
+    const msg = clientSafeExchangeError(e, 'Trade not allowed for this key.');
     log('warn', 'Bybit trade permission check failed.', { error: msg });
     res.status(403).json({ error: 'API key does not have trading permission' });
     return;
@@ -323,7 +315,7 @@ tradeRouter.post('/bybit/spot-order', async (req: AuthedRequest, res) => {
       note: 'Spot order accepted by Bybit — confirm fill via portfolio sync.',
     });
   } catch (e) {
-    const msg = e instanceof Error ? e.message : 'Order failed';
+    const msg = clientSafeExchangeError(e, 'Order failed');
     log('warn', 'Bybit spot order failed.', { error: msg });
     res.status(400).json({ error: msg });
   }
@@ -364,7 +356,7 @@ tradeRouter.post('/mexc/linear-order', async (req: AuthedRequest, res) => {
 
   let creds: { apiKey: string; apiSecret: string };
   try {
-    creds = await resolveRowCreds(row);
+    creds = await resolveBrokerCredentials(row);
   } catch (e) {
     res.status(500).json({ error: 'Failed to retrieve exchange credentials.' });
     return;
@@ -392,8 +384,88 @@ tradeRouter.post('/mexc/linear-order', async (req: AuthedRequest, res) => {
       note: 'Order accepted by MEXC — confirm fill and position via portfolio sync.',
     });
   } catch (e) {
-    const msg = e instanceof Error ? e.message : 'Order failed';
+    const msg = clientSafeExchangeError(e, 'Order failed');
     log('warn', 'MEXC order failed.', { error: msg });
+    res.status(400).json({ error: msg });
+  }
+});
+
+const mexcLinearTradingStopSchema = z.object({
+  symbol: z.string().min(4).max(32),
+  positionSide: z.enum(['long', 'short']),
+  qty: z.string().min(1).max(48),
+  /** Price string. Omit or "0" to skip TP. */
+  takeProfit: z.string().min(1).max(48).optional(),
+  /** Price string. Omit or "0" to skip SL. */
+  stopLoss: z.string().min(1).max(48).optional(),
+});
+
+/**
+ * Apply full-position TP/SL to an open MEXC futures position via position-level
+ * stoporder/place. Pass "0" (or omit) to skip a side.
+ */
+tradeRouter.post('/mexc/linear-trading-stop', async (req: AuthedRequest, res) => {
+  if (!req.user) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+
+  const parsed = mexcLinearTradingStopSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: formatZodIssuesForApi(parsed.error.issues) });
+    return;
+  }
+
+  const accounts = await listBrokerAccountsForUser(req.user.userId);
+  const row = accounts.find((a) => a.broker === 'mexc' && a.status === 'connected');
+  if (!row) {
+    res.status(400).json({ error: 'Connect MEXC in Account first.' });
+    return;
+  }
+
+  let creds: { apiKey: string; apiSecret: string };
+  try {
+    creds = await resolveBrokerCredentials(row);
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to retrieve exchange credentials.' });
+    return;
+  }
+
+  const p = parsed.data;
+  const hasTp = p.takeProfit != null && Number(p.takeProfit) > 0;
+  const hasSl = p.stopLoss != null && Number(p.stopLoss) > 0;
+  if (!hasTp && !hasSl) {
+    res.json({
+      ok: true,
+      exchange: 'mexc',
+      orderIds: [],
+      note: 'No TP/SL provided — skipped.',
+    });
+    return;
+  }
+
+  try {
+    const result = await mexcAdapter.setPositionTpSl(creds, {
+      symbol: p.symbol,
+      positionSide: p.positionSide,
+      qty: p.qty.trim(),
+      takeProfit: hasTp ? p.takeProfit!.trim() : '0',
+      stopLoss: hasSl ? p.stopLoss!.trim() : '0',
+    });
+    const partial = result.warnings.length > 0;
+    res.json({
+      ok: true,
+      exchange: 'mexc',
+      orderIds: result.orderIds,
+      placed: result.placed,
+      warnings: result.warnings,
+      note: partial
+        ? 'Stop-loss placed on MEXC; take-profit could not be set — adjust manually if needed.'
+        : 'TP/SL stop orders placed on MEXC — they trigger and close the position at the specified prices.',
+    });
+  } catch (e) {
+    const msg = clientSafeExchangeError(e, 'Trading stop failed');
+    log('warn', 'MEXC trading-stop failed.', { error: msg });
     res.status(400).json({ error: msg });
   }
 });

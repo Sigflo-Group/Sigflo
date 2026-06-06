@@ -51,6 +51,7 @@ export function AccountSnapshotProvider({
   const [error, setError] = useState<string | null>(null);
   const mountedRef = useRef(true);
   const hasFetchedRef = useRef(false);
+  const itemsRef = useRef<ExchangeSnapshot[]>([]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -58,6 +59,10 @@ export function AccountSnapshotProvider({
       mountedRef.current = false;
     };
   }, []);
+
+  useEffect(() => {
+    itemsRef.current = items;
+  }, [items]);
 
   const refresh = useCallback(async (opts?: RefreshAccountSnapshotsOptions): Promise<ExchangeSnapshot[]> => {
     const silent = opts?.silent === true;
@@ -79,8 +84,8 @@ export function AccountSnapshotProvider({
         snapshots = safeItems;
         syncBiasFlipNotifyOpenSymbolsFromSnapshots(safeItems, biasNotifyGen);
       } else {
-        setItems([]);
-        syncBiasFlipNotifyOpenSymbolsFromSnapshots([], biasNotifyGen);
+        snapshots = itemsRef.current;
+        syncBiasFlipNotifyOpenSymbolsFromSnapshots(snapshots, biasNotifyGen);
         errs.push(snapRes.reason instanceof Error ? snapRes.reason.message : 'Failed to load account snapshot.');
       }
 
@@ -101,8 +106,9 @@ export function AccountSnapshotProvider({
   useEffect(() => {
     if (authLoading) return;
     if (sessionUid == null) setBiasFlipNotifyTradeFocusLinearSymbol(null);
-    hasFetchedRef.current = true;
-    void refresh();
+    refresh().then(() => {
+      hasFetchedRef.current = true;
+    });
   }, [authLoading, sessionUid, refresh]);
 
   useEffect(() => {

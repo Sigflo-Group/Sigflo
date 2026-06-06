@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getFeedRoute } from '@/config/appRoutes';
 import { MarketCard } from '@/components/markets/MarketCard';
@@ -7,6 +7,7 @@ import { useFeedMiniCharts } from '@/hooks/useFeedMiniCharts';
 import { useSyncedTradeChartInterval } from '@/hooks/useSyncedTradeChartInterval';
 import { useMarketsScanner } from '@/hooks/useMarketsScanner';
 import { buildTradeQueryString } from '@/lib/tradeNavigation';
+import { updateChecklist } from '@/lib/onboardingChecklist';
 import type { MarketScannerRow } from '@/types/markets';
 
 type MarketsTab = 'watchlist' | 'tracked' | 'movers';
@@ -22,6 +23,9 @@ export default function MarketsScreen() {
   const [tab, setTab] = useState<MarketsTab>('tracked');
   const [newsScanOpen, setNewsScanOpen] = useState(false);
   const { trackedRows, moverRows, watchlistRows, mode, connection, tickersLoading } = useMarketsScanner();
+
+  useEffect(() => { updateChecklist({ visitedMarkets: true }); }, []);
+
   const navigateWithTransition = (to: string) => {
     const w = window as Window & { startViewTransition?: (cb: () => void) => void };
     if (typeof w.startViewTransition === 'function') {
@@ -157,7 +161,7 @@ export default function MarketsScreen() {
         </div>
 
         {/* Market rows */}
-        <div className="space-y-4 px-3 pb-4 sm:space-y-3 sm:px-0 sm:pb-3">
+        <div className="space-y-4 px-3 pb-[5rem] sm:space-y-3 sm:px-0 sm:pb-3">
           {tab === 'movers' && !tickersLoading && moverRows.length === 0 ? (
             <p className="rounded-xl border border-white/[0.06] bg-sigflo-surface sigflo-panel-texture px-3.5 py-8 text-center text-[14px] leading-snug text-sigflo-muted sm:rounded-2xl sm:px-4 sm:py-8 sm:text-sm">
               No movers yet — check back later.

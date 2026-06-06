@@ -1,11 +1,17 @@
 import { useMemo, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { useSignalEngine } from '@/hooks/useSignalEngine';
+import { useAccountSnapshot } from '@/hooks/useAccountSnapshot';
 import { humanizeTraderCopy, marketConditionLabel } from '@/lib/marketConditionsCopy';
 import type { SignalLifecycleEvent } from '@/types/signal';
 
 function pct(n: number): string {
   return `${(n * 100).toFixed(1)}%`;
+}
+
+function usd(n: number): string {
+  const sign = n < 0 ? '-' : '';
+  return `${sign}$${Math.abs(n).toLocaleString('en-US', { maximumFractionDigits: 2 })}`;
 }
 
 function mean(nums: number[]): number {
@@ -37,6 +43,18 @@ function toneClass(outcome: SignalLifecycleEvent['outcome']): string {
 
 export default function PerformanceDashboardScreen() {
   const { lifecycleAnalytics, proIntelligenceMode } = useSignalEngine();
+  const { closedTrades } = useAccountSnapshot();
+
+  const userStats = useMemo(() => {
+    const total = closedTrades.length;
+    const wins = closedTrades.filter((t) => t.closedPnl > 0).length;
+    const realizedPnl = closedTrades.reduce((sum, t) => sum + t.closedPnl, 0);
+    return {
+      totalClosedTrades: total,
+      winRate: total > 0 ? wins / total : 0,
+      realizedPnl,
+    };
+  }, [closedTrades]);
 
   const completed = useMemo(
     () => lifecycleAnalytics.events.filter((e) => e.status === 'completed' || e.status === 'archived'),
@@ -53,8 +71,7 @@ export default function PerformanceDashboardScreen() {
       winRate: total > 0 ? wins.length / total : 0,
       lossRate: total > 0 ? losses.length / total : 0,
       neutralRate: total > 0 ? neutrals.length / total : 0,
-      avgWinConfidence: mean(wins.map((w) => w.confidence)),
-      avgLossConfidence: mean(losses.map((l) => l.confidence)),
+
     };
   }, [completed]);
 
@@ -164,12 +181,7 @@ export default function PerformanceDashboardScreen() {
             >
               Open trade replay →
             </Link>
-            <Link
-              to="/analytics/strategy-attribution"
-              className="inline-flex rounded-xl border border-amber-500/25 bg-amber-500/[0.08] px-3 py-1.5 text-[11px] font-semibold text-amber-100 transition-colors hover:border-amber-400/40 hover:bg-amber-500/[0.12]"
-            >
-              Style performance →
-            </Link>
+
           </div>
         ) : (
           <p className="mt-2 text-[11px] text-sigflo-muted">
@@ -178,14 +190,27 @@ export default function PerformanceDashboardScreen() {
         )}
       </header>
 
+      <Section title="User Stats">
+        <div className="grid grid-cols-2 gap-2">
+          <StatCard label="Closed trades" value={`${userStats.totalClosedTrades}`} />
+          <StatCard label="Trade win rate" value={pct(userStats.winRate)} tone="good" />
+          <StatCard
+            label="Realized PnL"
+            value={usd(userStats.realizedPnl)}
+            tone={userStats.realizedPnl >= 0 ? 'good' : 'bad'}
+          />
+        </div>
+      </Section>
+
+      <Section title="Bot Stats">
       <div className="grid grid-cols-2 gap-2">
         <StatCard label="Total signals" value={`${overall.total}`} />
         <StatCard label="Win rate" value={pct(overall.winRate)} tone="good" />
         <StatCard label="Loss rate" value={pct(overall.lossRate)} tone="bad" />
         <StatCard label="Neutral rate" value={pct(overall.neutralRate)} tone="warn" />
-        <StatCard label="Avg win confidence" value={overall.avgWinConfidence.toFixed(1)} />
-        <StatCard label="Avg loss confidence" value={overall.avgLossConfidence.toFixed(1)} />
+
       </div>
+      </Section>
 
       <Section title="Win Rate By Setup Type">
         {bySetup.length === 0 ? <EmptyRow /> : bySetup.map((row) => <BarRow key={row.label} label={row.label} pctValue={row.winRate} suffix={`${row.samples} samples · conf ${row.avgConfidence.toFixed(1)}`} />)}
@@ -338,4 +363,3 @@ function RankRow({ text, count, tone }: { text: string; count: number; tone: 'go
 function EmptyRow() {
   return <p className="rounded-lg border border-white/[0.08] bg-white/[0.02] px-2 py-1.5 text-[11px] text-sigflo-muted">Not enough completed signal outcomes yet.</p>;
 }
-

@@ -1,0 +1,6 @@
+{
+  "provider": "slack",
+  "botToken": "[REDACTED_SLACK_BOT_TOKEN]",
+  "appToken": "[REDACTED_SLACK_APP_TOKEN]",
+  "channelId": "C0B334NATA7"
+}

@@ -1,4 +1,5 @@
 import type { Response } from 'express';
+import type { z } from 'zod';
 import type { AuthedRequest } from '../middleware/auth.js';
 import { getBrokerAccountForUser, listBrokerAccountsForUser } from '../db/queries/brokerAccounts.js';
 import { consumeTradeIntent, createTradeIntent, resolveTradeIntentByToken } from '../services/tradeIntent.service.js';
@@ -8,18 +9,14 @@ import { createTradeRow, getTradeByIdForUser, listTradesForUser } from '../db/qu
 import { writeAuditLog } from '../services/auditLog.service.js';
 import { consumeIdempotencyKey } from '../utils/idempotency.js';
 import { SECURITY } from '../config/security.js';
+import { tradeIntentSchema, tradeExecuteSchema } from '../schemas/trade.schema.js';
+
+type TradeIntentBody = z.infer<typeof tradeIntentSchema>;
+type TradeExecuteBody = z.infer<typeof tradeExecuteSchema>;
 
 export async function postTradeIntent(req: AuthedRequest, res: Response) {
   if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
-  const body = req.body as {
-    symbol: string;
-    direction: 'long' | 'short';
-    positionSizeUsd: number;
-    leverage: number;
-    stopPrice?: number;
-    targetPrice?: number;
-    brokerAccountId?: string;
-  };
+  const body = req.body as TradeIntentBody;
 
   const policy = validateTradePolicy(body);
   if (!policy.ok) return res.status(400).json({ error: policy.reason });
@@ -39,7 +36,7 @@ export async function postTradeIntent(req: AuthedRequest, res: Response) {
     brokerAccountId: account.id,
     symbol: body.symbol,
     direction: body.direction,
-    entryPrice: null,
+    entryPrice: body.entryPrice ?? null,
     stopPrice: body.stopPrice ?? null,
     targetPrice: body.targetPrice ?? null,
     positionSizeUsd: body.positionSizeUsd,
@@ -77,13 +74,16 @@ export async function postTradeIntent(req: AuthedRequest, res: Response) {
 
 export async function postTradeExecute(req: AuthedRequest, res: Response) {
   if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
-  const body = req.body as { executionToken: string; idempotencyKey: string };
+  const body = req.body as TradeExecuteBody;
   const intent = await resolveTradeIntentByToken(req.user.userId, body.executionToken);
   if (!intent) return res.status(404).json({ error: 'Execution intent not found' });
   if (intent.usedAt) return res.status(409).json({ error: 'Execution intent already used' });
   if (Date.parse(intent.expiresAt) <= Date.now()) return res.status(410).json({ error: 'Execution intent expired' });
-  const idempotent = consumeIdempotencyKey(`${req.user.userId}:${body.idempotencyKey}`, SECURITY.idempotencyTtlSec * 1000);
-  if (!idempotent) return res.status(409).json({ error: 'Duplicate execution request' });
+  const idempotent = await consumeIdempotencyKey(`${req.user.userId}:${body.idempotencyKey}`, SECURITY.idempotencyTtlSec * 1000);
+  if (idempotent === 'unavailable') {
+    return res.status(503).json({ error: 'Idempotency store unavailable. Try again shortly.' });
+  }
+  if (idempotent === 'duplicate') return res.status(409).json({ error: 'Duplicate execution request' });
   const policy = validateTradePolicy({
     symbol: intent.symbol,
     direction: intent.direction,
@@ -97,7 +97,7 @@ export async function postTradeExecute(req: AuthedRequest, res: Response) {
   const account = await getBrokerAccountForUser(req.user.userId, intent.brokerAccountId);
   if (!account) return res.status(404).json({ error: 'Broker account not found' });
 
-  const entryPrice = Number(intent.entryPrice);
+  const entryPrice = Number(body.entryPrice ?? intent.entryPrice);
   if (!Number.isFinite(entryPrice) || entryPrice <= 0) {
     return res.status(422).json({ error: 'Execution intent is missing a valid entry price' });
   }

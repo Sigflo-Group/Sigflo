@@ -1,12 +1,12 @@
 import { BybitMarketDataAdapter } from '@/exchanges/bybit/adapter';
+import { MexcMarketDataAdapter } from '@/exchanges/mexc/adapter';
 import type { ExchangeId, MarketDataAdapter } from './market-data-interface';
 
 type AdapterFactory = () => MarketDataAdapter;
 
 const registry: Record<ExchangeId, AdapterFactory> = {
   bybit: () => new BybitMarketDataAdapter(),
-  // mexc adapter will be registered here when market data support is added
-  mexc: () => { throw new Error('MEXC market data adapter not yet implemented'); },
+  mexc: () => new MexcMarketDataAdapter(),
 };
 
 export function createAdapter(id: ExchangeId): MarketDataAdapter {

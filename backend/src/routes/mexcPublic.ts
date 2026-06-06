@@ -1,7 +1,7 @@
 import { Router, type Request, type Response, type NextFunction } from 'express';
 import { getJson } from '../exchanges/http.js';
 
-const MEXC_CONTRACT_BASE = 'https://contract.mexc.com';
+const MEXC_API_BASE = 'https://api.mexc.com';
 
 /** "SILVERUSDT" → "SILVER_USDT" */
 function toMexcSymbol(sym: string): string {
@@ -20,9 +20,23 @@ mexcPublicRouter.get('/klines/:symbol', async (req: Request, res: Response, next
     const mexcSymbol = toMexcSymbol(raw.toUpperCase());
     const interval = typeof req.query['interval'] === 'string' ? req.query['interval'] : 'Min15';
     const limit = typeof req.query['limit'] === 'string' ? req.query['limit'] : '140';
-    const url = `${MEXC_CONTRACT_BASE}/api/v1/contract/kline/${encodeURIComponent(mexcSymbol)}?interval=${encodeURIComponent(interval)}&limit=${encodeURIComponent(limit)}`;
+    const url = `${MEXC_API_BASE}/api/v1/contract/kline/${encodeURIComponent(mexcSymbol)}?interval=${encodeURIComponent(interval)}&limit=${encodeURIComponent(limit)}`;
     const data = await getJson<unknown>(url, {});
     res.json(data);
+  } catch (e) {
+    next(e);
+  }
+});
+
+mexcPublicRouter.get('/tickers', async (_req: Request, res: Response, next: NextFunction) => {
+  try {
+    const url = `${MEXC_API_BASE}/api/v1/contract/ticker`;
+    const raw = await getJson<{ success: boolean; data: unknown }>(url, {});
+    res.json({
+      success: true,
+      code: 0,
+      data: raw && Array.isArray(raw.data) ? raw.data : raw?.data ? [raw.data] : [],
+    });
   } catch (e) {
     next(e);
   }
@@ -36,7 +50,7 @@ mexcPublicRouter.get('/ticker/:symbol', async (req: Request, res: Response, next
       return;
     }
     const mexcSymbol = toMexcSymbol(raw.toUpperCase());
-    const url = `${MEXC_CONTRACT_BASE}/api/v1/contract/ticker?symbol=${encodeURIComponent(mexcSymbol)}`;
+    const url = `${MEXC_API_BASE}/api/v1/contract/ticker?symbol=${encodeURIComponent(mexcSymbol)}`;
     const data = await getJson<unknown>(url, {});
     res.json(data);
   } catch (e) {

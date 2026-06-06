@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactElement } from 'react';
+import { Suspense, lazy, useEffect, useState, type ReactElement } from 'react';
 import { Navigate, Outlet, Route, Routes, useLocation } from 'react-router-dom';
 import { AppShell } from '@/components/layout/AppShell';
 import { ErrorBoundary } from '@/components/layout/ErrorBoundary';
@@ -9,35 +9,35 @@ import { SIGFLO_MOBILE_LOADER_FEED_STATUSES } from '@/config/sigfloMobileLoaderS
 import { useAuth } from '@/context/AuthContext';
 import { useAuthProvider } from '@/providers/AuthProvider';
 import { isExchangeConnectOnboardingSeen } from '@/lib/exchangeConnectOnboarding';
-import AuthCallbackScreen from '@/screens/AuthCallbackScreen';
-import ResetPasswordScreen from '@/screens/ResetPasswordScreen';
-import BotDetailScreen from '@/screens/BotDetailScreen';
-import BotFocusScreen from '@/screens/BotFocusScreen';
-import BotSettingsScreen from '@/screens/BotSettingsScreen';
-import BotsScreen from '@/screens/BotsScreen';
-import RiskControlsScreen from '@/screens/RiskControlsScreen';
-import EngineDetailScreen from '@/screens/EngineDetailScreen';
-import { EngineDebugScreen } from '@/screens/EngineDebugScreen';
-import { FeedScreen } from '@/screens/FeedScreen';
-import LoginScreen from '@/screens/LoginScreen';
-import MarketsScreen from '@/screens/MarketsScreen';
-import OnboardingTradingStyleScreen from '@/screens/OnboardingTradingStyleScreen';
-import OnboardingConnect from '@/screens/Onboarding/OnboardingConnect';
-import PortfolioScreen from '@/screens/PortfolioScreen';
-import PerformanceDashboardScreen from '@/screens/PerformanceDashboardScreen';
-import AdminFeedbackDashboardScreen from '@/screens/AdminFeedbackDashboardScreen';
-import StrategyAttributionScreen from '@/screens/StrategyAttributionScreen';
-import TradeReplayScreen from '@/screens/TradeReplayScreen';
-import PrivacyPolicyScreen from '@/screens/PrivacyPolicyScreen';
-import LegalScreen from '@/screens/LegalScreen';
-import ProfileScreen from '@/screens/ProfileScreen';
-import { ScannerLabScreen } from '@/screens/ScannerLabScreen';
-import { TradeScreen } from '@/screens/TradeScreen';
 import { SignalEngineProviderShell } from '@/components/layout/SignalEngineProviderShell';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
 import { StepUpProtectedRoute } from '@/components/auth/StepUpProtectedRoute';
 import { useSignalEngine } from '@/hooks/useSignalEngine';
-import StepUpVerificationScreen from '@/screens/StepUpVerificationScreen';
+
+const AuthCallbackScreen = lazy(() => import('@/screens/AuthCallbackScreen'));
+const ResetPasswordScreen = lazy(() => import('@/screens/ResetPasswordScreen'));
+const BotDetailScreen = lazy(() => import('@/screens/BotDetailScreen'));
+const BotFocusScreen = lazy(() => import('@/screens/BotFocusScreen'));
+const BotSettingsScreen = lazy(() => import('@/screens/BotSettingsScreen'));
+const BotsScreen = lazy(() => import('@/screens/BotsScreen'));
+const RiskControlsScreen = lazy(() => import('@/screens/RiskControlsScreen'));
+const EngineDetailScreen = lazy(() => import('@/screens/EngineDetailScreen'));
+const EngineDebugScreen = lazy(() => import('@/screens/EngineDebugScreen').then((m) => ({ default: m.EngineDebugScreen })));
+const FeedScreen = lazy(() => import('@/screens/FeedScreen').then((m) => ({ default: m.FeedScreen })));
+const LoginScreen = lazy(() => import('@/screens/LoginScreen'));
+const MarketsScreen = lazy(() => import('@/screens/MarketsScreen'));
+const OnboardingTradingStyleScreen = lazy(() => import('@/screens/OnboardingTradingStyleScreen'));
+const OnboardingConnect = lazy(() => import('@/screens/Onboarding/OnboardingConnect'));
+const PortfolioScreen = lazy(() => import('@/screens/PortfolioScreen'));
+const PerformanceDashboardScreen = lazy(() => import('@/screens/PerformanceDashboardScreen'));
+const AdminFeedbackDashboardScreen = lazy(() => import('@/screens/AdminFeedbackDashboardScreen'));
+const TradeReplayScreen = lazy(() => import('@/screens/TradeReplayScreen'));
+const PrivacyPolicyScreen = lazy(() => import('@/screens/PrivacyPolicyScreen'));
+const LegalScreen = lazy(() => import('@/screens/LegalScreen'));
+const ProfileScreen = lazy(() => import('@/screens/ProfileScreen'));
+const ScannerLabScreen = lazy(() => import('@/screens/ScannerLabScreen').then((m) => ({ default: m.ScannerLabScreen })));
+const TradeScreen = lazy(() => import('@/screens/TradeScreen').then((m) => ({ default: m.TradeScreen })));
+const StepUpVerificationScreen = lazy(() => import('@/screens/StepUpVerificationScreen'));
 
 function ProtectedLayout() {
   const { user, loading } = useAuthProvider();
@@ -52,8 +52,12 @@ function OnboardingGate() {
   const location = useLocation();
   if (authMode !== 'supabase' || !user) return <Outlet />;
   const connectSeen = isExchangeConnectOnboardingSeen();
-  if (connectSeen && (location.pathname === '/onboarding' || location.pathname === '/onboarding/connect')) {
+  const onOnboarding = location.pathname === '/onboarding' || location.pathname === '/onboarding/connect';
+  if (connectSeen && onOnboarding) {
     return <Navigate to={getFeedRoute()} replace />;
+  }
+  if (!connectSeen && !onOnboarding) {
+    return <Navigate to="/onboarding" replace />;
   }
   return <Outlet />;
 }
@@ -126,6 +130,7 @@ export default function App() {
   return (
     <ErrorBoundary>
       <ErrorBoundary key={location.pathname}>
+        <Suspense fallback={<SplashScreen />}>
         <Routes>
           <Route path="/login" element={<LoginScreen />} />
           <Route path="/disclosure" element={<LegalScreen />} />
@@ -152,16 +157,6 @@ export default function App() {
                   <Route path="/performance" element={<ProtectedRoute><PerformanceDashboardScreen /></ProtectedRoute>} />
                   <Route path="/admin/feedback" element={<ProtectedRoute><AdminFeedbackDashboardScreen /></ProtectedRoute>} />
                   <Route
-                    path="/analytics/strategy-attribution"
-                    element={
-                      <ProtectedRoute>
-                        <ProIntelligenceRoute>
-                          <StrategyAttributionScreen />
-                        </ProIntelligenceRoute>
-                      </ProtectedRoute>
-                    }
-                  />
-                  <Route
                     path="/replay"
                     element={
                       <ProtectedRoute>
@@ -187,6 +182,7 @@ export default function App() {
           </Route>
           <Route path="*" element={<Navigate to={feedRoute} replace />} />
         </Routes>
+        </Suspense>
       </ErrorBoundary>
     </ErrorBoundary>
   );

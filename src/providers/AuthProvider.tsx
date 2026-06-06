@@ -1,5 +1,6 @@
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useMemo, type ReactNode } from 'react';
 import type { Session, User } from '@supabase/supabase-js';
+import { useAuth } from '@/context/AuthContext';
 import { requireSupabaseClient } from '@/lib/supabase/client';
 
 type AuthProviderValue = {
@@ -11,59 +12,44 @@ type AuthProviderValue = {
   refreshSession: () => Promise<void>;
 };
 
-const AuthProviderContext = createContext<AuthProviderValue | null>(null);
-
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [session, setSession] = useState<Session | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    try {
-      const sb = requireSupabaseClient();
-      void sb.auth.getSession().then(({ data }) => {
-        setSession(data.session ?? null);
-        setLoading(false);
-      });
-      const {
-        data: { subscription },
-      } = sb.auth.onAuthStateChange((_event, nextSession) => {
-        setSession(nextSession);
-      });
-      return () => subscription.unsubscribe();
-    } catch {
-      setLoading(false);
-    }
-  }, []);
+  const auth = useAuth();
 
   const value = useMemo<AuthProviderValue>(
     () => ({
-      user: session?.user ?? null,
-      session,
-      loading,
-      signIn: async (email: string, password: string) => {
-        const sb = requireSupabaseClient();
-        const { error } = await sb.auth.signInWithPassword({ email: email.trim(), password });
-        if (error) throw error;
-      },
-      signOut: async () => {
-        const sb = requireSupabaseClient();
-        const { error } = await sb.auth.signOut();
-        if (error) throw error;
-      },
+      user: auth.user,
+      session: auth.session,
+      loading: auth.loading,
+      signIn: auth.signInWithPassword,
+      signOut: auth.signOut,
       refreshSession: async () => {
         const sb = requireSupabaseClient();
         const { error } = await sb.auth.refreshSession();
         if (error) throw error;
       },
     }),
-    [loading, session],
+    [auth.user, auth.session, auth.loading, auth.signInWithPassword, auth.signOut],
   );
 
-  return <AuthProviderContext.Provider value={value}>{children}</AuthProviderContext.Provider>;
+  void value;
+  return <>{children}</>;
 }
 
 export function useAuthProvider() {
-  const ctx = useContext(AuthProviderContext);
-  if (!ctx) throw new Error('useAuthProvider must be used within providers/AuthProvider');
-  return ctx;
+  const auth = useAuth();
+  return useMemo(
+    () => ({
+      user: auth.user,
+      session: auth.session,
+      loading: auth.loading,
+      signIn: auth.signInWithPassword,
+      signOut: auth.signOut,
+      refreshSession: async () => {
+        const sb = requireSupabaseClient();
+        const { error } = await sb.auth.refreshSession();
+        if (error) throw error;
+      },
+    }),
+    [auth.user, auth.session, auth.loading, auth.signInWithPassword, auth.signOut],
+  );
 }

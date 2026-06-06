@@ -20,9 +20,12 @@ function base64ToBytes(b64: string): Uint8Array {
 }
 
 function getKey(): Uint8Array {
+  // Key is persisted in localStorage so encrypted credentials survive reloads.
+  // Trade-off: same-origin XSS could read key + ciphertext. Prefer session-only key
+  // if threat model requires stronger isolation than obfuscation-at-rest.
   if (cacheKey) return cacheKey;
   try {
-    const stored = sessionStorage.getItem(KEY_STORAGE);
+    const stored = localStorage.getItem(KEY_STORAGE);
     if (stored) {
       cacheKey = base64ToBytes(stored);
       return cacheKey;
@@ -32,7 +35,7 @@ function getKey(): Uint8Array {
   }
   cacheKey = crypto.getRandomValues(new Uint8Array(KEY_BYTES));
   try {
-    sessionStorage.setItem(KEY_STORAGE, bytesToBase64(cacheKey));
+    localStorage.setItem(KEY_STORAGE, bytesToBase64(cacheKey));
   } catch {
     // Best-effort persistence only.
   }

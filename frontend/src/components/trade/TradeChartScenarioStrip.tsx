@@ -452,8 +452,8 @@ function TradeStripTradeHero(
             {fmtUsdSigned(props.estimatedPnlUsd)}
           </span>
           <span className={`text-xs font-semibold tabular-nums sm:text-sm ${pnlClass}`}>
-            ({props.estimatedPnlPct >= 0 ? '+' : ''}
-            {props.estimatedPnlPct.toFixed(1)}%)
+            ({roiPct >= 0 ? '+' : ''}
+            {roiPct.toFixed(1)}%)
           </span>
         </div>
       </ScenarioMetricCell>
@@ -720,8 +720,8 @@ function TradeScenarioPanelTrade(
   return (
     <div className="flex flex-col gap-1.5 text-white">
       <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
-        <ExitGuidanceExpandedBlock eg={props.exitGuidance} />
         <EntryGuidanceExpandedBlock g={props.entryGuidance} />
+        <ExitGuidanceExpandedBlock eg={props.exitGuidance} />
       </div>
       <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
       <ScenarioMetricCell label="Size">
@@ -793,8 +793,8 @@ function TradeScenarioPanelManage(
   return (
     <div className="flex flex-col gap-1.5 text-white">
       <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
-        <ExitGuidanceExpandedBlock eg={props.exitGuidance} />
         <EntryGuidanceExpandedBlock g={props.entryGuidance} />
+        <ExitGuidanceExpandedBlock eg={props.exitGuidance} />
       </div>
       <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
       <ScenarioMetricCell label="Pair">

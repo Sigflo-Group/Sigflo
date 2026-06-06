@@ -5,11 +5,13 @@ import { formatZodIssuesForApi } from '../lib/formatZodError.js';
 import { deleteExitWatchByLeg, listExitWatchesForUser, upsertExitWatch } from '../repositories/exitWatchRepo.js';
 import { listBrokerAccountsForUser } from '../db/queries/brokerAccounts.js';
 
+const EXIT_WATCH_EXCHANGES = ['bybit'] as const;
+
 const VALID_SYMBOLS = new Set([
   'BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'XRPUSDT', 'ADAUSDT', 'DOGEUSDT', 'AVAXUSDT',
   'LINKUSDT', 'DOTUSDT', 'MATICUSDT', 'LTCUSDT', 'UNIUSDT', 'ATOMUSDT', 'XLMUSDT',
   'NEARUSDT', 'APTUSDT', 'ARBUSDT', 'OPUSDT', 'FILUSDT', 'LDOUSDT', 'SUIUSDT',
-  'SEIUMD', 'PEPEUSDT', 'WLDUSDT', 'BLURUSDT', 'PAXGUSDT', 'XAGUSDT', 'ENSUSDT',
+  'SEIUSDT', 'PEPEUSDT', 'WLDUSDT', 'BLURUSDT', 'PAXGUSDT', 'XAGUSDT', 'ENSUSDT',
   'RAREUSDT', 'RARIUSDT', 'LOKAUSDT', 'IMXUSDT', 'RNDRUSDT', 'GRTUSDT', 'STXUSDT',
 ]);
 
@@ -105,6 +107,11 @@ exitWatchRouter.put('/', async (req: AuthedRequest, res) => {
   }
 
   const p = parsed.data;
+
+  if (p.exchange && p.exchange !== 'bybit') {
+    res.status(400).json({ error: 'Server exit automation is available for Bybit only.' });
+    return;
+  }
 
   if (!isValidSymbol(p.symbol)) {
     res.status(400).json({ error: 'Invalid or unsupported symbol.' });

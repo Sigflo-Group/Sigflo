@@ -294,9 +294,12 @@ export function evaluateTimingLifecycle(args: {
   // If triggerCandleTs predates the oldest buffered candle the filter would
   // return all 240 entries, inflating candlesSinceTrigger to the full ring
   // size and causing a premature extended/expired transition. Cap it instead.
+  // Use strict < (not <=): when the timestamps are equal the trigger candle is
+  // still present in the buffer, so the filter correctly returns length-1.
+  // The <= form over-counts by 1 for any trigger that lands on the oldest bar.
   const candlesSinceTrigger =
     triggerCandleTs != null
-      ? oldestCandleTs != null && triggerCandleTs <= oldestCandleTs
+      ? oldestCandleTs != null && triggerCandleTs < oldestCandleTs
         ? candles.length          // treat as fully elapsed — stale trigger
         : candles.filter((c) => c.ts > triggerCandleTs).length
       : null;
@@ -358,13 +361,13 @@ export function evaluateTimingLifecycle(args: {
 
   const candlesSincePeakTiming =
     peakTimingCandleTs != null
-      ? oldestCandleTs != null && peakTimingCandleTs <= oldestCandleTs
+      ? oldestCandleTs != null && peakTimingCandleTs < oldestCandleTs
         ? candles.length
         : candles.filter((c) => c.ts > peakTimingCandleTs).length
       : null;
   const candlesSincePeakActionability =
     peakActionabilityCandleTs != null
-      ? oldestCandleTs != null && peakActionabilityCandleTs <= oldestCandleTs
+      ? oldestCandleTs != null && peakActionabilityCandleTs < oldestCandleTs
         ? candles.length
         : candles.filter((c) => c.ts > peakActionabilityCandleTs).length
       : null;

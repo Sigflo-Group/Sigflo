@@ -24,6 +24,12 @@ interface ImportMetaEnv {
   readonly VITE_MEXC_AFFILIATE_SIGNUP_URL?: string;
   /** Dev only: set to `app` to mimic `app.sigflo.group` routing (feed at `/`, landing at `/landing`). */
   readonly VITE_APP_HOST?: string;
+  /** Display / store version label (Account → Android app). */
+  readonly VITE_APP_VERSION?: string;
+  /** Play Console package id, e.g. group.sigflo.app */
+  readonly VITE_ANDROID_PACKAGE_NAME?: string;
+  /** Full Play Store listing URL — enables live update link (omit for placeholder mode). */
+  readonly VITE_ANDROID_PLAY_STORE_URL?: string;
 }
 
 interface ImportMeta {

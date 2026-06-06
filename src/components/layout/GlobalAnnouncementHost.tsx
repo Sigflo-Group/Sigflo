@@ -79,7 +79,8 @@ export function GlobalAnnouncementHost() {
 
   useEffect(() => {
     return () => {
-      for (const t of timersRef.current.values()) window.clearTimeout(t);
+      const timers = timersRef.current;
+      for (const t of timers.values()) window.clearTimeout(t);
       timersRef.current.clear();
     };
   }, []);

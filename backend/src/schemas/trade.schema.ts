@@ -8,6 +8,8 @@ export const tradeIntentSchema = z
     leverage: z.number().min(1).max(125),
     stopPrice: z.number().positive().optional(),
     targetPrice: z.number().positive().optional(),
+    /** Optional quote for managed execute sizing; refreshed at execute if omitted. */
+    entryPrice: z.number().positive().optional(),
     brokerAccountId: z.string().uuid().optional(),
   })
   .strict();
@@ -16,5 +18,7 @@ export const tradeExecuteSchema = z
   .object({
     executionToken: z.string().min(16).max(500),
     idempotencyKey: z.string().min(8).max(200),
+    /** Market entry used for qty sizing when intent was created without a price. */
+    entryPrice: z.number().positive().optional(),
   })
   .strict();

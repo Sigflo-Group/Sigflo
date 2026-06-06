@@ -4,6 +4,14 @@ import type { TradeSide } from '@/types/trade';
 
 export type MexcPositionLeg = { size: number };
 
+/** User-facing alert when MEXC did not attach a requested stop-loss after entry. */
+export function mexcManualStopAlertMessage(detail?: string): string {
+  const base =
+    'Stop-loss was not set on MEXC. Your position is still open — open Manage and set your stop again manually.';
+  if (!detail?.trim()) return base;
+  return `${base} (${detail.trim()})`;
+}
+
 export function findMexcOpenLeg(
   positions: Array<{ symbol: string; side: string; size: number }> | undefined,
   symbol: string,
@@ -98,8 +106,8 @@ export async function attachMexcTpSlAfterEntry(p: AttachMexcTpSlParams): Promise
   }
   p.onErrorToast(
     p.userRequiredStop && p.tpSl.stopLoss
-      ? `Stop-loss could not be set on MEXC — your position is still open. Set it in Manage.${msg ? ` ${msg}` : ''}`
-      : `TP/SL sync on MEXC failed — position is still open.${msg ? ` ${msg}` : ''}`,
+      ? mexcManualStopAlertMessage(msg)
+      : `Take-profit could not be set on MEXC — position is still open.${msg ? ` ${msg}` : ''}`,
   );
   return false;
 }

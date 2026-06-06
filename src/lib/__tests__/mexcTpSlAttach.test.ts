@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   attachMexcTpSlAfterEntry,
   findMexcOpenLeg,
+  mexcManualStopAlertMessage,
   mexcQtyFromLeg,
 } from '@/lib/mexcTpSlAttach';
 
@@ -17,6 +18,13 @@ describe('findMexcOpenLeg', () => {
 
   it('returns null when no open size', () => {
     expect(findMexcOpenLeg([{ symbol: 'BTCUSDT', side: 'long', size: 0 }], 'BTCUSDT', 'long')).toBeNull();
+  });
+});
+
+describe('mexcManualStopAlertMessage', () => {
+  it('tells the user to set stop manually in Manage', () => {
+    expect(mexcManualStopAlertMessage()).toContain('set your stop again manually');
+    expect(mexcManualStopAlertMessage('precision error')).toContain('precision error');
   });
 });
 

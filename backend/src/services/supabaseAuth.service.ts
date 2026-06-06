@@ -38,12 +38,15 @@ async function verifyWithHs256(token: string): Promise<VerifiedAuthUser | null> 
   }
 }
 
+/** Supabase asymmetric JWTs (RS256 legacy, ES256 current default on new projects). */
+const JWKS_ALGORITHMS = ['RS256', 'ES256'] as const;
+
 async function verifyWithJwks(token: string): Promise<VerifiedAuthUser | null> {
   const jwks = getJwks();
   if (!jwks) return null;
   try {
     const base = normalizeUrl(env.SUPABASE_URL!);
-    const { payload } = await jwtVerify(token, jwks, { algorithms: ['RS256'] });
+    const { payload } = await jwtVerify(token, jwks, { algorithms: [...JWKS_ALGORITHMS] });
     const iss = typeof payload.iss === 'string' ? payload.iss : '';
     if (iss && !iss.startsWith(`${base}/auth/v1`)) return null;
     const id = typeof payload.sub === 'string' ? payload.sub : null;
@@ -62,7 +65,7 @@ export async function verifySupabaseAccessToken(token: string): Promise<Verified
     return null;
   }
 
-  if (alg === 'RS256') {
+  if (alg === 'RS256' || alg === 'ES256') {
     return verifyWithJwks(token);
   }
   if (alg === 'HS256') {

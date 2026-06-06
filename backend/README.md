@@ -51,7 +51,7 @@ See **`.env.example`** for the full list. Important fields:
 | `DATABASE_URL` | Postgres connection string. |
 | `CREDENTIAL_ENCRYPTION_KEY` | 64-char hex; encrypts stored API secrets. |
 | `SUPABASE_JWT_SECRET` | Verifies `Authorization: Bearer` from the SPA (Supabase session). |
-| `SUPABASE_URL` | Supabase project HTTPS URL; used for JWKS when JWTs are RS256. |
+| `SUPABASE_URL` | Supabase project HTTPS URL; **required** for ES256/RS256 JWTs via JWKS (new Supabase projects default to ES256). |
 
 Optional: `DATABASE_SSL_REJECT_UNAUTHORIZED`, `NODE_ENV`, `PORT`, `HOST`.
 

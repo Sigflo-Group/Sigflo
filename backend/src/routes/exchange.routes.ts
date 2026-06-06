@@ -18,5 +18,5 @@ exchangeRouter.get('/status', getExchangeStatus);
 exchangeRouter.post('/link', exchangeLinkLimiter, requireStepUp, validateBody(linkExchangeSchema), postLinkExchange);
 exchangeRouter.post('/switch', exchangeLinkLimiter, requireStepUp, validateBody(linkExchangeSchema), switchExchange);
 exchangeRouter.post('/revalidate', exchangeLinkLimiter, requireStepUp, validateBody(revalidateExchangeSchema), postRevalidateExchange);
-exchangeRouter.patch('/:id/activate', patchActivateExchange);
-exchangeRouter.delete('/:broker', deleteExchange);
+exchangeRouter.patch('/:id/activate', requireStepUp, patchActivateExchange);
+exchangeRouter.delete('/:broker', requireStepUp, deleteExchange);

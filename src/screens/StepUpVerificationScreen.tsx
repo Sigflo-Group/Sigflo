@@ -3,8 +3,8 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { performStepUpCheck } from '@/lib/api/session';
 import { useAuthProvider } from '@/providers/AuthProvider';
 import { useSession } from '@/hooks/useSession';
+import { safeRedirectPath } from '@/lib/safeRedirect';
 import {
-  currentAuthenticatorAssuranceLevel,
   listVerifiedTotpFactors,
   verifyTotpStepUp,
   type MfaFactor,
@@ -22,7 +22,7 @@ export default function StepUpVerificationScreen() {
   const [totpCode, setTotpCode] = useState('');
   const [loadingFactors, setLoadingFactors] = useState(true);
 
-  const redirectTarget = searchParams.get('redirect') || '/settings/security';
+  const redirectTarget = safeRedirectPath(searchParams.get('redirect'), '/settings/security');
 
   useEffect(() => {
     let cancelled = false;
@@ -59,11 +59,8 @@ export default function StepUpVerificationScreen() {
         return;
       }
 
-      const aal = await currentAuthenticatorAssuranceLevel();
-      if (aal !== 'aal2') {
-        await verifyTotpStepUp(factorId, totpCode);
-        await refreshSession();
-      }
+      await verifyTotpStepUp(factorId, totpCode);
+      await refreshSession();
 
       await performStepUpCheck();
       await refreshSecurityState();
@@ -119,30 +116,19 @@ export default function StepUpVerificationScreen() {
               value={totpCode}
               onChange={(e) => setTotpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
               className="mt-1 w-full rounded-lg border border-white/15 bg-black/30 px-3 py-2 text-sm text-white tracking-widest"
-              placeholder="000000"
             />
           </label>
         </div>
       )}
-      {error ? <p className="mt-3 rounded-lg bg-rose-500/10 px-3 py-2 text-xs text-rose-200">{error}</p> : null}
-      <div className="mt-4 flex items-center gap-2">
-        <button
-          type="button"
-          onClick={() => void onVerify()}
-          disabled={pending || loadingFactors || factors.length === 0}
-          className="rounded-lg border border-sigflo-accent/40 bg-sigflo-accent/10 px-3 py-2 text-sm font-semibold text-sigflo-accent disabled:opacity-60"
-        >
-          {pending ? 'Verifying...' : 'Verify and continue'}
-        </button>
-        <button
-          type="button"
-          onClick={() => navigate('/profile')}
-          disabled={pending}
-          className="rounded-lg border border-white/15 bg-white/[0.03] px-3 py-2 text-sm text-zinc-300 disabled:opacity-60"
-        >
-          Cancel
-        </button>
-      </div>
+      <button
+        type="button"
+        onClick={() => void onVerify()}
+        disabled={pending || loadingFactors || factors.length === 0}
+        className="mt-4 w-full rounded-xl bg-sigflo-accent px-4 py-2.5 text-sm font-semibold text-black disabled:opacity-50"
+      >
+        {pending ? 'Verifying…' : 'Verify'}
+      </button>
+      {error ? <p className="mt-3 text-sm text-rose-300">{error}</p> : null}
     </div>
   );
 }

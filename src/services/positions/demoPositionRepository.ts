@@ -269,7 +269,6 @@ export class DemoPositionRepository implements PositionRepository {
       const mappedMark = markByPair[key] ?? row.markPrice;
       this.closePositionByPair(row.pair, { markPrice: mappedMark, reason: 'close_all' });
     }
-    this.emitChanged();
     return count;
   }
 

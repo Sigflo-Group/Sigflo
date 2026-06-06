@@ -154,26 +154,30 @@ export default defineConfig(({ mode }) => {
 
             try {
               const body = await readBody(req as IncomingMessage);
-              const needsAuth =
-                pathname === '/api/ai/suggest' ||
-                pathname === '/api/ai/news-scan' ||
-                pathname.endsWith('/api/ai/suggest') ||
-                pathname.endsWith('/api/ai/news-scan');
-              if (needsAuth) {
-                const { verifySupabaseBearer } = await import(
-                  './netlify/functions/lib/verify-supabase-auth.mjs',
-                );
-                const authHeader =
-                  typeof req.headers.authorization === 'string' ? req.headers.authorization : undefined;
-                const auth = await verifySupabaseBearer(authHeader, devAiEnv());
-                if (!auth.ok) {
-                  out.statusCode = auth.statusCode ?? 401;
+              const authHeader =
+                typeof req.headers.authorization === 'string' ? req.headers.authorization : undefined;
+              const { verifySupabaseBearer } = await import(
+                './netlify/functions/lib/verify-supabase-auth.mjs',
+              );
+              const { consumeRateLimit } = (await import(
+                // @ts-expect-error TS7016 — untyped .mjs Netlify module
+                './netlify/functions/lib/rate-limit.mjs'
+              )) as { consumeRateLimit: (key: string, opts?: { windowMs?: number; max?: number }) => boolean };
+              const auth = await verifySupabaseBearer(authHeader, devAiEnv());
+              if (!auth.ok) {
+                out.statusCode = auth.statusCode ?? 401;
+                out.setHeader('Content-Type', 'application/json');
+                out.end(JSON.stringify({ error: auth.error ?? 'Unauthorized' }));
+                return;
+              }
+
+              if (isAdminBeta) {
+                if (!consumeRateLimit(`admin-beta:${auth.userId}`, { windowMs: 60_000, max: 30 })) {
+                  out.statusCode = 429;
                   out.setHeader('Content-Type', 'application/json');
-                  out.end(JSON.stringify({ error: auth.error ?? 'Unauthorized' }));
+                  out.end(JSON.stringify({ error: 'Too many admin requests. Try again shortly.' }));
                   return;
                 }
-              }
-              if (isAdminBeta) {
                 const { runAdminBeta } = (await import(
                   // @ts-expect-error TS7016 — untyped .mjs Netlify module
                   './netlify/functions/lib/admin-beta-core.mjs'
@@ -184,26 +188,42 @@ export default defineConfig(({ mode }) => {
                     env: NodeJS.ProcessEnv,
                   ) => Promise<{ statusCode: number; body: Record<string, unknown> }>;
                 };
-                const authHeader =
-                  typeof req.headers.authorization === 'string' ? req.headers.authorization : undefined;
                 const result = await runAdminBeta(body, authHeader, devAiEnv());
                 out.setHeader('Content-Type', 'application/json');
                 out.statusCode = result.statusCode;
                 out.end(JSON.stringify(result.body));
                 return;
               }
-              if (pathname === '/api/ai/news-scan') {
-                // Netlify ESM helper — no .d.ts; keep dev parity with production function.
+              if (pathname === '/api/ai/news-scan' || pathname.endsWith('/api/ai/news-scan')) {
+                if (!consumeRateLimit(`news-scan:${auth.userId}`, { windowMs: 60_000, max: 10 })) {
+                  out.statusCode = 429;
+                  out.setHeader('Content-Type', 'application/json');
+                  out.end(JSON.stringify({ error: 'Too many news scan requests. Try again shortly.' }));
+                  return;
+                }
                 const { runMarketNewsScan } = (await import(
                   // @ts-expect-error TS7016 — untyped .mjs Netlify module
                   './netlify/functions/lib/market-news-scan-core.mjs'
                 )) as {
-                  runMarketNewsScan: (rawBody: string, env: NodeJS.ProcessEnv) => Promise<unknown>;
+                  runMarketNewsScan: (
+                    rawBody: string,
+                    env: NodeJS.ProcessEnv,
+                  ) => Promise<{ ok?: boolean; error?: string } | Record<string, unknown>>;
                 };
                 const result = await runMarketNewsScan(body, devAiEnv());
                 out.setHeader('Content-Type', 'application/json');
-                out.statusCode = 200;
+                if (result && typeof result === 'object' && result.ok === false) {
+                  out.statusCode = 400;
+                } else {
+                  out.statusCode = 200;
+                }
                 out.end(JSON.stringify(result));
+                return;
+              }
+              if (!consumeRateLimit(`ai-suggest:${auth.userId}`, { windowMs: 60_000, max: 20 })) {
+                out.statusCode = 429;
+                out.setHeader('Content-Type', 'application/json');
+                out.end(JSON.stringify({ error: 'Too many AI requests. Try again shortly.' }));
                 return;
               }
               const { runAiSuggest } = await import('./netlify/functions/lib/ai-suggest-core.mjs');

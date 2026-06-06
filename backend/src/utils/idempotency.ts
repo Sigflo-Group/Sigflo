@@ -1,23 +1,10 @@
 import { db } from '../db/index.js';
-
-const memorySeen = new Map<string, number>();
-
-function consumeInMemory(key: string, ttlMs: number): boolean {
-  const now = Date.now();
-  const existing = memorySeen.get(key);
-  if (existing && existing > now) return false;
-  memorySeen.set(key, now + ttlMs);
-  if (memorySeen.size > 10_000) {
-    for (const [k, exp] of memorySeen) {
-      if (exp <= now) memorySeen.delete(k);
-    }
-  }
-  return true;
-}
+import { log } from '../lib/logger.js';
 
 /**
  * Returns true when the key is new (caller may proceed). False when duplicate within TTL.
  * Uses Postgres when available so multiple app instances share state.
+ * Fails closed when Postgres is unreachable.
  */
 export async function consumeIdempotencyKey(key: string, ttlMs: number): Promise<boolean> {
   const expiresAt = new Date(Date.now() + ttlMs);
@@ -32,19 +19,19 @@ export async function consumeIdempotencyKey(key: string, ttlMs: number): Promise
       void db.query('delete from idempotency_keys where expires_at < now()').catch(() => {});
       return true;
     }
-    const { rows } = await db.query<{ expires_at: string }>(
-      'select expires_at from idempotency_keys where key = $1',
-      [key],
-    );
-    const row = rows[0];
-    if (!row) return consumeInMemory(key, ttlMs);
-    if (Date.parse(row.expires_at) > Date.now()) return false;
-    const { rowCount: renewed } = await db.query(
-      'update idempotency_keys set expires_at = $2 where key = $1 and expires_at <= now()',
+
+    const { rows } = await db.query<{ key: string }>(
+      `update idempotency_keys
+       set expires_at = $2
+       where key = $1 and expires_at <= now()
+       returning key`,
       [key, expiresAt.toISOString()],
     );
-    return (renewed ?? 0) > 0;
-  } catch {
-    return consumeInMemory(key, ttlMs);
+    return rows.length > 0;
+  } catch (error) {
+    log('error', 'Idempotency store unavailable; rejecting duplicate-risk request.', {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return false;
   }
 }

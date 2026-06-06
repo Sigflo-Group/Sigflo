@@ -51,6 +51,7 @@ describe('attachMexcTpSlAfterEntry', () => {
       fallbackQty: '0.01',
       tpSl: { stopLoss: '90000' },
       userRequiredStop: true,
+      closeEntryOnRequiredSlFailure: true,
       resolveQty: async () => '0.01',
       placeTpSl: async () => {
         throw new Error('rejected');

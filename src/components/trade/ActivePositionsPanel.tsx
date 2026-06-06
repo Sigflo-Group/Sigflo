@@ -12,6 +12,7 @@ import type { MarketMode } from '@/types/trade';
 type ActivePositionsPanelProps = {
   market: MarketMode;
   exchangePosition: PositionItem | null;
+  exchange?: 'bybit' | 'mexc';
   /** Spot holding derived from wallet balance (no linear `position/list` row). */
   exchangeSpotDisplay: SimulatedActivePosition | null;
   /** Chart / header pair label (may differ from `BTCUSDT`). */
@@ -38,6 +39,7 @@ type ActivePositionsPanelProps = {
 export function ActivePositionsPanel({
   market,
   exchangePosition,
+  exchange = 'bybit',
   exchangeSpotDisplay,
   displayPair,
   leverageFallback,
@@ -61,8 +63,8 @@ export function ActivePositionsPanel({
 
   const exchangeCardModel = useMemo(() => {
     if (!exchangePosition) return null;
-    return syntheticFromExchangePosition(exchangePosition, displayPair, market, leverageFallback);
-  }, [displayPair, exchangePosition, leverageFallback, market]);
+    return syntheticFromExchangePosition(exchangePosition, displayPair, market, leverageFallback, exchange);
+  }, [displayPair, exchange, exchangePosition, leverageFallback, market]);
 
   const showExchangeFutures = market === 'futures' && exchangePosition != null && exchangeCardModel != null;
   const showExchangeSpot = market === 'spot' && exchangeSpotDisplay != null;

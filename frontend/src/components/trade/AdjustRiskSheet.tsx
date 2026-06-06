@@ -9,6 +9,7 @@ import {
   type SetStateAction,
 } from 'react';
 import { formatQuoteNumber } from '@/lib/formatQuote';
+import { formatSignedUsd } from '@/lib/signedPnl';
 import type {
   AutomationSafeguards,
   ExitAiMode,
@@ -108,11 +109,6 @@ function profileFromStrategy(s: ExitStrategyPreset): RiskProfileId {
   if (s === 'trend_follow') return 'let_run';
   if (s === 'tight_risk') return 'protect';
   return 'balanced';
-}
-
-function fmtSignedUsd(n: number): string {
-  const sign = n >= 0 ? '+' : '−';
-  return `${sign}$${Math.abs(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
 function computePreview(
@@ -529,7 +525,7 @@ export function AdjustRiskSheet({
                         snapshot.pnlUsd >= 0 ? 'text-emerald-200/95' : 'text-rose-200/90'
                       }`}
                     >
-                      {fmtSignedUsd(snapshot.pnlUsd)}
+                      {formatSignedUsd(snapshot.pnlUsd)}
                     </dd>
                   </div>
                 </dl>

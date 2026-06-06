@@ -122,6 +122,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           },
         });
         if (error) throw error;
+        if (data?.user && !data.user.email_confirmed_at) {
+          await supabase.auth.signOut();
+          return { session: null };
+        }
         return { session: data.session };
       },
       resendSignupConfirmation: async (email: string) => {

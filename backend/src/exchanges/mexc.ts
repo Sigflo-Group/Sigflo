@@ -40,7 +40,7 @@ type MexcOpenPosition = {
   positionId: number;
   symbol: string;              // e.g. "BTC_USDT"
   positionType: 1 | 2;         // 1=long, 2=short
-  holdVol: string;             // size in base asset
+  holdVol: string;             // position size in contracts (张)
   holdAvgPrice: string;        // avg entry price
   openAvgPrice: string;
   liquidatePrice: string;
@@ -160,6 +160,8 @@ export type MexcOrderRequest = {
   price?: string;          // limit orders only
   stopLossPrice?: string;
   takeProfitPrice?: string;
+  lossTrend?: 1 | 2 | 3;  // 1=latest, 2=fair, 3=index (required with stopLossPrice)
+  profitTrend?: 1 | 2 | 3; // (required with takeProfitPrice)
 };
 
 export type MexcOrderResponse = {
@@ -169,13 +171,37 @@ export type MexcOrderResponse = {
   message?: string;
 };
 
+type MexcStopOrderPlaceResponse = {
+  success: boolean;
+  data?: number | null;
+  code?: number;
+  message?: string;
+};
+
 export type MexcContractDetail = {
   symbol: string;
   priceUnit: string;
+  /** Contract volume step (`volUnit` on MEXC contract/detail). */
   volumeUnit: string;
   minVol: string;
   maxVol: string;
+  contractSize: string;
 };
+
+/** MEXC contract/detail uses `volUnit`; older typings called it `volumeUnit`. */
+function parseContractDetail(row: Record<string, unknown>): MexcContractDetail | null {
+  const symbol = typeof row.symbol === 'string' ? row.symbol : '';
+  if (!symbol) return null;
+  const volUnit = row.volUnit ?? row.volumeUnit;
+  return {
+    symbol,
+    priceUnit: String(row.priceUnit ?? ''),
+    volumeUnit: String(volUnit ?? ''),
+    minVol: String(row.minVol ?? ''),
+    maxVol: String(row.maxVol ?? ''),
+    contractSize: String(row.contractSize ?? ''),
+  };
+}
 
 type CachedLot = { expiryMs: number; lot: MexcContractDetail };
 const instrumentLotCache = new Map<string, CachedLot>();
@@ -204,7 +230,13 @@ function normalizePriceToStep(priceRaw: string, priceUnitStr: string): string {
   return out === '' ? priceRaw.trim() : out;
 }
 
-function normalizeQtyToStep(qtyRaw: string, qtyStepStr: string, minQtyStr: string): string {
+function normalizeQtyToStep(
+  qtyRaw: string,
+  qtyStepStr: string,
+  minQtyStr: string,
+  opts?: { bumpToMin?: boolean },
+): string {
+  const bumpToMin = opts?.bumpToMin !== false;
   const n = Number(String(qtyRaw).trim().replace(/,/g, ''));
   const step = Number(qtyStepStr);
   const minQ = Number(minQtyStr);
@@ -214,6 +246,11 @@ function normalizeQtyToStep(qtyRaw: string, qtyStepStr: string, minQtyStr: strin
   let k = Math.floor(n / step + tol);
   let adj = k * step;
   if (adj < minQ - tol) {
+    if (!bumpToMin) {
+      throw new Error(
+        `Order size is below the MEXC minimum (${minQtyStr} contracts). Increase margin or order size.`,
+      );
+    }
     const minK = Math.ceil(minQ / step - tol);
     adj = minK * step;
   }
@@ -232,20 +269,93 @@ async function fetchInstrumentLot(symbol: string): Promise<MexcContractDetail | 
   const hit = instrumentLotCache.get(sym);
   if (hit && hit.expiryMs > now) return hit.lot;
   try {
-    const res = await getJson<{ success: boolean; data: MexcContractDetail[] }>(
+    const res = await getJson<{ success: boolean; data: Array<Record<string, unknown>> }>(
       `${FUTURES_BASE}/api/v1/contract/detail`,
       {},
     );
     if (res.success && Array.isArray(res.data)) {
-      const row = res.data.find((c) => c.symbol === sym);
-      if (row) {
-        instrumentLotCache.set(sym, { expiryMs: now + LOT_CACHE_TTL_MS, lot: row });
-        return row;
+      const raw = res.data.find((c) => c.symbol === sym);
+      const lot = raw ? parseContractDetail(raw) : null;
+      if (lot) {
+        instrumentLotCache.set(sym, { expiryMs: now + LOT_CACHE_TTL_MS, lot });
+        return lot;
       }
     }
     return null;
   } catch {
     return null;
+  }
+}
+
+/** Convert base-asset qty string → MEXC contract `vol` string (step/min applied). */
+async function fetchMexcOpenPositionLeg(
+  input: ConnectInput,
+  standardSymbol: string,
+  positionSide: 'long' | 'short',
+): Promise<MexcOpenPosition | null> {
+  const mexcSymbol = standardSymbolToMexc(standardSymbol);
+  const res = await futuresPrivateGet<MexcFuturesResponse<MexcOpenPosition[]>>(
+    '/api/v1/private/position/open_positions',
+    { symbol: mexcSymbol },
+    input,
+  );
+  if (!res.success || !Array.isArray(res.data)) return null;
+  const wantType: 1 | 2 = positionSide === 'long' ? 1 : 2;
+  return (
+    res.data.find(
+      (p) => p.symbol === mexcSymbol && p.positionType === wantType && Number(p.holdVol) > 0,
+    ) ?? null
+  );
+}
+
+function formatMexcTpSlRejectMessage(res: MexcStopOrderPlaceResponse, fallback: string): string {
+  const detail = res.message?.trim() || (res.code != null ? `code=${res.code}` : '');
+  if (!detail) return fallback;
+  const low = detail.toLowerCase();
+  if (
+    res.code === 2009
+    || res.code === 3
+    || low.includes('nonexistent')
+    || low.includes('not exist')
+    || low.includes('not found')
+  ) {
+    return 'MEXC has no open position for this symbol — refresh Account sync and try again.';
+  }
+  return `MEXC TP/SL rejected: ${detail}`;
+}
+
+function baseQtyToContractVol(
+  baseQty: string,
+  lot: MexcContractDetail,
+  opts?: { bumpToMin?: boolean },
+): string {
+  const contractSize = Number(lot.contractSize);
+  const raw =
+    Number.isFinite(contractSize) && contractSize > 0
+      ? String(Number(baseQty) / contractSize)
+      : baseQty;
+  return normalizeQtyToStep(raw, lot.volumeUnit, lot.minVol, opts);
+}
+
+async function ensureLinearLeverage(
+  input: ConnectInput,
+  mexcSymbol: string,
+  leverage: number,
+  positionType: 1 | 2,
+): Promise<void> {
+  const res = await futuresPrivatePost<MexcOrderResponse>(
+    '/api/v1/private/position/change_leverage',
+    {
+      symbol: mexcSymbol,
+      leverage,
+      openType: 1,
+      positionType,
+    },
+    input,
+  );
+  if (!res.success) {
+    const detail = res.message ?? (res.code != null ? `code=${res.code}` : undefined);
+    throw new Error(`MEXC leverage update failed${detail ? `: ${detail}` : ''}`);
   }
 }
 
@@ -322,9 +432,12 @@ export class MexcAdapter implements ExchangeAdapter {
       if (total <= 0) continue;
       const existing = balances.get(asset);
       if (existing) {
-        existing.free += free;
-        existing.locked += locked;
-        existing.total += total;
+        balances.set(asset, {
+          asset,
+          free: existing.free + free,
+          locked: existing.locked + locked,
+          total: existing.total + total,
+        });
       } else {
         balances.set(asset, { asset, free, locked, total });
       }
@@ -342,8 +455,8 @@ export class MexcAdapter implements ExchangeAdapter {
         input,
       );
       raw = res.success && Array.isArray(res.data) ? res.data : [];
-    } catch {
-      // Futures API not accessible (spot-only key, or account has no futures access) — return empty
+    } catch (e) {
+      console.warn('[MEXC] fetchPositions failed:', e);
       return [];
     }
 
@@ -351,9 +464,22 @@ export class MexcAdapter implements ExchangeAdapter {
     if (open.length === 0) return [];
 
     const markPriceMap = await fetchContractMarkPrices(open.map((p) => p.symbol));
+    const lotBySymbol = new Map<string, MexcContractDetail>();
+    await Promise.all(
+      [...new Set(open.map((p) => p.symbol))].map(async (mexcSym) => {
+        const lot = await fetchInstrumentLot(mexcSym);
+        if (lot) lotBySymbol.set(mexcSym, lot);
+      }),
+    );
 
     return open.map((p): PositionItem => {
-      const size = Number(p.holdVol);
+      const holdContracts = Number(p.holdVol);
+      const lot = lotBySymbol.get(p.symbol);
+      const contractSize = Number(lot?.contractSize);
+      const size =
+        Number.isFinite(contractSize) && contractSize > 0
+          ? holdContracts * contractSize
+          : holdContracts;
       const entryPrice = Number(p.holdAvgPrice || p.openAvgPrice);
       const side: 'long' | 'short' = p.positionType === 1 ? 'long' : 'short';
 
@@ -490,12 +616,15 @@ export class MexcAdapter implements ExchangeAdapter {
     let qty = params.qty;
     try {
       const lot = await fetchInstrumentLot(mexcSymbol);
-      if (lot) {
-        if (price) price = normalizePriceToStep(price, lot.priceUnit);
-        qty = normalizeQtyToStep(qty, lot.volumeUnit, lot.minVol);
+      if (!lot) {
+        throw new Error(`Could not load MEXC contract rules for ${mexcSymbol}. Try again shortly.`);
       }
-    } catch {
-      log('warn', 'MEXC instrument lot fetch failed, sending raw values', { symbol: mexcSymbol });
+      if (price) price = normalizePriceToStep(price, lot.priceUnit);
+      qty = baseQtyToContractVol(qty, lot, { bumpToMin: !params.reduceOnly });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      log('warn', 'MEXC order qty normalization failed', { symbol: mexcSymbol, error: msg });
+      throw e instanceof Error ? e : new Error(msg);
     }
 
     // Map Bybit-style side+reduceOnly → MEXC side integer
@@ -506,6 +635,11 @@ export class MexcAdapter implements ExchangeAdapter {
     else if (params.side === 'Sell' && params.reduceOnly) mexcSide = 4;  // close long
     else mexcSide = 2;                                                    // Buy + reduceOnly → close short
 
+    if (params.leverage != null && !params.reduceOnly) {
+      const positionType: 1 | 2 = params.side === 'Buy' ? 1 : 2;
+      await ensureLinearLeverage(input, mexcSymbol, params.leverage, positionType);
+    }
+
     const orderBody: MexcOrderRequest = {
       symbol: mexcSymbol,
       side: mexcSide,
@@ -513,13 +647,20 @@ export class MexcAdapter implements ExchangeAdapter {
       type: params.orderType === 'Limit' ? 1 : 5,
       vol: qty,
       ...(params.leverage != null && !params.reduceOnly ? { leverage: params.leverage } : {}),
-      ...(price ? { price } : {}),
-      ...(params.takeProfit ? { takeProfitPrice: params.takeProfit } : {}),
-      ...(params.stopLoss ? { stopLossPrice: params.stopLoss } : {}),
+      price: price ?? '0',
     };
 
+    // MEXC order/create rejects TP/SL on market orders — callers use setPositionTpSl after fill.
+    if (params.takeProfit || params.stopLoss) {
+      log('warn', 'MEXC placeLinearOrder ignores TP/SL on create; use setPositionTpSl after fill', {
+        symbol: mexcSymbol,
+        hadTakeProfit: !!params.takeProfit,
+        hadStopLoss: !!params.stopLoss,
+      });
+    }
+
     const res = await futuresPrivatePost<MexcOrderResponse>(
-      '/api/v1/private/order/submit',
+      '/api/v1/private/order/create',
       orderBody as unknown as Record<string, unknown>,
       input,
     );
@@ -534,6 +675,98 @@ export class MexcAdapter implements ExchangeAdapter {
     return { orderId: String(res.data) };
   }
 
+  /**
+   * Set full-position TP/SL on an open MEXC futures position via
+   * `/api/v1/private/stoporder/place` (position-level TP/SL). Pass "0" for a side
+   * to skip that level. Returns order id(s) from the exchange.
+   */
+  async setPositionTpSl(
+    input: ConnectInput,
+    params: {
+      symbol: string;          // "BTCUSDT"
+      positionSide: 'long' | 'short';
+      qty: string;             // base asset quantity
+      takeProfit?: string;     // price as string; "0" = no TP / clear
+      stopLoss?: string;       // price as string; "0" = no SL / clear
+    },
+  ): Promise<{
+    orderIds: string[];
+    placed: { sl?: string; tp?: string };
+    warnings: string[];
+  }> {
+    const mexcSymbol = standardSymbolToMexc(params.symbol);
+    const warnings: string[] = [];
+    const placed: { sl?: string; tp?: string } = {};
+
+    const hasSl = params.stopLoss != null && Number(params.stopLoss) > 0;
+    const hasTp = params.takeProfit != null && Number(params.takeProfit) > 0;
+    if (!hasSl && !hasTp) {
+      return { orderIds: [], placed, warnings };
+    }
+
+    let leg = await fetchMexcOpenPositionLeg(input, params.symbol, params.positionSide);
+    if (!leg) {
+      const deadline = Date.now() + 10_000;
+      while (!leg && Date.now() < deadline) {
+        await new Promise<void>((r) => {
+          setTimeout(r, 300);
+        });
+        leg = await fetchMexcOpenPositionLeg(input, params.symbol, params.positionSide);
+      }
+    }
+    if (!leg) {
+      throw new Error('MEXC has no open position for this symbol — refresh Account sync and try again.');
+    }
+
+    const lot = await fetchInstrumentLot(mexcSymbol);
+    if (!lot) {
+      throw new Error(`Could not load MEXC contract rules for ${mexcSymbol}. Try again shortly.`);
+    }
+
+    let contractVol: string;
+    try {
+      contractVol = normalizeQtyToStep(String(leg.holdVol), lot.volumeUnit, lot.minVol, { bumpToMin: true });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      log('warn', 'MEXC TP/SL qty normalization failed', { symbol: mexcSymbol, holdVol: leg.holdVol, error: msg });
+      throw e instanceof Error ? e : new Error(msg);
+    }
+
+    const body: Record<string, unknown> = {
+      positionId: leg.positionId,
+      vol: contractVol,
+      volType: 2,
+      lossTrend: 1,
+      profitTrend: 1,
+      stopLossType: 0,
+      stopLossOrderPrice: 0,
+      takeProfitType: 0,
+      takeProfitOrderPrice: 0,
+    };
+    if (hasSl) {
+      body.stopLossPrice = normalizePriceToStep(params.stopLoss!, lot.priceUnit);
+    }
+    if (hasTp) {
+      body.takeProfitPrice = normalizePriceToStep(params.takeProfit!, lot.priceUnit);
+    }
+
+    const res = await futuresPrivatePost<MexcStopOrderPlaceResponse>(
+      '/api/v1/private/stoporder/place',
+      body,
+      input,
+    );
+    if (!res.success || res.data == null) {
+      const msg = formatMexcTpSlRejectMessage(res, 'MEXC TP/SL placement failed');
+      log('warn', 'MEXC TP/SL placement rejected', { symbol: mexcSymbol, positionId: leg.positionId, error: msg });
+      throw new Error(msg);
+    }
+
+    const orderId = String(res.data);
+    if (hasSl) placed.sl = orderId;
+    if (hasTp) placed.tp = orderId;
+    return { orderIds: [orderId], placed, warnings };
+  }
+
   async fetchClosedTrades(input: ConnectInput, opts?: { limit?: number }): Promise<ClosedTradeItem[]> {
     const pageSize = String(Math.min(opts?.limit ?? 50, 100));
     let page: MexcHistoryPage;
@@ -544,7 +777,8 @@ export class MexcAdapter implements ExchangeAdapter {
         input,
       );
       page = res.success && res.data ? res.data : { pageNum: 1, pageSize: 0, totalPage: 0, resultList: [] };
-    } catch {
+    } catch (e) {
+      console.warn('[MEXC] fetchClosedTrades failed:', e);
       return [];
     }
 

@@ -21,9 +21,9 @@ export class ErrorBoundary extends Component<Props, State> {
       return (
         <div className="flex min-h-[100dvh] flex-col items-center justify-center bg-sigflo-bg px-6 py-10 text-center text-sigflo-text">
           <p className="text-sm font-semibold text-white">Something went wrong</p>
-          <pre className="mt-4 max-w-lg whitespace-pre-wrap break-words text-left text-xs text-rose-200/90">
-            {this.state.error.message}
-          </pre>
+          <p className="mt-4 max-w-lg text-left text-xs text-sigflo-muted">
+            An unexpected error occurred. Please refresh and try again.
+          </p>
           <button
             type="button"
             onClick={() => window.location.assign(feedBrowserPath())}

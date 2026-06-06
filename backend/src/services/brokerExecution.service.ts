@@ -1,5 +1,5 @@
 import { BybitAdapter } from '../exchanges/bybit.js';
-import { decryptBrokerCredential, getSecretFromVault } from './exchangeKey.service.js';
+import { resolveBrokerCredentials } from './brokerCredentials.js';
 import type { BrokerAccountRow } from '../db/queries/brokerAccounts.js';
 
 const bybitAdapter = new BybitAdapter();
@@ -16,18 +16,7 @@ export async function executeBrokerOrder(input: {
     throw new Error('Broker not supported');
   }
 
-  const apiKey = input.account.apiKeyVaultId
-    ? await getSecretFromVault(input.account.apiKeyVaultId)
-    : decryptBrokerCredential(input.account.apiKeyEncrypted);
-  const apiSecret = input.account.apiSecretVaultId
-    ? await getSecretFromVault(input.account.apiSecretVaultId)
-    : decryptBrokerCredential(input.account.apiSecretEncrypted);
-
-  if (!apiKey || !apiSecret) {
-    throw new Error('Failed to retrieve credentials from Vault.');
-  }
-
-  const creds = { apiKey, apiSecret };
+  const creds = await resolveBrokerCredentials(input.account);
 
   if (!Number.isFinite(input.entryPrice) || input.entryPrice <= 0) {
     throw new Error(`Invalid entry price for order calculation: ${input.entryPrice}`);

@@ -1,4 +1,4 @@
-import { createRemoteJWKSet, decodeProtectedHeader, jwtVerify } from 'jose';
+import { createRemoteJWKSet, decodeJwt, decodeProtectedHeader, jwtVerify } from 'jose';
 import { env } from '../config/env.js';
 
 export type VerifiedAuthUser = {
@@ -11,25 +11,71 @@ function normalizeUrl(url: string): string {
   return url.replace(/\/+$/, '');
 }
 
-// Cached at module level so the JWKS is fetched once and reused across requests.
-let cachedJwks: ReturnType<typeof createRemoteJWKSet> | null = null;
-function getJwks(): ReturnType<typeof createRemoteJWKSet> | null {
+function expectedIssuer(): string | null {
   if (!env.SUPABASE_URL) return null;
-  if (!cachedJwks) {
-    const base = normalizeUrl(env.SUPABASE_URL);
-    cachedJwks = createRemoteJWKSet(
-      new URL(`${base}/auth/v1/.well-known/jwks.json`),
-      { timeoutDuration: 5_000, cacheMaxAge: 300_000 }, // re-fetch every 5 min to handle key rotation
-    );
+  return `${normalizeUrl(env.SUPABASE_URL)}/auth/v1`;
+}
+
+/** Supabase asymmetric JWTs (RS256 legacy, ES256 current default on new projects). */
+const JWKS_ALGORITHMS = ['RS256', 'ES256'] as const;
+type JwksAlgorithm = (typeof JWKS_ALGORITHMS)[number];
+
+const jwksByUrl = new Map<string, ReturnType<typeof createRemoteJWKSet>>();
+
+function getJwksForUrl(jwksUrl: URL): ReturnType<typeof createRemoteJWKSet> {
+  const key = jwksUrl.toString();
+  let cached = jwksByUrl.get(key);
+  if (!cached) {
+    cached = createRemoteJWKSet(jwksUrl, {
+      timeoutDuration: 5_000,
+      cacheMaxAge: 300_000,
+    });
+    jwksByUrl.set(key, cached);
   }
-  return cachedJwks;
+  return cached;
+}
+
+/** Only trust Supabase-hosted issuers when deriving JWKS from the token itself. */
+function supabaseIssuerJwksUrl(iss: string): URL | null {
+  try {
+    const issuer = new URL(iss);
+    if (!issuer.hostname.endsWith('.supabase.co')) return null;
+    const base = normalizeUrl(iss);
+    if (!base.endsWith('/auth/v1')) return null;
+    return new URL(`${base}/.well-known/jwks.json`);
+  } catch {
+    return null;
+  }
+}
+
+function resolveJwksUrl(token: string): URL | null {
+  let iss: string | undefined;
+  try {
+    const payload = decodeJwt(token);
+    iss = typeof payload.iss === 'string' ? payload.iss : undefined;
+  } catch {
+    return null;
+  }
+
+  if (env.SUPABASE_URL) {
+    const base = normalizeUrl(env.SUPABASE_URL);
+    if (!iss || !iss.startsWith(`${base}/auth/v1`)) return null;
+    return new URL(`${base}/auth/v1/.well-known/jwks.json`);
+  }
+
+  if (iss) return supabaseIssuerJwksUrl(iss);
+  return null;
 }
 
 async function verifyWithHs256(token: string): Promise<VerifiedAuthUser | null> {
   if (!env.SUPABASE_JWT_SECRET) return null;
+  const issuer = expectedIssuer();
   try {
     const secret = new TextEncoder().encode(env.SUPABASE_JWT_SECRET);
-    const { payload } = await jwtVerify(token, secret, { algorithms: ['HS256'] });
+    const { payload } = await jwtVerify(token, secret, {
+      algorithms: ['HS256'],
+      ...(issuer ? { issuer, audience: 'authenticated' } : {}),
+    });
     const id = typeof payload.sub === 'string' ? payload.sub : null;
     if (!id) return null;
     return { id, email: typeof payload.email === 'string' ? payload.email : undefined, claims: payload as Record<string, unknown> };
@@ -38,14 +84,25 @@ async function verifyWithHs256(token: string): Promise<VerifiedAuthUser | null> 
   }
 }
 
-async function verifyWithJwks(token: string): Promise<VerifiedAuthUser | null> {
-  const jwks = getJwks();
-  if (!jwks) return null;
+async function verifyWithJwks(token: string, alg: JwksAlgorithm): Promise<VerifiedAuthUser | null> {
+  const jwksUrl = resolveJwksUrl(token);
+  if (!jwksUrl) return null;
+
+  let tokenIssuer: string | undefined;
   try {
-    const base = normalizeUrl(env.SUPABASE_URL!);
-    const { payload } = await jwtVerify(token, jwks);
-    const iss = typeof payload.iss === 'string' ? payload.iss : '';
-    if (iss && !iss.startsWith(`${base}/auth/v1`)) return null;
+    const payload = decodeJwt(token);
+    tokenIssuer = typeof payload.iss === 'string' ? payload.iss : undefined;
+  } catch {
+    return null;
+  }
+  const issuer = expectedIssuer() ?? tokenIssuer;
+
+  try {
+    const jwks = getJwksForUrl(jwksUrl);
+    const { payload } = await jwtVerify(token, jwks, {
+      algorithms: [alg],
+      ...(issuer ? { issuer, audience: 'authenticated' } : {}),
+    });
     const id = typeof payload.sub === 'string' ? payload.sub : null;
     if (!id) return null;
     return { id, email: typeof payload.email === 'string' ? payload.email : undefined, claims: payload as Record<string, unknown> };
@@ -55,14 +112,18 @@ async function verifyWithJwks(token: string): Promise<VerifiedAuthUser | null> {
 }
 
 export async function verifySupabaseAccessToken(token: string): Promise<VerifiedAuthUser | null> {
+  let alg: string | undefined;
   try {
-    const hdr = decodeProtectedHeader(token);
-    if (hdr.alg === 'RS256') {
-      const rs = await verifyWithJwks(token);
-      if (rs) return rs;
-    }
+    alg = decodeProtectedHeader(token).alg;
   } catch {
-    // ignore
+    return null;
   }
-  return (await verifyWithHs256(token)) ?? (await verifyWithJwks(token));
+
+  if (alg === 'RS256' || alg === 'ES256') {
+    return verifyWithJwks(token, alg);
+  }
+  if (alg === 'HS256') {
+    return verifyWithHs256(token);
+  }
+  return null;
 }

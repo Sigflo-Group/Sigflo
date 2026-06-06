@@ -8,7 +8,7 @@ export function isTradingStyleOnboarded(): boolean {
   try {
     return secureStorage.getItem(KEY_DONE) === '1';
   } catch {
-    return true;
+    return false;
   }
 }
 

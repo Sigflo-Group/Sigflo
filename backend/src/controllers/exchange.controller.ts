@@ -10,7 +10,9 @@ import {
   setActiveExchange,
   type BrokerAccountRow,
 } from '../db/queries/brokerAccounts.js';
-import { encryptBrokerCredential, decryptBrokerCredential } from '../services/exchangeKey.service.js';
+import { encryptBrokerCredential } from '../services/exchangeKey.service.js';
+import { resolveBrokerCredentials } from '../services/brokerCredentials.js';
+import { clientSafeExchangeError } from '../lib/clientSafeError.js';
 import { writeAuditLog } from '../services/auditLog.service.js';
 import { log } from '../lib/logger.js';
 
@@ -57,7 +59,7 @@ export async function postLinkExchange(req: AuthedRequest, res: Response) {
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     log('warn', 'Exchange link — adapter threw during validation.', { userId: req.user.userId, broker, error: msg });
-    return res.status(400).json({ error: `Connection failed: ${msg}` });
+    return res.status(400).json({ error: clientSafeExchangeError(e, 'Connection failed.') });
   }
 
   if (!validation.ok) {
@@ -73,7 +75,7 @@ export async function postLinkExchange(req: AuthedRequest, res: Response) {
       userAgent: req.auditContext?.userAgent,
       metadata: { reason: validation.message },
     });
-    return res.status(400).json({ error: validation.message });
+    return res.status(400).json({ error: clientSafeExchangeError(validation.message, 'Connection failed.') });
   }
 
   // First account for this user becomes the active one automatically.
@@ -122,11 +124,11 @@ export async function postRevalidateExchange(req: AuthedRequest, res: Response) 
   }
 
   const adapter = getAdapter(broker);
-  const validation = await adapter.validateReadOnly({
-    apiKey: decryptBrokerCredential(account.apiKeyEncrypted),
-    apiSecret: decryptBrokerCredential(account.apiSecretEncrypted),
-  });
-  if (!validation.ok) return res.status(400).json({ error: validation.message });
+  const creds = await resolveBrokerCredentials(account);
+  const validation = await adapter.validateReadOnly(creds);
+  if (!validation.ok) {
+    return res.status(400).json({ error: clientSafeExchangeError(validation.message, 'Revalidation failed.') });
+  }
 
   const updated = await upsertBrokerAccount({
     userId: account.userId,
@@ -252,7 +254,7 @@ export async function switchExchange(req: AuthedRequest, res: Response) {
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     log('warn', 'Exchange switch — adapter threw during validation.', { userId: req.user.userId, broker, error: msg });
-    return res.status(400).json({ error: `Connection failed: ${msg}` });
+    return res.status(400).json({ error: clientSafeExchangeError(e, 'Connection failed.') });
   }
 
   if (!validation.ok) {
@@ -268,7 +270,7 @@ export async function switchExchange(req: AuthedRequest, res: Response) {
       userAgent: req.auditContext?.userAgent,
       metadata: { reason: validation.message },
     });
-    return res.status(400).json({ error: validation.message });
+    return res.status(400).json({ error: clientSafeExchangeError(validation.message, 'Connection failed.') });
   }
 
   // Deactivate all, then upsert the new one as active.

@@ -1,5 +1,6 @@
 import type { SigfloActivePosition } from '@/types/position';
 import { secureStorage } from '@/lib/storage';
+import { resolveTradeSource } from '@/lib/tradeSourceFilter';
 import type {
   PaperTradeOpenInput,
   PaperTradingClosedTrade,
@@ -184,6 +185,7 @@ export class DemoPositionRepository implements PositionRepository {
           leverage,
           status: 'filled',
           note: 'Paper Trading Mode',
+          source: resolveTradeSource(input.source),
         },
         ...this.orderHistory,
       ],
@@ -224,6 +226,7 @@ export class DemoPositionRepository implements PositionRepository {
           notionalUsd,
           realizedPnlUsd: pnlUsd,
           reason,
+          source: resolveTradeSource(position.source),
         },
         ...this.closedTrades,
       ],
@@ -245,6 +248,7 @@ export class DemoPositionRepository implements PositionRepository {
           status: 'filled',
           note: 'Paper Trading Mode',
           realizedPnlUsd: pnlUsd,
+          source: resolveTradeSource(position.source),
         },
         ...this.orderHistory,
       ],
@@ -265,7 +269,6 @@ export class DemoPositionRepository implements PositionRepository {
       const mappedMark = markByPair[key] ?? row.markPrice;
       this.closePositionByPair(row.pair, { markPrice: mappedMark, reason: 'close_all' });
     }
-    this.emitChanged();
     return count;
   }
 

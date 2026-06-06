@@ -1,6 +1,10 @@
 import type { NextFunction, Response } from 'express';
 import type { AuthedRequest } from './auth.js';
-import { getSessionStateForUser, isStepUpVerificationFresh } from '../services/sessionSecurity.service.js';
+import { getSessionByIdentifier } from '../db/queries/sessions.js';
+import {
+  isStepUpVerificationFresh,
+  resolveSessionIdentifierFromRequest,
+} from '../services/sessionSecurity.service.js';
 
 export async function requireStepUp(req: AuthedRequest, res: Response, next: NextFunction) {
   if (!req.user) {
@@ -8,13 +12,23 @@ export async function requireStepUp(req: AuthedRequest, res: Response, next: Nex
     return;
   }
 
-  if (process.env.NODE_ENV === 'development') {
+  const allowDevBypass =
+    process.env.NODE_ENV !== 'production' &&
+    (process.env.SIGFLO_ALLOW_DEV_STEP_UP_BYPASS === '1' ||
+      process.env.SIGFLO_ALLOW_DEV_STEP_UP_BYPASS === 'true');
+  if (allowDevBypass) {
     next();
     return;
   }
 
-  const state = await getSessionStateForUser(req.user.userId);
-  if (!isStepUpVerificationFresh(state.stepUpVerifiedAt)) {
+  const sid = resolveSessionIdentifierFromRequest(req);
+  if (!sid) {
+    res.status(403).json({ error: 'Step-up verification required.' });
+    return;
+  }
+
+  const session = await getSessionByIdentifier(req.user.userId, sid);
+  if (!session || session.revokedAt || !isStepUpVerificationFresh(session.stepUpVerifiedAt)) {
     res.status(403).json({ error: 'Step-up verification required.' });
     return;
   }

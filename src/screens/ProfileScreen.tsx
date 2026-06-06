@@ -8,6 +8,7 @@ import { useFeedback } from '@/context/FeedbackContext';
 import { useSignalEngine } from '@/hooks/useSignalEngine';
 import { supabase } from '@/lib/supabase';
 import { formatFundingBalance } from '@/lib/formatFundingBalance';
+import { updateChecklist } from '@/lib/onboardingChecklist';
 import { getOAuthRedirectToProfile } from '@/lib/oauthRedirectOrigin';
 import {
   BYBIT_API_KEYS_HREF,
@@ -20,6 +21,7 @@ import {
 import { sanitizeUserFacingHttpErrorMessage } from '@/lib/httpErrorMessage';
 import { getManualTrades } from '@/lib/tradeSourceFilter';
 import { playUiTapSound } from '@/utils/sound';
+import { AndroidAppSection } from '@/components/profile/AndroidAppSection';
 import type { ExchangeId, ExchangeSnapshot } from '@/types/integrations';
 
 const MFA_TOTP_FRIENDLY_NAME = 'Sigflo Account';
@@ -131,6 +133,13 @@ export default function ProfileScreen() {
     code: string;
   } | null>(null);
   const { items: integrations, loading: integrationsLoading, error: integrationsError, refresh: refreshIntegrations, connect, disconnect, setActive } = useExchangeIntegrations();
+  const anyExchangeConnected = useMemo(
+    () => integrations.some((i) => i.status === 'connected'),
+    [integrations],
+  );
+  useEffect(() => {
+    if (anyExchangeConnected) updateChecklist({ connectedExchange: true });
+  }, [anyExchangeConnected]);
   const { open: openFeedback } = useFeedback();
   const [activateBusy, setActivateBusy] = useState<string | null>(null); // accountId being activated
   const { items: snapshots, closedTrades, loading: snapshotLoading, error: snapshotError, refresh: refreshSnapshots } =
@@ -778,8 +787,8 @@ export default function ProfileScreen() {
                     apiSecret: exchangeForm.apiSecret,
                     passphrase: exchangeForm.passphrase || undefined,
                   });
-                  await refreshSnapshots();
                   closeConnectPanel();
+                  await refreshSnapshots();
                 } catch (e) {
                   setConnectError(
                     e instanceof Error ? sanitizeUserFacingHttpErrorMessage(e.message) : 'Connection failed.',
@@ -977,7 +986,13 @@ export default function ProfileScreen() {
             <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-sigflo-accent">Authenticator setup</p>
             {totpSetup.qrCode ? (
               <div className="mt-2 flex justify-center rounded-lg border border-white/[0.08] bg-[#08090d] p-2">
-                <div className="rounded bg-white p-2" dangerouslySetInnerHTML={{ __html: totpSetup.qrCode }} />
+                <iframe
+                  title="TOTP QR Code"
+                  srcDoc={totpSetup.qrCode}
+                  sandbox=""
+                  className="rounded bg-white p-2 border-0"
+                  style={{ width: 200, height: 200 }}
+                />
               </div>
             ) : (
               <p className="mt-2 text-[11px] text-sigflo-muted">QR not available — use manual setup key or the link below.</p>
@@ -1092,6 +1107,10 @@ export default function ProfileScreen() {
                     await disconnect(disconnectTarget);
                     await refreshSnapshots();
                     setDisconnectTarget(null);
+                  } catch (e) {
+                    setConnectError(
+                      e instanceof Error ? e.message : 'Disconnect failed.',
+                    );
                   } finally {
                     setDisconnectBusy(false);
                   }
@@ -1122,6 +1141,8 @@ export default function ProfileScreen() {
           </svg>
         </button>
       </section>
+
+      <AndroidAppSection />
 
       {/* ── Legal & disclosures ── */}
       <section className="rounded-2xl border border-white/[0.06] bg-sigflo-surface sigflo-panel-texture p-3.5">

@@ -6,9 +6,9 @@ import { useBotStatuses } from '@/hooks/useBotStatuses';
 import { useExchangeIntegrations } from '@/hooks/useExchangeIntegrations';
 import { useFeedback } from '@/context/FeedbackContext';
 import { useSignalEngine } from '@/hooks/useSignalEngine';
-import { readTradingStyleChoice } from '@/lib/tradingStyleOnboarding';
 import { supabase } from '@/lib/supabase';
 import { formatFundingBalance } from '@/lib/formatFundingBalance';
+import { updateChecklist } from '@/lib/onboardingChecklist';
 import { getOAuthRedirectToProfile } from '@/lib/oauthRedirectOrigin';
 import {
   BYBIT_API_KEYS_HREF,
@@ -19,7 +19,9 @@ import {
   MEXC_SIGN_UP_HREF,
 } from '@/lib/exchangeTransferUrls';
 import { sanitizeUserFacingHttpErrorMessage } from '@/lib/httpErrorMessage';
+import { getManualTrades } from '@/lib/tradeSourceFilter';
 import { playUiTapSound } from '@/utils/sound';
+import { AndroidAppSection } from '@/components/profile/AndroidAppSection';
 import type { ExchangeId, ExchangeSnapshot } from '@/types/integrations';
 
 const MFA_TOTP_FRIENDLY_NAME = 'Sigflo Account';
@@ -131,6 +133,13 @@ export default function ProfileScreen() {
     code: string;
   } | null>(null);
   const { items: integrations, loading: integrationsLoading, error: integrationsError, refresh: refreshIntegrations, connect, disconnect, setActive } = useExchangeIntegrations();
+  const anyExchangeConnected = useMemo(
+    () => integrations.some((i) => i.status === 'connected'),
+    [integrations],
+  );
+  useEffect(() => {
+    if (anyExchangeConnected) updateChecklist({ connectedExchange: true });
+  }, [anyExchangeConnected]);
   const { open: openFeedback } = useFeedback();
   const [activateBusy, setActivateBusy] = useState<string | null>(null); // accountId being activated
   const { items: snapshots, closedTrades, loading: snapshotLoading, error: snapshotError, refresh: refreshSnapshots } =
@@ -169,25 +178,28 @@ export default function ProfileScreen() {
   const lastSynced = primaryIntegration?.lastValidatedAt
     ? new Date(primaryIntegration.lastValidatedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
     : null;
+  const manualClosedTrades = useMemo(() => getManualTrades(closedTrades), [closedTrades]);
   const signalCount = signals.length;
   const winRate = useMemo(() => {
-    if (closedTrades.length === 0) return '—';
-    const wins = closedTrades.filter((trade) => trade.closedPnl > 0).length;
-    return `${Math.round((wins / closedTrades.length) * 100)}%`;
-  }, [closedTrades]);
+    if (manualClosedTrades.length === 0) return '—';
+    const wins = manualClosedTrades.filter((trade) => trade.closedPnl > 0).length;
+    return `${Math.round((wins / manualClosedTrades.length) * 100)}%`;
+  }, [manualClosedTrades]);
   const avgRr = useMemo(() => {
-    if (closedTrades.length === 0) return '1.9';
-    const wins = closedTrades.filter((trade) => trade.closedPnl > 0).map((trade) => trade.closedPnl);
-    const losses = closedTrades.filter((trade) => trade.closedPnl < 0).map((trade) => Math.abs(trade.closedPnl));
+    if (manualClosedTrades.length === 0) return '1.9';
+    const wins = manualClosedTrades.filter((trade) => trade.closedPnl > 0).map((trade) => trade.closedPnl);
+    const losses = manualClosedTrades.filter((trade) => trade.closedPnl < 0).map((trade) => Math.abs(trade.closedPnl));
     if (wins.length === 0 || losses.length === 0) return '—';
     const avgWin = wins.reduce((sum, value) => sum + value, 0) / wins.length;
     const avgLoss = losses.reduce((sum, value) => sum + value, 0) / losses.length;
     return (avgWin / Math.max(avgLoss, 0.0001)).toFixed(1);
-  }, [closedTrades]);
+  }, [manualClosedTrades]);
   const activeBotCount = useMemo(
     () => Object.values(statusMap).filter((status) => status === 'active').length,
     [statusMap],
   );
+  const totalBotCount = useMemo(() => Object.keys(statusMap).length, [statusMap]);
+  const pausedBotCount = Math.max(0, totalBotCount - activeBotCount);
   const apiConnected = !integrationsError && !snapshotError;
   const dataStatus = signalConnection === 'connected' ? 'Live' : signalConnection === 'reconnecting' ? 'Syncing' : 'Offline';
   const syncIssue = integrationsError || snapshotError;
@@ -775,8 +787,8 @@ export default function ProfileScreen() {
                     apiSecret: exchangeForm.apiSecret,
                     passphrase: exchangeForm.passphrase || undefined,
                   });
-                  await refreshSnapshots();
                   closeConnectPanel();
+                  await refreshSnapshots();
                 } catch (e) {
                   setConnectError(
                     e instanceof Error ? sanitizeUserFacingHttpErrorMessage(e.message) : 'Connection failed.',
@@ -823,20 +835,6 @@ export default function ProfileScreen() {
           })}
         </div>
         <p className={`mt-2 text-xs ${riskColor}`}>Risk profile: {riskMode}</p>
-        <div className="mt-3 flex items-center justify-between gap-2 rounded-lg border border-white/[0.06] bg-sigflo-elevated px-3 py-2">
-          <div>
-            <p className="text-[11px] font-semibold text-white">Your style</p>
-            <p className="text-[11px] text-sigflo-muted">
-              {readTradingStyleChoice() ?? 'Not set'}
-            </p>
-          </div>
-          <Link
-            to="/onboarding"
-            className="rounded-lg border border-white/[0.12] bg-white/[0.04] px-2.5 py-1 text-[10px] font-semibold text-sigflo-text transition hover:bg-white/[0.08]"
-          >
-            Change
-          </Link>
-        </div>
       </section>
 
       <section className="rounded-2xl border border-white/[0.06] bg-sigflo-surface sigflo-panel-texture p-3.5">
@@ -913,11 +911,37 @@ export default function ProfileScreen() {
       </section>
 
       <section className="rounded-2xl border border-white/[0.06] bg-sigflo-surface sigflo-panel-texture p-3.5">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-sigflo-muted">Bot Stats</p>
+        <div className="mt-2.5 grid grid-cols-3 gap-2 text-center">
+          <div className="rounded-xl border border-white/[0.06] bg-sigflo-elevated px-2 py-2.5">
+            <p className="text-[10px] uppercase tracking-[0.12em] text-sigflo-muted">Active</p>
+            <p className="mt-1 text-base font-bold text-cyan-200">{activeBotCount.toLocaleString()}</p>
+          </div>
+          <div className="rounded-xl border border-white/[0.06] bg-sigflo-elevated px-2 py-2.5">
+            <p className="text-[10px] uppercase tracking-[0.12em] text-sigflo-muted">Paused</p>
+            <p className="mt-1 text-base font-bold text-amber-200">{pausedBotCount.toLocaleString()}</p>
+          </div>
+          <div className="rounded-xl border border-white/[0.06] bg-sigflo-elevated px-2 py-2.5">
+            <p className="text-[10px] uppercase tracking-[0.12em] text-sigflo-muted">Total</p>
+            <p className="mt-1 text-base font-bold text-white">{totalBotCount.toLocaleString()}</p>
+          </div>
+        </div>
+        <p className="mt-2 text-[11px] text-sigflo-muted">Based on your saved bot states</p>
+      </section>
+
+      <section className="rounded-2xl border border-white/[0.06] bg-sigflo-surface sigflo-panel-texture p-3.5">
         <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-sigflo-muted">System</p>
-        <div className="mt-2 grid grid-cols-3 gap-2">
+        <div className="mt-2 grid grid-cols-2 gap-2">
           <SystemIndicator label="API" value={apiConnected ? 'Connected' : 'Degraded'} active={apiConnected} />
           <SystemIndicator label="Data" value={dataStatus} active={signalConnection === 'connected'} />
-          <SystemIndicator label="Bots" value={`${activeBotCount} active`} active={activeBotCount > 0} />
+        </div>
+        <div className="mt-2">
+          <Link
+            to="/admin/feedback"
+            className="inline-flex rounded-lg border border-cyan-400/25 bg-cyan-500/[0.08] px-2.5 py-1.5 text-[11px] font-semibold text-cyan-100 transition hover:bg-cyan-500/[0.14]"
+          >
+            Open admin feedback dashboard
+          </Link>
         </div>
       </section>
 
@@ -962,7 +986,13 @@ export default function ProfileScreen() {
             <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-sigflo-accent">Authenticator setup</p>
             {totpSetup.qrCode ? (
               <div className="mt-2 flex justify-center rounded-lg border border-white/[0.08] bg-[#08090d] p-2">
-                <div className="rounded bg-white p-2" dangerouslySetInnerHTML={{ __html: totpSetup.qrCode }} />
+                <iframe
+                  title="TOTP QR Code"
+                  srcDoc={totpSetup.qrCode}
+                  sandbox=""
+                  className="rounded bg-white p-2 border-0"
+                  style={{ width: 200, height: 200 }}
+                />
               </div>
             ) : (
               <p className="mt-2 text-[11px] text-sigflo-muted">QR not available — use manual setup key or the link below.</p>
@@ -1077,6 +1107,10 @@ export default function ProfileScreen() {
                     await disconnect(disconnectTarget);
                     await refreshSnapshots();
                     setDisconnectTarget(null);
+                  } catch (e) {
+                    setConnectError(
+                      e instanceof Error ? e.message : 'Disconnect failed.',
+                    );
                   } finally {
                     setDisconnectBusy(false);
                   }
@@ -1107,6 +1141,8 @@ export default function ProfileScreen() {
           </svg>
         </button>
       </section>
+
+      <AndroidAppSection />
 
       {/* ── Legal & disclosures ── */}
       <section className="rounded-2xl border border-white/[0.06] bg-sigflo-surface sigflo-panel-texture p-3.5">

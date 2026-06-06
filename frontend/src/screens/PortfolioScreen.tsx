@@ -8,6 +8,7 @@ import { useFeedMiniCharts } from '@/hooks/useFeedMiniCharts';
 import { usePaperTrading } from '@/hooks/usePaperTrading';
 import type { TradeChartInterval } from '@/hooks/useLiveTradeMarket';
 import { useSignalEngine } from '@/hooks/useSignalEngine';
+import { getManualTrades } from '@/lib/tradeSourceFilter';
 import { formatQuoteNumber } from '@/lib/formatQuote';
 import {
   attributeBotNameForSymbol,
@@ -17,13 +18,15 @@ import {
   utcDayStartMs,
 } from '@/lib/portfolioBotAttribution';
 import { derivePositionAiExitStatus, positionAiExitMeta } from '@/lib/portfolioPositionAi';
+import { entryNotionalUsd, livePnlPercent } from '@/lib/positionRoe';
 import { positionBiasForLinearSymbol } from '@/lib/positionBiasStat';
 import { positionMicroInsight } from '@/lib/positionMicroInsight';
+import { formatSignedPercent, formatSignedUsd } from '@/lib/signedPnl';
 import { symbolToPair } from '@/lib/marketScannerRows';
 import { buildPortfolioPositionTradeQuery } from '@/lib/tradeNavigation';
 import { deriveBotsFromSignals } from '@/lib/bots';
 import { BYBIT_APP_ASSETS_HOME_HREF } from '@/lib/exchangeTransferUrls';
-import { normalizePositionPairKey } from '@/services/positions';
+import { buildPaperMarkByPair, normalizePositionPairKey } from '@/services/positions';
 import type { ExchangeSnapshot, PositionItem } from '@/types/integrations';
 import type { Candle } from '@/types/market';
 
@@ -75,21 +78,11 @@ function flattenPositions(snapshots: ExchangeSnapshot[]): Array<PositionItem & {
 }
 
 function positionNotionalUsd(p: PositionItem): number {
-  return Math.abs(p.size * p.entryPrice);
+  return entryNotionalUsd({ size: p.size, entryPrice: p.entryPrice, markPrice: p.markPrice });
 }
 
 function formatUsd2(n: number): string {
   return Math.abs(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-}
-
-function fmtSignedUsd(n: number): string {
-  const sign = n >= 0 ? '+' : '−';
-  return `${sign}$${formatUsd2(n)}`;
-}
-
-function fmtSignedPct(n: number): string {
-  const sign = n >= 0 ? '+' : '−';
-  return `${sign}${Math.abs(n).toFixed(1)}%`;
 }
 
 function pairLabel(symbol: string): string {
@@ -250,26 +243,46 @@ export default function PortfolioScreen() {
     () => mergedBots.map((b) => (b.watchedPairs[0] ?? 'BTC').toUpperCase()),
     [mergedBots],
   );
+  const paperSnapshotForKeys = usePaperTrading();
+  const paperPositionPairKeys = useMemo(
+    () => (paperSnapshotForKeys?.positions ?? []).map((p) => normalizePositionPairKey(p.pair)),
+    [paperSnapshotForKeys?.positions],
+  );
+  const paperMiniBases = useMemo(
+    () => paperPositionPairKeys.map((k) => (k.endsWith('USDT') ? k.slice(0, -4) : k.endsWith('USDC') ? k.slice(0, -4) : k)),
+    [paperPositionPairKeys],
+  );
   const miniChartPairs = useMemo(
-    () => [...new Set(['BTC', ...positionPairKeys, ...botChartPairs])],
-    [positionPairKeys, botChartPairs],
+    () => [...new Set(['BTC', ...positionPairKeys, ...botChartPairs, ...paperMiniBases])],
+    [positionPairKeys, botChartPairs, paperMiniBases],
   );
   const miniCandles = useFeedMiniCharts(miniChartPairs, {
     interval: PORTFOLIO_MINI_INTERVAL,
-    fastPairs: positionPairKeys,
+    fastPairs: [...new Set([...positionPairKeys, ...paperMiniBases])],
     refreshMs: 45_000,
     fastRefreshMs: 12_000,
   });
-  const paperMarkByPair = useMemo(() => {
+  const lastCloseByPairBase = useMemo(() => {
     const out: Record<string, number> = {};
-    for (const [symbol, ticker] of Object.entries(liveTickersBySymbol)) {
-      if (!(ticker != null && Number.isFinite(ticker.lastPrice) && ticker.lastPrice > 0)) continue;
-      out[normalizePositionPairKey(symbolToPair(symbol))] = ticker.lastPrice;
+    for (const [pair, candles] of Object.entries(miniCandles)) {
+      const close = candles.at(-1)?.close;
+      if (close != null && Number.isFinite(close) && close > 0) out[pair] = close;
     }
     return out;
-  }, [liveTickersBySymbol]);
+  }, [miniCandles]);
+  const paperMarkByPair = useMemo(
+    () =>
+      buildPaperMarkByPair(liveTickersBySymbol, {
+        positionPairKeys: paperPositionPairKeys,
+        lastCloseByPairBase,
+      }),
+    [liveTickersBySymbol, paperPositionPairKeys, lastCloseByPairBase],
+  );
   const paperSnapshot = usePaperTrading(paperMarkByPair);
   const paperPositions = paperSnapshot?.positions ?? [];
+  /** Paper trades run with no exchange book, or with a linked exchange that has no open legs. */
+  const showPaperPortfolio =
+    !connected || (paperPositions.length > 0 && positions.length === 0);
   const paperOrderRows = useMemo(() => (paperSnapshot?.orders ?? []).slice(0, 10), [paperSnapshot?.orders]);
 
   const netWorth = useMemo(
@@ -277,10 +290,12 @@ export default function PortfolioScreen() {
     [connected, snapshots],
   );
 
+  const manualClosedTrades = useMemo(() => getManualTrades(closedTrades), [closedTrades]);
+
   const dayStartMs = useMemo(() => utcDayStartMs(), []);
   const closedToday = useMemo(
-    () => closedTradesSinceUtc(closedTrades, dayStartMs),
-    [closedTrades, dayStartMs],
+    () => closedTradesSinceUtc(manualClosedTrades, dayStartMs),
+    [manualClosedTrades, dayStartMs],
   );
   const todayPnl = useMemo(
     () => (connected ? closedToday.reduce((s, t) => s + t.closedPnl, 0) : 0),
@@ -300,9 +315,14 @@ export default function PortfolioScreen() {
   }, [statusMap, liveBots]);
 
   const botDayStats = useMemo(
-    () => buildBotDayStats(mergedBots, closedToday),
-    [mergedBots, closedToday],
+    () => buildBotDayStats(mergedBots, closedTradesSinceUtc(closedTrades, dayStartMs)),
+    [mergedBots, closedTrades, dayStartMs],
   );
+
+  const paperTotalPnlUsd = useMemo(() => {
+    if (!paperSnapshot) return 0;
+    return paperSnapshot.equityUsd - paperSnapshot.startingBalanceUsd;
+  }, [paperSnapshot]);
 
   const overviewSparkSeries = useMemo(() => {
     // Prefer the first active position's price data — more relevant than a BTC proxy
@@ -313,10 +333,12 @@ export default function PortfolioScreen() {
     }
     const btc = candleCloses(miniCandles['BTC']);
     if (btc.length >= 2) return btc;
-    const nw = connected ? netWorth : 2500;
-    const up = connected ? todayPnl >= 0 : true;
+    const nw = showPaperPortfolio
+      ? paperSnapshot?.equityUsd ?? paperSnapshot?.startingBalanceUsd ?? 10_000
+      : netWorth || 2500;
+    const up = showPaperPortfolio ? paperTotalPnlUsd >= 0 : todayPnl >= 0;
     return buildSparklineSeries(Math.max(nw, 0.01), up);
-  }, [miniCandles, positions, connected, netWorth, todayPnl]);
+  }, [miniCandles, positions, showPaperPortfolio, netWorth, todayPnl, paperSnapshot, paperTotalPnlUsd]);
   const { line: sparkPath, area: sparkArea } = useMemo(
     () => sparklinePath(overviewSparkSeries, 320, 72),
     [overviewSparkSeries],
@@ -327,32 +349,32 @@ export default function PortfolioScreen() {
   }, [overviewSparkSeries]);
 
   const historyRows = useMemo(() => {
-    const sorted = [...closedTrades].sort(
+    const sorted = [...manualClosedTrades].sort(
       (a, b) => new Date(b.closedAt).getTime() - new Date(a.closedAt).getTime(),
     );
     return sorted.slice(0, 10);
-  }, [closedTrades]);
+  }, [manualClosedTrades]);
 
   const realizedPnlByExchangeSymbol = useMemo(() => {
     const map = new Map<string, number>();
-    for (const t of closedTrades) {
+    for (const t of manualClosedTrades) {
       const key = `${t.exchange}:${t.symbol}`;
       map.set(key, (map.get(key) ?? 0) + t.closedPnl);
     }
     return map;
-  }, [closedTrades]);
+  }, [manualClosedTrades]);
 
-  const displayNet = connected
-    ? netWorth
-    : paperSnapshot?.equityUsd ?? paperSnapshot?.startingBalanceUsd ?? 10_000;
-  const displayPnl = connected ? todayPnl : paperSnapshot?.unrealizedPnlUsd ?? 0;
-  const displayPnlPct = connected
-    ? todayPct
-    : displayNet > 0
-      ? (displayPnl / displayNet) * 100
-      : 0;
-  const displayPnlLabel = connected ? 'today' : 'unrealized';
-  const activePositionCount = connected ? positions.length : paperPositions.length;
+  const displayNet = showPaperPortfolio
+    ? paperSnapshot?.equityUsd ?? paperSnapshot?.startingBalanceUsd ?? 10_000
+    : netWorth;
+  const displayPnl = showPaperPortfolio ? paperTotalPnlUsd : todayPnl;
+  const displayPnlPct = showPaperPortfolio
+    ? paperSnapshot && paperSnapshot.startingBalanceUsd > 0
+      ? (paperTotalPnlUsd / paperSnapshot.startingBalanceUsd) * 100
+      : 0
+    : todayPct;
+  const displayPnlLabel = showPaperPortfolio ? 'total' : 'today';
+  const activePositionCount = showPaperPortfolio ? paperPositions.length : positions.length;
 
   return (
     <div
@@ -364,13 +386,13 @@ export default function PortfolioScreen() {
         <CardShell glow className="relative overflow-hidden">
           <div className="flex items-center justify-between gap-2">
             <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/40">Total balance</p>
-            {!connected ? (
+            {showPaperPortfolio ? (
               <span className="rounded-full border border-violet-400/25 bg-violet-500/[0.08] px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.14em] text-violet-100">
                 Paper Trading Mode
               </span>
             ) : null}
           </div>
-          {loading && connected ? (
+          {loading && connected && !showPaperPortfolio ? (
             <p className="mt-2 font-mono text-3xl font-bold text-white/40">…</p>
           ) : (
             <p className="mt-2 font-mono text-3xl font-bold tracking-tight text-white">${formatUsd2(displayNet)}</p>
@@ -381,15 +403,15 @@ export default function PortfolioScreen() {
               className={`text-lg font-bold tabular-nums ${displayPnl >= 0 ? '' : 'text-rose-300'}`}
               style={{ color: displayPnl >= 0 ? ACCENT : undefined }}
             >
-              {fmtSignedUsd(displayPnl)}
+              {formatSignedUsd(displayPnl)}
             </p>
             <p
               className={`text-sm font-semibold tabular-nums ${displayPnl >= 0 ? 'text-emerald-200/90' : 'text-rose-200/90'}`}
             >
-              {fmtSignedPct(displayPnlPct)} {displayPnlLabel}
+              {formatSignedPercent(displayPnlPct, 1)} {displayPnlLabel}
             </p>
           </div>
-          {!connected ? (
+          {showPaperPortfolio ? (
             <p className="mt-1 text-[11px] text-white/45">
               Simulated cash ${formatUsd2(paperSnapshot?.cashUsd ?? 10_000)} · Start exploring with virtual funds.
             </p>
@@ -437,14 +459,14 @@ export default function PortfolioScreen() {
         {/* 2. Active positions */}
         <section className="space-y-3">
           <SectionTitle>Active positions</SectionTitle>
-          {!connected && paperPositions.length === 0 ? (
+          {showPaperPortfolio && paperPositions.length === 0 ? (
             <CardShell>
               <p className="text-sm text-white/55">
                 No simulated positions yet. Open a paper trade from Trade or Bots to start tracking performance.
               </p>
             </CardShell>
           ) : null}
-          {!connected && paperPositions.length > 0 ? (
+          {showPaperPortfolio && paperPositions.length > 0 ? (
             <div className="space-y-3">
               {paperPositions.map((position) => {
                 const up = position.unrealizedPnl >= 0;
@@ -461,10 +483,10 @@ export default function PortfolioScreen() {
                         <p className="text-base font-bold tracking-tight text-white">{pairLabelText}</p>
                         <p className="mt-0.5 text-[10px] font-medium uppercase tracking-wider text-violet-200/80">Simulated position</p>
                         <p className={`mt-1 font-mono text-2xl font-bold tabular-nums ${up ? 'text-violet-100' : 'text-rose-300'}`}>
-                          {fmtSignedUsd(position.unrealizedPnl)}
+                          {formatSignedUsd(position.unrealizedPnl)}
                         </p>
                         <p className={`mt-0.5 font-mono text-sm font-semibold tabular-nums ${up ? 'text-violet-200/80' : 'text-rose-200/90'}`}>
-                          {fmtSignedPct(position.unrealizedPnlPct)} unrealized
+                          {formatSignedPercent(position.unrealizedPnlPct, 1)} unrealized
                         </p>
                         <p className="mt-1 text-[11px] text-white/45">
                           {formatQuoteNumber(position.entryPrice)} → {formatQuoteNumber(position.markPrice)}
@@ -486,8 +508,10 @@ export default function PortfolioScreen() {
               })}
             </div>
           ) : null}
-          {connected && loading ? <p className="text-sm text-white/45">Syncing positions…</p> : null}
-          {connected && !loading && positions.length === 0 ? (
+          {connected && !showPaperPortfolio && loading ? (
+            <p className="text-sm text-white/45">Syncing positions…</p>
+          ) : null}
+          {connected && !showPaperPortfolio && !loading && positions.length === 0 ? (
             <CardShell>
               <p className="text-base font-semibold text-white">Flat book</p>
               <p className="mt-1 text-sm text-white/50">No open risk — scan Feed when you are ready.</p>
@@ -501,18 +525,20 @@ export default function PortfolioScreen() {
             </CardShell>
           ) : null}
 
-          {connected && !loading && positions.length > 0 ? (
+          {connected && !showPaperPortfolio && !loading && positions.length > 0 ? (
             <div className="space-y-4">
               {positions.map((p) => {
                 const current = p.markPrice ?? p.entryPrice;
                 const pnl = p.unrealizedPnl ?? 0;
-                const lev = p.leverage != null && p.leverage > 0 ? p.leverage : 1;
-                const posNotional = Math.abs(p.size) * (current > 0 ? current : p.entryPrice);
-                const margin =
-                  p.positionIM != null && p.positionIM > 0
-                    ? p.positionIM
-                    : posNotional / Math.max(1, lev);
-                const pnlPct = margin > 0 ? (pnl / margin) * 100 : 0;
+                const pnlPct = livePnlPercent({
+                  side: p.side,
+                  unrealizedPnl: pnl,
+                  size: p.size,
+                  entryPrice: p.entryPrice,
+                  markPrice: current,
+                  leverage: p.leverage,
+                  positionIM: p.positionIM,
+                });
                 const up = pnl >= 0;
                 const realizedPnl = realizedPnlByExchangeSymbol.get(`${p.exchange}:${p.symbol}`) ?? 0;
                 const realizedUp = realizedPnl >= 0;
@@ -525,6 +551,8 @@ export default function PortfolioScreen() {
                   position: p,
                 });
                 const aiMeta = positionAiExitMeta(aiStatus);
+                const posExchange: 'bybit' | 'mexc' | undefined =
+                  p.exchange === 'bybit' || p.exchange === 'mexc' ? p.exchange : undefined;
                 const tradeExtras =
                   p.entryPrice > 0
                     ? {
@@ -533,6 +561,7 @@ export default function PortfolioScreen() {
                         posSize: p.size,
                         markPrice: current,
                         ...(p.leverage != null && p.leverage > 0 ? { leverage: p.leverage } : {}),
+                        ...(posExchange ? { exchange: posExchange } : {}),
                       }
                     : undefined;
                 const baseQuery = buildPortfolioPositionTradeQuery(p.symbol, p.side, tradeExtras);
@@ -586,17 +615,17 @@ export default function PortfolioScreen() {
                               className={`font-mono text-2xl font-bold tabular-nums tracking-tight ${up ? '' : 'text-rose-300'}`}
                               style={{ color: up ? ACCENT : undefined }}
                             >
-                              {fmtSignedUsd(pnl)}
+                              {formatSignedUsd(pnl)}
                             </p>
                             <p className={`mt-0.5 font-mono text-base font-semibold tabular-nums text-white/70`}>
-                              {fmtSignedPct(pnlPct)} live
+                              {formatSignedPercent(pnlPct, 1)} live
                             </p>
                             <p
                               className={`mt-0.5 font-mono text-[11px] font-semibold tabular-nums ${
                                 realizedUp ? 'text-emerald-200/90' : 'text-rose-200/90'
                               }`}
                             >
-                              {fmtSignedUsd(realizedPnl)} realized
+                              {formatSignedUsd(realizedPnl)} realized
                             </p>
                           </div>
                           <p className="mt-1 text-[11px] text-white/45">
@@ -745,7 +774,7 @@ export default function PortfolioScreen() {
                       className={`shrink-0 font-mono text-sm font-bold tabular-nums ${row.dailyPnl >= 0 ? '' : 'text-rose-300'}`}
                       style={{ color: row.dailyPnl >= 0 ? ACCENT : undefined }}
                     >
-                      {fmtSignedUsd(row.dailyPnl)}
+                      {formatSignedUsd(row.dailyPnl)}
                     </p>
                   </div>
                   <div className="mt-3 flex justify-between text-[11px] text-white/45">
@@ -771,7 +800,7 @@ export default function PortfolioScreen() {
         <section className="space-y-3">
           <SectionTitle>History</SectionTitle>
           <CardShell className="p-0 overflow-hidden">
-            {!connected ? (
+            {showPaperPortfolio ? (
               paperOrderRows.length === 0 ? (
                 <p className="p-4 text-sm text-white/45">No simulated orders yet. Open a paper trade to begin.</p>
               ) : (
@@ -791,7 +820,7 @@ export default function PortfolioScreen() {
                             <p className="font-mono text-sm text-white/80">${formatUsd2(order.notionalUsd)}</p>
                             {order.realizedPnlUsd != null ? (
                               <p className={`text-[10px] ${up ? 'text-emerald-200/90' : 'text-rose-200/90'}`}>
-                                {fmtSignedUsd(order.realizedPnlUsd)}
+                                {formatSignedUsd(order.realizedPnlUsd)}
                               </p>
                             ) : null}
                           </div>
@@ -826,9 +855,9 @@ export default function PortfolioScreen() {
                             className={`font-mono text-sm font-bold ${up ? '' : 'text-rose-300'}`}
                             style={{ color: up ? ACCENT : undefined }}
                           >
-                            {fmtSignedPct(eqPct)}
+                            {formatSignedPercent(eqPct, 1)}
                           </p>
-                          <p className="text-[10px] text-white/40">{fmtSignedUsd(t.closedPnl)}</p>
+                          <p className="text-[10px] text-white/40">{formatSignedUsd(t.closedPnl)}</p>
                         </div>
                       </div>
                     </li>
@@ -863,11 +892,15 @@ export default function PortfolioScreen() {
 
         {connected && positions.length > 0 ? (
           <p className="pb-4 text-center text-[11px] leading-relaxed text-white/35">
-            Open PnL: {fmtSignedUsd(unrealized)} unrealized across book.
+            Open PnL: {formatSignedUsd(unrealized)} unrealized across book.
           </p>
-        ) : !connected && paperPositions.length > 0 ? (
+        ) : showPaperPortfolio && paperPositions.length > 0 ? (
           <p className="pb-4 text-center text-[11px] leading-relaxed text-white/35">
-            Open PnL: {fmtSignedUsd(paperSnapshot?.unrealizedPnlUsd ?? 0)} across simulated positions.
+            Open PnL: {formatSignedUsd(paperSnapshot?.unrealizedPnlUsd ?? 0)} unrealized
+            {paperSnapshot && paperSnapshot.realizedPnlUsd !== 0
+              ? ` · ${formatSignedUsd(paperSnapshot.realizedPnlUsd)} realized`
+              : ''}
+            .
           </p>
         ) : null}
       </div>

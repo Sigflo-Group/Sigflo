@@ -25,6 +25,20 @@
 [functions]
   node_bundler = "esbuild"
 
+# Exchange API → proxy function to Railway backend.
+[[redirects]]
+  from = "/api/exchange/*"
+  to = "/.netlify/functions/exchange-proxy"
+  status = 200
+  force = true
+
+# Same under VITE_BASE=/feed/
+[[redirects]]
+  from = "/feed/api/exchange/*"
+  to = "/.netlify/functions/exchange-proxy"
+  status = 200
+  force = true
+
 # API routes → functions (must appear before the SPA catch‑all).
 [[redirects]]
   from = "/api/ai/suggest"
@@ -152,10 +166,28 @@
     Cache-Control = "public, max-age=31536000, immutable"
 
 # Baseline security (effective once the site is served over HTTPS). Enable “Force HTTPS” + SSL in Netlify → Domain management.
+
+# Legal doc pages are loaded in iframes by the SPA — allow same-origin framing.
+[[headers]]
+  for = "/disclosure/index.html"
+  [headers.values]
+    X-Frame-Options = "SAMEORIGIN"
+
+[[headers]]
+  for = "/terms/index.html"
+  [headers.values]
+    X-Frame-Options = "SAMEORIGIN"
+
+[[headers]]
+  for = "/privacy/index.html"
+  [headers.values]
+    X-Frame-Options = "SAMEORIGIN"
+
 [[headers]]
   for = "/*"
   [headers.values]
-    X-Frame-Options = "DENY"
+    X-Frame-Options = "SAMEORIGIN"
     X-Content-Type-Options = "nosniff"
     Referrer-Policy = "strict-origin-when-cross-origin"
     Permissions-Policy = "camera=(), microphone=(), geolocation=()"
+    Content-Security-Policy = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' https: wss:; frame-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'"

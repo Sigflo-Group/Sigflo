@@ -9,6 +9,7 @@ import { decryptBrokerCredential } from '../services/exchangeKey.service.js';
 import { getBrokerAccountForUser } from '../db/queries/brokerAccounts.js';
 import { db } from '../db/index.js';
 import { log } from '../lib/logger.js';
+import { clientSafeExchangeError } from '../lib/clientSafeError.js';
 
 const SUPPORTED: ExchangeId[] = getSupportedExchanges();
 const MAX_AUDIT_LOG_ROWS = 50;
@@ -98,8 +99,7 @@ export async function postAuditPermissions(req: AuthedRequest, res: Response) {
       apiSecret: decryptBrokerCredential(account.apiSecretEncrypted),
     });
   } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    return res.status(400).json({ error: `Permission check failed: ${msg}` });
+    return res.status(400).json({ error: clientSafeExchangeError(e, 'Permission check failed.') });
   }
 
   const audit = auditPermissions(validation.permission);

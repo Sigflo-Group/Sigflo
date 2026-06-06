@@ -2,11 +2,13 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { MarketNewsScanSheet } from '@/components/news/MarketNewsScanSheet';
 import { SignalCard } from '@/components/feed/SignalCard';
+import { OnboardingChecklist } from '@/components/feed/OnboardingChecklist';
 import { useFeedMiniCharts } from '@/hooks/useFeedMiniCharts';
 import { useSyncedTradeChartInterval } from '@/hooks/useSyncedTradeChartInterval';
 import { tradeChartIntervalShortLabel } from '@/lib/tradeChartIntervalPreference';
 import { useSignalEngine } from '@/hooks/useSignalEngine';
 import { dismissFeedWelcome, isFeedWelcomeDismissed } from '@/lib/feedWelcomeBanner';
+import { updateChecklist } from '@/lib/onboardingChecklist';
 import {
   buildTrackedFallbackSignal,
   deriveMarketStatus,
@@ -14,7 +16,6 @@ import {
   symbolToPair,
   TRACKED_SYMBOLS,
 } from '@/lib/marketScannerRows';
-import { STRATEGY_PERSONALITY_PROFILES, type StrategyPersonalityMode } from '@/lib/strategyPersonality';
 
 type FeedFilter = 'all' | 'strong' | 'actionable' | 'risky';
 
@@ -26,7 +27,7 @@ const filterChips: { id: FeedFilter; label: string }[] = [
 ];
 
 export function FeedScreen() {
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const queryFilter = searchParams.get('filter');
   const initialFilter: FeedFilter =
     queryFilter === 'strong' || queryFilter === 'actionable' || queryFilter === 'risky' || queryFilter === 'all'
@@ -44,9 +45,6 @@ export function FeedScreen() {
     loading,
     mode,
     connection,
-    strategyPersonalityMode,
-    setStrategyPersonalityMode,
-    userAdaptation,
   } = useSignalEngine();
 
   /** Tracked watchlist pairs with no engine emission yet — same shells as Markets “Tracked”. */
@@ -62,8 +60,19 @@ export function FeedScreen() {
     const next = searchParams.get('filter');
     if (next === 'strong' || next === 'actionable' || next === 'risky' || next === 'all') {
       setFilter(next);
+      return;
     }
-  }, [searchParams]);
+    if (next == null || next === '') {
+      setFilter('all');
+      return;
+    }
+    setFilter('all');
+    setSearchParams((prev) => {
+      const qp = new URLSearchParams(prev);
+      qp.delete('filter');
+      return qp;
+    }, { replace: true });
+  }, [searchParams, setSearchParams]);
 
   const signals = useMemo(() => {
     if (filter === 'strong') return feedSignalsBase.filter((s) => s.setupScore >= 75);
@@ -133,7 +142,7 @@ export function FeedScreen() {
           ) : null}
         </div>
 
-        {showWelcome ? (
+          {showWelcome ? (
           <div className="rounded-2xl border border-sigflo-accent/20 bg-sigflo-accent/[0.04] px-4 py-3.5">
             <div className="flex items-start justify-between gap-2">
               <p className="text-xs font-bold uppercase tracking-[0.14em] text-sigflo-accent">Welcome to Sigflo</p>
@@ -168,7 +177,9 @@ export function FeedScreen() {
               </div>
             </div>
           </div>
-        ) : null}
+        ) : (
+          <OnboardingChecklist />
+        )}
 
         <button
           type="button"
@@ -186,32 +197,6 @@ export function FeedScreen() {
         </button>
 
         {/* Filter chips */}
-        <div className="space-y-2">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-sigflo-muted">Strategy personality</p>
-          <div className="flex flex-wrap gap-2">
-            {(Object.keys(STRATEGY_PERSONALITY_PROFILES) as StrategyPersonalityMode[]).map((m) => {
-              const active = strategyPersonalityMode === m;
-              return (
-                <button
-                  key={m}
-                  type="button"
-                  onClick={() => setStrategyPersonalityMode(m)}
-                  className={`rounded-full border px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] transition ${
-                    active
-                      ? 'border-sigflo-accent/45 bg-sigflo-accentDim text-sigflo-accent'
-                      : 'border-white/[0.08] bg-sigflo-elevated text-sigflo-muted hover:text-sigflo-text'
-                  }`}
-                >
-                  {STRATEGY_PERSONALITY_PROFILES[m].label}
-                </button>
-              );
-            })}
-          </div>
-          <p className="text-[10px] text-sigflo-muted">
-            User adaptation: {userAdaptation.preferences.preferredTradeType} setups · {userAdaptation.preferences.preferredSignalFrequency} frequency · {userAdaptation.preferences.preferredRiskLevel} risk preference
-          </p>
-        </div>
-
         <div className="flex gap-2" aria-label="Filter signals">
           {filterChips.map((chip) => {
             const active = filter === chip.id;
@@ -219,7 +204,18 @@ export function FeedScreen() {
               <button
                 key={chip.id}
                 type="button"
-                onClick={() => setFilter(chip.id)}
+                onClick={() => {
+                  setFilter(chip.id);
+                  setSearchParams(
+                    (prev) => {
+                      const qp = new URLSearchParams(prev);
+                      if (chip.id === 'all') qp.delete('filter');
+                      else qp.set('filter', chip.id);
+                      return qp;
+                    },
+                    { replace: true },
+                  );
+                }}
                 className={`rounded-full px-4 py-1.5 text-xs font-semibold transition ${
                   active
                     ? 'bg-[#0f1f1a] text-sigflo-accent ring-1 ring-sigflo-accent/30'
@@ -253,6 +249,7 @@ export function FeedScreen() {
               signal={s}
               miniCandles={miniChartsByPair[s.pair.toUpperCase()]}
               intervalLabel={tradeChartIntervalShortLabel(feedChartInterval)}
+              onNavigate={() => updateChecklist({ viewedFirstSignal: true })}
             />
           ))}
         </div>

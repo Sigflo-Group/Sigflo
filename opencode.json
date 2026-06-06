@@ -1,0 +1,16 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "slack": {
+      "type": "local",
+      "command": ["npx", "-y", "slack-workspace-mcp-server"],
+      "enabled": true,
+      "environment": {
+        "SLACK_BOT_TOKEN": "${SLACK_BOT_TOKEN}"
+      }
+    }
+  },
+  "plugin": [
+    "./.opencode/plugins/opencode-link"
+  ]
+}

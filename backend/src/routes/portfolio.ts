@@ -1,7 +1,8 @@
 import { Router } from 'express';
 import type { AuthedRequest } from '../middleware/auth.js';
 import { listBrokerAccountsForUser } from '../db/queries/brokerAccounts.js';
-import { decryptBrokerCredential } from '../services/exchangeKey.service.js';
+import { resolveBrokerCredentials } from '../services/brokerCredentials.js';
+import { clientSafeExchangeError } from '../lib/clientSafeError.js';
 import { getAdapter } from '../core/exchange-registry.js';
 import { log } from '../lib/logger.js';
 import type { ClosedTradeItem, ExchangeId } from '../exchanges/types.js';
@@ -34,10 +35,7 @@ portfolioRouter.get('/accounts', async (req: AuthedRequest, res) => {
       const exchange = account.broker as ExchangeId;
       try {
         const adapter = getAdapter(exchange);
-        const creds = {
-          apiKey: decryptBrokerCredential(account.apiKeyEncrypted),
-          apiSecret: decryptBrokerCredential(account.apiSecretEncrypted),
-        };
+        const creds = await resolveBrokerCredentials(account);
         const [balances, positions, accountBreakdown] = await Promise.all([
           adapter.fetchBalances(creds),
           adapter.fetchPositions(creds),
@@ -51,7 +49,14 @@ portfolioRouter.get('/accounts', async (req: AuthedRequest, res) => {
           'Portfolio snapshot failed.',
           { exchange, error: msg },
         );
-        return { exchange, status: 'error', balances: [], positions: [], accountBreakdown: null, syncError: msg };
+        return {
+          exchange,
+          status: 'error',
+          balances: [],
+          positions: [],
+          accountBreakdown: null,
+          syncError: clientSafeExchangeError(error, 'Portfolio sync failed.'),
+        };
       }
     }),
   );
@@ -72,10 +77,7 @@ portfolioRouter.get('/closed-trades', async (req: AuthedRequest, res) => {
     const exchange = account.broker as ExchangeId;
     try {
       const adapter = getAdapter(exchange);
-      const creds = {
-        apiKey: decryptBrokerCredential(account.apiKeyEncrypted),
-        apiSecret: decryptBrokerCredential(account.apiSecretEncrypted),
-      };
+      const creds = await resolveBrokerCredentials(account);
       const rows = await adapter.fetchClosedTrades(creds, { limit: 50 });
       for (const row of rows) merged.push({ ...row, exchange });
     } catch (error) {

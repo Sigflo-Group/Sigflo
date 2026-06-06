@@ -1,4 +1,5 @@
 <!DOCTYPE html>
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -59,6 +60,11 @@
         text-transform: uppercase;
       }
 .hero h1 {
+        margin: 18px 0 14px;
+        font-size: clamp(40px, 7vw, 64px);
+        line-height: 1.05;
+        letter-spacing: -0.04em;
+      }
 
       .layout {
         display: grid;
@@ -104,7 +110,7 @@
         padding: 28px;
         box-shadow: 0 10px 40px rgba(0,0,0,0.28);
       }
- .section, .callout, .note { margin-top: 18px; }
+      .section, .callout, .note { margin-top: 18px; }
 
       .intro p, .section p, .callout p, .note p {
         margin: 0;
@@ -155,7 +161,23 @@
         color: rgba(255,255,255,0.86);
         font-size: 14px;
       }
- @media (max-width: 980px) {
+
+      @media (max-width: 980px) {
+        .layout {
+          grid-template-columns: 1fr;
+        }
+        .toc {
+          position: static;
+          order: 2;
+        }
+        .content {
+          max-width: 100%;
+        }
+      }
+
+      @media (max-width: 640px) {
+        .page {
+          width: min(calc(100% - 20px), var(--max));
           padding-top: 16px;
         }
         .hero {
@@ -166,7 +188,9 @@
           padding: 20px;
           border-radius: 18px;
         }
-        .hero h1 { font-size: 38px; }
+        .hero h1 {
+          font-size: 38px;
+        }
       }
     </style>
   </head>

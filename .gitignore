@@ -1,8 +1,12 @@
 node_modules
+
+# WhatsApp session material — never commit
+whatsapp-auth/
 dist
 *.local
 .env
 .env.*
+!.env.example
 .DS_Store
 
 # Local Netlify folder
@@ -16,3 +20,7 @@ dist
 
 # Continue IDE local config (models, MCP servers, secrets placeholders)
 .continue/
+
+# OpenCode config (may contain MCP server secrets / tokens)
+opencode.json
+.opencode/

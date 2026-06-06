@@ -5,6 +5,7 @@ import { fetchKlines, fetchTickers } from '@/services/bybit/client';
 import { fetchMexcKlines, fetchMexcTicker } from '@/services/mexc/publicClient';
 import type { Candle } from '@/types/market';
 import type { TradeChartCandle } from '@/types/trade';
+import { upsertCandle } from '@/lib/engineUtils';
 import type { ExchangeId } from '@/types/integrations';
 
 export type TradeChartInterval = '1' | '5' | '15' | '60' | '240' | 'D' | 'W';
@@ -49,7 +50,7 @@ export type LiveTradeMarketResult = LiveTradeState & {
 };
 
 const MEXC_PRICE_POLL_MS = 3_000;
-const MEXC_CANDLE_REFRESH_MS = 180_000;
+const MEXC_CANDLE_REFRESH_MS = 60_000;
 
 type LiveTradeMarketOptions = {
   /** Optional quote UI throttle override for high-responsiveness views (e.g. manage-mode PnL). */
@@ -59,14 +60,6 @@ type LiveTradeMarketOptions = {
   /** Exchange source for market data. Defaults to 'bybit' (uses Bybit public API + WS). Pass 'mexc' to use MEXC public REST polling instead. */
   exchange?: ExchangeId;
 };
-
-function upsertCandle(store: Candle[], next: Candle): Candle[] {
-  const out = [...store];
-  const last = out.at(-1);
-  if (!last || next.ts > last.ts) out.push(next);
-  else if (next.ts === last.ts) out[out.length - 1] = next;
-  return out.slice(-140);
-}
 
 function toBillions(v: number): string {
   if (v >= 1_000_000_000) return `$${(v / 1_000_000_000).toFixed(2)}B`;
@@ -197,7 +190,7 @@ export function useLiveTradeMarket(
       stopped = true;
       window.cancelAnimationFrame(raf);
     };
-  }, [symbol, interval, options?.uiThrottleMs]);
+  }, [symbol, interval, options?.uiThrottleMs, options?.immediateUiOnTick]);
 
   useEffect(() => {
     const isMexc = options?.exchange === 'mexc';
@@ -368,16 +361,6 @@ export function useLiveTradeMarket(
           fetchKlines(symbol, 'W', 140),
           fetchTickers([symbol]),
         ]);
-        candlesRef.current = {
-          '1': c1,
-          '5': c5,
-          '15': c15,
-          '60': c60,
-          '240': c240,
-          D: cD,
-          W: cW,
-        };
-        const active = candlesRef.current[interval];
         const t = tickers[0];
         if (!t || cancelled) {
           if (!cancelled) {
@@ -391,6 +374,16 @@ export function useLiveTradeMarket(
           }
           return;
         }
+        candlesRef.current = {
+          '1': c1,
+          '5': c5,
+          '15': c15,
+          '60': c60,
+          '240': c240,
+          D: cD,
+          W: cW,
+        };
+        const active = candlesRef.current[interval];
         readyRef.current = true;
 
         const markPx =
@@ -447,6 +440,7 @@ export function useLiveTradeMarket(
       includePublicTrades: true,
       onLog: (msg) => console.log(`[Sigflo][Trade] ${msg}`),
       onConnectionChange: (connection) => {
+        if (cancelled) return;
         setState((prev) => ({
           ...prev,
           connection,
@@ -459,7 +453,7 @@ export function useLiveTradeMarket(
                   ? 'REST'
                   : 'REST',
         }));
-        if (connection === 'connected') void bootstrap('reconnect');
+        if (connection === 'connected' && !cancelled) void bootstrap('reconnect');
       },
       onTicker: (t) => {
         if (t.symbol !== symbol) return;
@@ -589,12 +583,16 @@ export function useLiveTradeMarket(
     if (!active || active.length === 0) return;
     chartImmediateRef.current = true;
     pendingChartRef.current = true;
-    setState((prev) => ({
-      ...prev,
-      priceSeries: normalizeSeries(active),
-      chartCandles: toTradeCandles(active),
-    }));
-  }, [interval]);
+    setState((prev) => {
+      if (prev.dataSymbol != null && prev.dataSymbol !== symbol) return prev;
+      return {
+        ...prev,
+        dataSymbol: symbol,
+        priceSeries: normalizeSeries(active),
+        chartCandles: toTradeCandles(active),
+      };
+    });
+  }, [interval, symbol]);
 
   return useMemo(() => {
     const mismatched = state.dataSymbol != null && state.dataSymbol !== symbol;

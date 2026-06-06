@@ -33,6 +33,7 @@ export type TradeMiniChartProps = {
 const CHART_HEIGHT = 168;
 /** Vertical hit band for dragging stop / targets — keep narrow so pan/zoom reaches the chart canvas elsewhere. */
 const LEVEL_DRAG_BAND_PX = 26;
+const LEVEL_DRAG_HANDLE_WIDTH_PX = 48;
 
 const COL_ENTRY = 'rgba(0, 255, 200, 0.42)';
 const COL_STOP = 'rgba(220, 90, 90, 0.82)';
@@ -388,7 +389,7 @@ export function TradeMiniChart({
     <div className="w-full">
       <p className="mb-2 text-[10px] font-medium uppercase tracking-wide text-zinc-500">15m · last 50 bars</p>
       <div
-        className={`relative touch-pan-y overflow-hidden rounded-xl border bg-[#050505]/40 ${
+        className={`relative touch-none overflow-hidden rounded-xl border bg-[#050505]/40 ${
           planGeometryWarning ? 'border-amber-500/35 ring-1 ring-amber-500/25' : 'border-white/[0.08]'
         }`}
       >
@@ -409,8 +410,8 @@ export function TradeMiniChart({
           ? levelBands.map((b) => (
               <div
                 key={b.key}
-                className="absolute left-0 right-0 z-10 cursor-ns-resize touch-none"
-                style={{ top: b.top, height: b.height }}
+                className="absolute right-0 z-10 cursor-ns-resize touch-none"
+                style={{ top: b.top, height: b.height, width: LEVEL_DRAG_HANDLE_WIDTH_PX }}
                 onPointerDown={onBandPointerDown(b.kind, b.initialPrice)}
                 onPointerMove={onBandPointerMove}
                 onPointerUp={endDrag}

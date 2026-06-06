@@ -131,6 +131,7 @@ import { formatLinearPriceStringForBybit, linearTpSlStringsForOpen } from '@/lib
 import {
   attachMexcTpSlAfterEntry,
   findMexcOpenLeg,
+  mexcManualStopAlertMessage,
   mexcQtyFromLeg,
   pollForMexcPositionLeg,
 } from '@/lib/mexcTpSlAttach';
@@ -397,7 +398,11 @@ export function TradeScreen() {
   /** Futures: Bybit TP/SL trigger (mark / last / index) for new orders + manage TP/SL apply. */
   const [futuresTpSlTriggerBy, setFuturesTpSlTriggerBy] = useState<BybitTpSlTriggerBy>(DEFAULT_BYBIT_TPSL_TRIGGER);
   const [tradeToast, setTradeToast] = useState<string | null>(null);
-  const [tradeToastCta, setTradeToastCta] = useState<{ label: string; href: string } | null>(null);
+  const [tradeToastCta, setTradeToastCta] = useState<{
+    label: string;
+    href?: string;
+    onClick?: () => void;
+  } | null>(null);
   /** Bumps after `Notification.requestPermission()` so header/menu re-reads `Notification.permission`. */
   const [biasNotifyPermTick, setBiasNotifyPermTick] = useState(0);
   const [termsRetrySide, setTermsRetrySide] = useState<TradeSide | null>(null);
@@ -2602,7 +2607,11 @@ export function TradeScreen() {
   ]);
 
   const flashTradeToast = useCallback(
-    (message: string, durationMs = 2600, cta?: { label: string; href: string } | null) => {
+    (
+      message: string,
+      durationMs = 2600,
+      cta?: { label: string; href?: string; onClick?: () => void } | null,
+    ) => {
     setTradeToast(message);
       setTradeToastCta(cta ?? null);
       if (!cta) setTermsRetrySide(null);
@@ -2614,6 +2623,50 @@ export function TradeScreen() {
       }, durationMs);
     },
     [],
+  );
+
+  const alertMexcManualStopRequired = useCallback(
+    (detail?: string) => {
+      flashTradeToast(mexcManualStopAlertMessage(detail), 14_000, {
+        label: 'Set stop in Manage',
+        onClick: () => {
+          void (async () => {
+            const snaps = await refreshAccountSnapshots({ silent: false });
+            const mexc = snaps.find((s) => s.exchange === 'mexc' && s.status === 'connected');
+            const pos = mexc?.positions?.find((p) => p.symbol === orderSymbol && p.size > 0);
+            if (pos) {
+              const mark =
+                pos.markPrice != null && pos.markPrice > 0
+                  ? pos.markPrice
+                  : live.lastPrice != null && live.lastPrice > 0
+                    ? live.lastPrice
+                    : undefined;
+              navigate(
+                `/trade?${buildManageTradeQueryFromLinearPosition(pos, {
+                  markPrice: mark,
+                  leverageFallback: effectiveFuturesLeverage,
+                })}`,
+              );
+              return;
+            }
+            flashTradeToast('Position still syncing — open it from Portfolio, then set your stop again.', 9000);
+          })();
+        },
+      });
+      exitAuto.pushActivity({
+        kind: 'exit_state',
+        message: 'Stop-loss not set on MEXC — set it manually in Manage.',
+      });
+    },
+    [
+      effectiveFuturesLeverage,
+      exitAuto.pushActivity,
+      flashTradeToast,
+      live.lastPrice,
+      navigate,
+      orderSymbol,
+      refreshAccountSnapshots,
+    ],
   );
 
   const onSideChange = useCallback(
@@ -3264,11 +3317,12 @@ export function TradeScreen() {
             const tpSlToAttach = { ...synced.tpSl };
             if (synced.skippedStop) delete tpSlToAttach.stopLoss;
             if (userRequestedStopLoss && (synced.skippedStop || !synced.tpSl.stopLoss)) {
-              flashTradeToast(
-                mexcLeg
-                  ? 'Entry filled but stop-loss did not match the fill price — position stays open; set stop in Manage.'
-                  : 'Entry submitted — waiting for MEXC position sync before stop-loss can attach. Check Manage in a few seconds.',
-                9000,
+              alertMexcManualStopRequired(
+                synced.skippedStop
+                  ? 'Stop did not match fill price on MEXC'
+                  : mexcLeg
+                    ? 'Stop could not be prepared for this fill'
+                    : 'Position not synced yet',
               );
             }
             if (tpSlToAttach.takeProfit || tpSlToAttach.stopLoss) {
@@ -3316,11 +3370,19 @@ export function TradeScreen() {
                   });
                   await refreshAccountSnapshots({ silent: true });
                 },
-                onErrorToast: (message) => flashTradeToast(message, 7600),
+                onErrorToast: (message) => {
+                  if (userRequestedStopLoss && tpSlToAttach.stopLoss) {
+                    alertMexcManualStopRequired(message);
+                  } else {
+                    flashTradeToast(message, 7600);
+                  }
+                },
               });
-              if (!tpSlOk && userRequestedStopLoss) {
-                // Position remains open — user can set stop from Manage.
+              if (!tpSlOk && userRequestedStopLoss && tpSlToAttach.stopLoss) {
+                alertMexcManualStopRequired('Stop attach failed after retries');
               }
+            } else if (userRequestedStopLoss) {
+              alertMexcManualStopRequired('No stop level could be sent to MEXC');
             }
           }
           if (market === 'futures' && !isManageMode && hasUserTpSl && activeExchange !== 'mexc') {
@@ -3449,6 +3511,7 @@ export function TradeScreen() {
     },
     [
       activeExchange,
+      alertMexcManualStopRequired,
       amountUsd,
       bybitSnap,
       canExecute,
@@ -4302,7 +4365,15 @@ export function TradeScreen() {
                 <button
                   type="button"
                   onClick={() => {
-                    window.open(tradeToastCta.href, '_blank', 'noopener,noreferrer');
+                    if (tradeToastCta.onClick) {
+                      tradeToastCta.onClick();
+                      setTradeToast(null);
+                      setTradeToastCta(null);
+                      return;
+                    }
+                    if (tradeToastCta.href) {
+                      window.open(tradeToastCta.href, '_blank', 'noopener,noreferrer');
+                    }
                   }}
                   className="mt-2 w-full rounded-lg border border-[#00ffc8]/45 bg-[#00ffc8]/10 px-2.5 py-1.5 text-[11px] font-bold uppercase tracking-wide text-[#8fffe5] transition hover:bg-[#00ffc8]/18"
                 >

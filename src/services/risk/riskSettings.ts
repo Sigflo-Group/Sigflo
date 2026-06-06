@@ -131,6 +131,18 @@ export function countExchangeOpenLegs(positions: readonly { size: number }[] | n
   return positions.filter((p) => Math.abs(p.size) > 0).length;
 }
 
+/** Sum open legs across all connected exchange snapshots (cross-venue risk cap). */
+export function countAllConnectedExchangeOpenLegs(
+  snapshots: readonly { status: string; positions?: readonly { size: number }[] }[],
+): number {
+  let total = 0;
+  for (const snap of snapshots) {
+    if (snap.status !== 'connected') continue;
+    total += countExchangeOpenLegs(snap.positions);
+  }
+  return total;
+}
+
 /**
  * Positions counted toward max-open risk: prefer live exchange legs; if none, demo repository rows
  * (so the Bots strip still exercises the warning in demo).

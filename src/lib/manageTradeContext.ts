@@ -10,6 +10,10 @@ export type ManageTradePositionContext = {
   posSize?: number;
   /** From portfolio deep link when known; exchange snapshot overrides in Trade UI when connected. */
   leverage?: number;
+  /** Bybit hedge index from portfolio deep link (0 one-way, 1 long, 2 short). */
+  positionIdx?: number;
+  /** Venue that owns this leg when deep-linked from Portfolio. */
+  exchange?: 'bybit' | 'mexc';
 };
 
 export function parseManageTradeContext(params: URLSearchParams): ManageTradePositionContext | null {
@@ -38,6 +42,14 @@ export function parseManageTradeContext(params: URLSearchParams): ManageTradePos
   const leverage =
     Number.isFinite(levParsed) && levParsed > 0 ? Math.min(200, Math.round(levParsed)) : undefined;
 
+  const idxRaw = params.get('positionIdx');
+  const idxParsed = idxRaw != null && idxRaw !== '' ? Number(idxRaw) : NaN;
+  const positionIdx =
+    Number.isFinite(idxParsed) && idxParsed >= 0 ? Math.round(idxParsed) : undefined;
+
+  const exRaw = params.get('exchange');
+  const exchange = exRaw === 'bybit' || exRaw === 'mexc' ? exRaw : undefined;
+
   return {
     pair,
     side: sideRaw as TradeSide,
@@ -46,6 +58,8 @@ export function parseManageTradeContext(params: URLSearchParams): ManageTradePos
     markPrice,
     posSize: posSizeOut,
     leverage,
+    positionIdx,
+    exchange,
   };
 }
 

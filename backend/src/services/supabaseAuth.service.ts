@@ -1,4 +1,4 @@
-import { createRemoteJWKSet, decodeProtectedHeader, jwtVerify } from 'jose';
+import { createRemoteJWKSet, decodeJwt, decodeProtectedHeader, jwtVerify } from 'jose';
 import { env } from '../config/env.js';
 
 export type VerifiedAuthUser = {
@@ -11,18 +11,54 @@ function normalizeUrl(url: string): string {
   return url.replace(/\/+$/, '');
 }
 
-// Cached at module level so the JWKS is fetched once and reused across requests.
-let cachedJwks: ReturnType<typeof createRemoteJWKSet> | null = null;
-function getJwks(): ReturnType<typeof createRemoteJWKSet> | null {
-  if (!env.SUPABASE_URL) return null;
-  if (!cachedJwks) {
-    const base = normalizeUrl(env.SUPABASE_URL);
-    cachedJwks = createRemoteJWKSet(
-      new URL(`${base}/auth/v1/.well-known/jwks.json`),
-      { timeoutDuration: 5_000, cacheMaxAge: 300_000 }, // re-fetch every 5 min to handle key rotation
-    );
+/** Supabase asymmetric JWTs (RS256 legacy, ES256 current default on new projects). */
+const JWKS_ALGORITHMS = ['RS256', 'ES256'] as const;
+
+const jwksByUrl = new Map<string, ReturnType<typeof createRemoteJWKSet>>();
+
+function getJwksForUrl(jwksUrl: URL): ReturnType<typeof createRemoteJWKSet> {
+  const key = jwksUrl.toString();
+  let cached = jwksByUrl.get(key);
+  if (!cached) {
+    cached = createRemoteJWKSet(jwksUrl, {
+      timeoutDuration: 5_000,
+      cacheMaxAge: 300_000,
+    });
+    jwksByUrl.set(key, cached);
   }
-  return cachedJwks;
+  return cached;
+}
+
+/** Only trust Supabase-hosted issuers when deriving JWKS from the token itself. */
+function supabaseIssuerJwksUrl(iss: string): URL | null {
+  try {
+    const issuer = new URL(iss);
+    if (!issuer.hostname.endsWith('.supabase.co')) return null;
+    const base = normalizeUrl(iss);
+    if (!base.endsWith('/auth/v1')) return null;
+    return new URL(`${base}/.well-known/jwks.json`);
+  } catch {
+    return null;
+  }
+}
+
+function resolveJwksUrl(token: string): URL | null {
+  let iss: string | undefined;
+  try {
+    const payload = decodeJwt(token);
+    iss = typeof payload.iss === 'string' ? payload.iss : undefined;
+  } catch {
+    return null;
+  }
+
+  if (env.SUPABASE_URL) {
+    const base = normalizeUrl(env.SUPABASE_URL);
+    if (iss && !iss.startsWith(`${base}/auth/v1`)) return null;
+    return new URL(`${base}/auth/v1/.well-known/jwks.json`);
+  }
+
+  if (iss) return supabaseIssuerJwksUrl(iss);
+  return null;
 }
 
 async function verifyWithHs256(token: string): Promise<VerifiedAuthUser | null> {
@@ -39,13 +75,11 @@ async function verifyWithHs256(token: string): Promise<VerifiedAuthUser | null> 
 }
 
 async function verifyWithJwks(token: string): Promise<VerifiedAuthUser | null> {
-  const jwks = getJwks();
-  if (!jwks) return null;
+  const jwksUrl = resolveJwksUrl(token);
+  if (!jwksUrl) return null;
   try {
-    const base = normalizeUrl(env.SUPABASE_URL!);
-    const { payload } = await jwtVerify(token, jwks, { algorithms: ['RS256'] });
-    const iss = typeof payload.iss === 'string' ? payload.iss : '';
-    if (iss && !iss.startsWith(`${base}/auth/v1`)) return null;
+    const jwks = getJwksForUrl(jwksUrl);
+    const { payload } = await jwtVerify(token, jwks, { algorithms: [...JWKS_ALGORITHMS] });
     const id = typeof payload.sub === 'string' ? payload.sub : null;
     if (!id) return null;
     return { id, email: typeof payload.email === 'string' ? payload.email : undefined, claims: payload as Record<string, unknown> };
@@ -62,7 +96,7 @@ export async function verifySupabaseAccessToken(token: string): Promise<Verified
     return null;
   }
 
-  if (alg === 'RS256') {
+  if (alg === 'RS256' || alg === 'ES256') {
     return verifyWithJwks(token);
   }
   if (alg === 'HS256') {

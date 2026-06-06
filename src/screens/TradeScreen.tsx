@@ -847,16 +847,20 @@ export function TradeScreen() {
 
       if (!mexcSnap) continue;
       const mexcOverview = mexcSnap.accountBreakdown?.overview;
-      if (mexcOverview) {
+      const mexcDerivBucket = mexcSnap.accountBreakdown?.buckets?.find((b) => b.kind === 'derivatives');
+      const mexcFuturesAvail = mexcDerivBucket?.metrics?.availableBalance;
+      const mexcFuturesEquity = mexcDerivBucket?.metrics?.equity ?? mexcDerivBucket?.metrics?.walletBalance;
+      if (mexcOverview || mexcFuturesAvail != null) {
+        // Futures orders only consume the MEXC derivatives wallet — not spot USDT.
         return {
           exchange: 'mexc' as const,
-          availableToTrade: coerceUsdField(mexcOverview.availableToTrade),
-          totalWalletBalance: coerceUsdField(mexcOverview.totalWalletBalance),
-          totalEquity: coerceUsdField(mexcOverview.totalEquity),
+          availableToTrade: coerceUsdField(mexcFuturesAvail ?? mexcOverview?.availableToTrade ?? null),
+          totalWalletBalance: coerceUsdField(mexcFuturesEquity ?? mexcOverview?.totalWalletBalance ?? null),
+          totalEquity: coerceUsdField(mexcFuturesEquity ?? mexcOverview?.totalEquity ?? null),
           marginInUseUsd: null,
           utaUnrealizedPnl: null,
-          fundingWalletBalance: coerceUsdField(mexcOverview.fundingWalletBalance ?? null),
-          fundingPrimaryAsset: mexcOverview.fundingPrimaryAsset ?? null,
+          fundingWalletBalance: coerceUsdField(mexcOverview?.fundingWalletBalance ?? null),
+          fundingPrimaryAsset: mexcOverview?.fundingPrimaryAsset ?? null,
         };
       }
       const usdt = mexcSnap.balances?.find((b) => b.asset.toUpperCase() === 'USDT');
@@ -896,7 +900,7 @@ export function TradeScreen() {
     if (!tradeBalance) return undefined;
     if (tradeBalance.exchange === 'mexc') {
       if (market === 'futures') {
-        return 'Balances above update from your connected MEXC account. In Futures mode, Long/Short and Close place live orders.';
+        return 'Uses your MEXC Futures wallet only. If funds are in Spot, transfer USDT to Futures in the MEXC app, then Sync on Profile.';
       }
       return 'MEXC only supports futures — switch to Futures mode to place live orders.';
     }

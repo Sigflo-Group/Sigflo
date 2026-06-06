@@ -223,7 +223,13 @@ function normalizePriceToStep(priceRaw: string, priceUnitStr: string): string {
   return out === '' ? priceRaw.trim() : out;
 }
 
-function normalizeQtyToStep(qtyRaw: string, qtyStepStr: string, minQtyStr: string): string {
+function normalizeQtyToStep(
+  qtyRaw: string,
+  qtyStepStr: string,
+  minQtyStr: string,
+  opts?: { bumpToMin?: boolean },
+): string {
+  const bumpToMin = opts?.bumpToMin !== false;
   const n = Number(String(qtyRaw).trim().replace(/,/g, ''));
   const step = Number(qtyStepStr);
   const minQ = Number(minQtyStr);
@@ -233,6 +239,11 @@ function normalizeQtyToStep(qtyRaw: string, qtyStepStr: string, minQtyStr: strin
   let k = Math.floor(n / step + tol);
   let adj = k * step;
   if (adj < minQ - tol) {
+    if (!bumpToMin) {
+      throw new Error(
+        `Order size is below the MEXC minimum (${minQtyStr} contracts). Increase margin or order size.`,
+      );
+    }
     const minK = Math.ceil(minQ / step - tol);
     adj = minK * step;
   }
@@ -270,13 +281,39 @@ async function fetchInstrumentLot(symbol: string): Promise<MexcContractDetail | 
 }
 
 /** Convert base-asset qty string → MEXC contract `vol` string (step/min applied). */
-function baseQtyToContractVol(baseQty: string, lot: MexcContractDetail): string {
+function baseQtyToContractVol(
+  baseQty: string,
+  lot: MexcContractDetail,
+  opts?: { bumpToMin?: boolean },
+): string {
   const contractSize = Number(lot.contractSize);
   const raw =
     Number.isFinite(contractSize) && contractSize > 0
       ? String(Number(baseQty) / contractSize)
       : baseQty;
-  return normalizeQtyToStep(raw, lot.volumeUnit, lot.minVol);
+  return normalizeQtyToStep(raw, lot.volumeUnit, lot.minVol, opts);
+}
+
+async function ensureLinearLeverage(
+  input: ConnectInput,
+  mexcSymbol: string,
+  leverage: number,
+  positionType: 1 | 2,
+): Promise<void> {
+  const res = await futuresPrivatePost<MexcOrderResponse>(
+    '/api/v1/private/position/change_leverage',
+    {
+      symbol: mexcSymbol,
+      leverage,
+      openType: 1,
+      positionType,
+    },
+    input,
+  );
+  if (!res.success) {
+    const detail = res.message ?? (res.code != null ? `code=${res.code}` : undefined);
+    throw new Error(`MEXC leverage update failed${detail ? `: ${detail}` : ''}`);
+  }
 }
 
 /** "BTCUSDT" → "BTC_USDT" (inserts underscore before USDT) */
@@ -540,7 +577,7 @@ export class MexcAdapter implements ExchangeAdapter {
         throw new Error(`Could not load MEXC contract rules for ${mexcSymbol}. Try again shortly.`);
       }
       if (price) price = normalizePriceToStep(price, lot.priceUnit);
-      qty = baseQtyToContractVol(qty, lot);
+      qty = baseQtyToContractVol(qty, lot, { bumpToMin: params.reduceOnly === true });
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       log('warn', 'MEXC order qty normalization failed', { symbol: mexcSymbol, error: msg });
@@ -554,6 +591,11 @@ export class MexcAdapter implements ExchangeAdapter {
     else if (params.side === 'Sell' && !params.reduceOnly) mexcSide = 3; // open short
     else if (params.side === 'Sell' && params.reduceOnly) mexcSide = 4;  // close long
     else mexcSide = 2;                                                    // Buy + reduceOnly → close short
+
+    if (params.leverage != null && !params.reduceOnly) {
+      const positionType: 1 | 2 = params.side === 'Buy' ? 1 : 2;
+      await ensureLinearLeverage(input, mexcSymbol, params.leverage, positionType);
+    }
 
     const orderBody: MexcOrderRequest = {
       symbol: mexcSymbol,
@@ -646,7 +688,7 @@ export class MexcAdapter implements ExchangeAdapter {
       if (!lot) {
         throw new Error(`Could not load MEXC contract rules for ${mexcSymbol}. Try again shortly.`);
       }
-      contractVol = baseQtyToContractVol(baseQty, lot);
+      contractVol = baseQtyToContractVol(baseQty, lot, { bumpToMin: true });
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       log('warn', 'MEXC TP/SL qty normalization failed', { symbol: mexcSymbol, error: msg });

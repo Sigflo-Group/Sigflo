@@ -36,34 +36,48 @@ function cdnBlockedMessage(status: number): string {
 }
 
 const REQUEST_TIMEOUT_MS = 15_000;
+const SESSION_READ_TIMEOUT_MS = 5_000;
 
-export async function apiJson<T>(path: string, init?: RequestInit): Promise<T> {
+async function resolveAccessToken(forceRefresh = false): Promise<string | null> {
+  if (!supabase) return null;
+
+  if (forceRefresh) {
+    const { data, error } = await supabase.auth.refreshSession();
+    if (!error && data.session?.access_token) return data.session.access_token;
+  }
+
+  const sessionResult = await Promise.race([
+    supabase.auth.getSession(),
+    new Promise<null>((resolve) => setTimeout(() => resolve(null), SESSION_READ_TIMEOUT_MS)),
+  ]);
+  const session = sessionResult?.data?.session ?? null;
+  if (!session?.access_token) return null;
+
+  const expiresAtMs = (session.expires_at ?? 0) * 1000;
+  if (!forceRefresh && expiresAtMs > 0 && expiresAtMs <= Date.now() + 60_000) {
+    return resolveAccessToken(true);
+  }
+
+  return session.access_token;
+}
+
+async function fetchApi(path: string, init: RequestInit | undefined, token: string | null): Promise<Response> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     'Cache-Control': 'no-cache',
     ...(init?.headers as Record<string, string> | undefined),
   };
 
-  if (supabase) {
-    const sessionResult = await Promise.race([
-      supabase.auth.getSession(),
-      new Promise<null>((resolve) => setTimeout(() => resolve(null), 5_000)),
-    ]);
-    const token = sessionResult?.data?.session?.access_token;
-    if (token) {
-      headers.Authorization = `Bearer ${token}`;
-    }
-  }
-
-  if (!headers.Authorization && DEV_USER_ID) {
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  } else if (DEV_USER_ID) {
     headers['x-user-id'] = DEV_USER_ID;
   }
 
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-  let res: Response;
   try {
-    res = await fetch(`${API_BASE}${path}`, {
+    return await fetch(`${API_BASE}${path}`, {
       ...init,
       headers,
       signal: controller.signal,
@@ -75,6 +89,23 @@ export async function apiJson<T>(path: string, init?: RequestInit): Promise<T> {
     throw e;
   } finally {
     clearTimeout(timeoutId);
+  }
+}
+
+export async function apiJson<T>(path: string, init?: RequestInit): Promise<T> {
+  let token = await resolveAccessToken();
+  let res: Response;
+  try {
+    res = await fetchApi(path, init, token);
+    if (res.status === 401 && supabase && token) {
+      const refreshed = await resolveAccessToken(true);
+      if (refreshed && refreshed !== token) {
+        token = refreshed;
+        res = await fetchApi(path, init, token);
+      }
+    }
+  } catch (e) {
+    throw e;
   }
   if (!res.ok) {
     const ct = res.headers.get('content-type') ?? '';

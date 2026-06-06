@@ -21,6 +21,7 @@ import {
 import { sanitizeUserFacingHttpErrorMessage } from '@/lib/httpErrorMessage';
 import { getManualTrades } from '@/lib/tradeSourceFilter';
 import { playUiTapSound } from '@/utils/sound';
+import { AndroidAppSection } from '@/components/profile/AndroidAppSection';
 import type { ExchangeId, ExchangeSnapshot } from '@/types/integrations';
 
 const MFA_TOTP_FRIENDLY_NAME = 'Sigflo Account';
@@ -1140,6 +1141,8 @@ export default function ProfileScreen() {
           </svg>
         </button>
       </section>
+
+      <AndroidAppSection />
 
       {/* ── Legal & disclosures ── */}
       <section className="rounded-2xl border border-white/[0.06] bg-sigflo-surface sigflo-panel-texture p-3.5">

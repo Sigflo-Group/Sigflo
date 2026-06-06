@@ -50,7 +50,7 @@ export type LiveTradeMarketResult = LiveTradeState & {
 };
 
 const MEXC_PRICE_POLL_MS = 3_000;
-const MEXC_CANDLE_REFRESH_MS = 180_000;
+const MEXC_CANDLE_REFRESH_MS = 60_000;
 
 type LiveTradeMarketOptions = {
   /** Optional quote UI throttle override for high-responsiveness views (e.g. manage-mode PnL). */
@@ -361,16 +361,6 @@ export function useLiveTradeMarket(
           fetchKlines(symbol, 'W', 140),
           fetchTickers([symbol]),
         ]);
-        candlesRef.current = {
-          '1': c1,
-          '5': c5,
-          '15': c15,
-          '60': c60,
-          '240': c240,
-          D: cD,
-          W: cW,
-        };
-        const active = candlesRef.current[interval];
         const t = tickers[0];
         if (!t || cancelled) {
           if (!cancelled) {
@@ -384,6 +374,16 @@ export function useLiveTradeMarket(
           }
           return;
         }
+        candlesRef.current = {
+          '1': c1,
+          '5': c5,
+          '15': c15,
+          '60': c60,
+          '240': c240,
+          D: cD,
+          W: cW,
+        };
+        const active = candlesRef.current[interval];
         readyRef.current = true;
 
         const markPx =

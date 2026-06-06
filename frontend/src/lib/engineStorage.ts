@@ -129,12 +129,23 @@ export function persistProIntelligencePrefs(prefs: ProIntelligencePrefs): void {
   safeSetItem(PRO_INTELLIGENCE_PREFS_KEY, JSON.stringify(prefs));
 }
 
+function sanitizeLifecycleStore(parsed: Record<string, CandidateLifecycle>): Record<string, CandidateLifecycle> {
+  const out: Record<string, CandidateLifecycle> = {};
+  for (const [key, lc] of Object.entries(parsed)) {
+    if (!lc || typeof lc !== 'object') continue;
+    if (lc.state === 'triggered' && (lc.trigger?.triggerCandleTs == null)) continue;
+    out[key] = lc;
+  }
+  return out;
+}
+
 export function loadLifecycleRef(): Record<string, CandidateLifecycle> {
   try {
     const raw = safeGetItem(LIFECYCLE_REF_STORE_KEY);
     if (!raw) return {};
     const parsed = JSON.parse(raw) as Record<string, CandidateLifecycle>;
-    return parsed && typeof parsed === 'object' ? parsed : {};
+    if (!parsed || typeof parsed !== 'object') return {};
+    return sanitizeLifecycleStore(parsed);
   } catch {
     return {};
   }

@@ -172,7 +172,7 @@ export function buildSignalFromMarket(input: {
   if (!best) return null;
   const { out, setupScore, bias, lifecycle, diagnostics } = best;
   const signal: CryptoSignal = {
-    id: `live-${input.symbol}-${Date.now()}`,
+    id: `live-${input.symbol}-${out.setupType}-${out.side}`,
     pair: input.symbol.replace('USDT', ''),
     side: out.side,
     biasLabel: bias.biasLabel,

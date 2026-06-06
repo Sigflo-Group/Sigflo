@@ -92,7 +92,7 @@ export function createApp() {
   app.use('/api/auth', authRouteLimiter, authRouter);
   app.use('/api/portfolio', requireAuth, portfolioRouter);
   app.use('/api/trade', requireAuth, requireStepUp, tradeRouter);
-  app.use('/api/exit-watch', requireAuth, exitWatchRouter);
+  app.use('/api/exit-watch', requireAuth, requireStepUp, exitWatchRouter);
 
   app.use('/api/session', requireAuth, sessionRouter);
   app.use('/api/exchange', requireAuth, exchangeRouter);

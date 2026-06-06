@@ -1,5 +1,4 @@
 import type { Request, Response, NextFunction } from 'express';
-import { env } from '../config/env.js';
 import { log } from '../lib/logger.js';
 import { upsertUser } from '../repositories/usersRepo.js';
 import { verifySupabaseAccessToken } from '../services/supabaseAuth.service.js';
@@ -33,7 +32,7 @@ export async function requireAuth(req: AuthedRequest, res: Response, next: NextF
 
     const token = bearerToken(req);
 
-    if (token && (env.SUPABASE_JWT_SECRET || env.SUPABASE_URL)) {
+    if (token) {
       const verified = await verifySupabaseAccessToken(token);
       if (!verified) {
         res.status(401).json({ error: 'Invalid or expired session.' });

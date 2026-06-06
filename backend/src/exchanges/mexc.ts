@@ -36,10 +36,13 @@ const FUTURES_BASE = 'https://contract.mexc.com';
 
 type MexcFuturesResponse<T> = { success: boolean; data: T };
 
+type MexcOpenType = 1 | 2; // 1=isolated, 2=cross
+
 type MexcOpenPosition = {
   positionId: number;
   symbol: string;              // e.g. "BTC_USDT"
   positionType: 1 | 2;         // 1=long, 2=short
+  openType?: MexcOpenType;
   holdVol: string;             // position size in contracts (张)
   holdAvgPrice: string;        // avg entry price
   openAvgPrice: string;
@@ -83,6 +86,23 @@ type MexcContractAsset = {
   positionMargin: string;
   equity: string;
 };
+
+type MexcSymbolLeverageRow = {
+  symbol: string;
+  positionType: 1 | 2;
+  openType: MexcOpenType;
+  leverage: number;
+};
+
+function mexcMarginModeFromOpenType(openType: MexcOpenType): 'cross' | 'isolated' {
+  return openType === 2 ? 'cross' : 'isolated';
+}
+
+function normalizeMexcOpenType(raw: unknown): MexcOpenType | null {
+  const n = Number(raw);
+  if (n === 1 || n === 2) return n;
+  return null;
+}
 
 async function futuresPrivateGet<T>(
   path: string,
@@ -316,6 +336,40 @@ async function fetchMexcOpenPositionLeg(
   );
 }
 
+async function fetchMexcSymbolLeverageOpenType(
+  input: ConnectInput,
+  mexcSymbol: string,
+  positionType: 1 | 2,
+): Promise<MexcOpenType | null> {
+  try {
+    const res = await futuresPrivateGet<MexcFuturesResponse<MexcSymbolLeverageRow[]>>(
+      '/api/v1/private/position/leverage',
+      { symbol: mexcSymbol },
+      input,
+    );
+    if (!res.success || !Array.isArray(res.data)) return null;
+    const row = res.data.find((r) => r.symbol === mexcSymbol && r.positionType === positionType);
+    return row ? normalizeMexcOpenType(row.openType) : null;
+  } catch {
+    return null;
+  }
+}
+
+async function resolveMexcOpenType(
+  input: ConnectInput,
+  mexcSymbol: string,
+  positionType: 1 | 2,
+  existingLeg?: MexcOpenPosition | null,
+): Promise<MexcOpenType> {
+  const fromLeg = existingLeg ? normalizeMexcOpenType(existingLeg.openType) : null;
+  if (fromLeg != null) return fromLeg;
+
+  const fromSymbolConfig = await fetchMexcSymbolLeverageOpenType(input, mexcSymbol, positionType);
+  if (fromSymbolConfig != null) return fromSymbolConfig;
+
+  return 1;
+}
+
 function formatMexcTpSlRejectMessage(res: MexcStopOrderPlaceResponse, fallback: string): string {
   const detail = res.message?.trim() || (res.code != null ? `code=${res.code}` : '');
   if (!detail) return fallback;
@@ -397,13 +451,14 @@ async function ensureLinearLeverage(
   mexcSymbol: string,
   leverage: number,
   positionType: 1 | 2,
+  openType: MexcOpenType,
 ): Promise<void> {
   const res = await futuresPrivatePost<MexcOrderResponse>(
     '/api/v1/private/position/change_leverage',
     {
       symbol: mexcSymbol,
       leverage,
-      openType: 1,
+      openType,
       positionType,
     },
     input,
@@ -514,7 +569,9 @@ export class MexcAdapter implements ExchangeAdapter {
   ): Promise<void> {
     const mexcSymbol = standardSymbolToMexc(symbol);
     const positionType: 1 | 2 = positionSide === 'long' ? 1 : 2;
-    await ensureLinearLeverage(input, mexcSymbol, leverage, positionType);
+    const existingLeg = await fetchMexcOpenPositionLeg(input, symbol, positionSide);
+    const openType = await resolveMexcOpenType(input, mexcSymbol, positionType, existingLeg);
+    await ensureLinearLeverage(input, mexcSymbol, leverage, positionType, openType);
   }
 
   async fetchPositions(input: ConnectInput): Promise<PositionItem[]> {
@@ -597,6 +654,7 @@ export class MexcAdapter implements ExchangeAdapter {
       }
 
       const tpSl = tpSlByPositionId.get(p.positionId);
+      const openType = normalizeMexcOpenType(p.openType);
 
       return {
         symbol: mexcSymbolToStandard(p.symbol),
@@ -609,6 +667,7 @@ export class MexcAdapter implements ExchangeAdapter {
         leverage: p.leverage > 0 ? p.leverage : undefined,
         positionIM: Number(p.im) > 0 ? Number(p.im) : undefined,
         openedAtMs: p.createTime > 0 ? p.createTime : undefined,
+        ...(openType != null ? { marginMode: mexcMarginModeFromOpenType(openType) } : {}),
         ...(tpSl?.tp != null ? { takeProfitPrice: tpSl.tp } : {}),
         ...(tpSl?.sl != null ? { stopLossPrice: tpSl.sl } : {}),
       };
@@ -731,21 +790,19 @@ export class MexcAdapter implements ExchangeAdapter {
     else if (params.side === 'Sell' && params.reduceOnly) mexcSide = 4;  // close long
     else mexcSide = 2;                                                    // Buy + reduceOnly → close short
 
-    if (params.leverage != null && !params.reduceOnly) {
-      const positionType: 1 | 2 = params.side === 'Buy' ? 1 : 2;
-      await ensureLinearLeverage(input, mexcSymbol, params.leverage, positionType);
-    }
+    const positionSide = mexcPositionSideFromOrder(params);
+    const positionType: 1 | 2 = positionSide === 'long' ? 1 : 2;
+    const existingLeg = await fetchMexcOpenPositionLeg(input, params.symbol, positionSide);
+    const openType = await resolveMexcOpenType(input, mexcSymbol, positionType, existingLeg);
 
-    const existingLeg = await fetchMexcOpenPositionLeg(
-      input,
-      params.symbol,
-      mexcPositionSideFromOrder(params),
-    );
+    if (params.leverage != null && !params.reduceOnly) {
+      await ensureLinearLeverage(input, mexcSymbol, params.leverage, positionType, openType);
+    }
 
     const orderBody: MexcOrderRequest = {
       symbol: mexcSymbol,
       side: mexcSide,
-      openType: 1,
+      openType,
       type: params.orderType === 'Limit' ? 1 : 5,
       vol: qty,
       ...(params.leverage != null && !params.reduceOnly ? { leverage: params.leverage } : {}),

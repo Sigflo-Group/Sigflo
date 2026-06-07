@@ -92,10 +92,13 @@ export function createApp() {
   app.use('/api/mexc-public', mexcPublicRouter);
   app.use('/api/auth', authRouteLimiter, authRouter);
   app.use('/api/portfolio', requireAuth, portfolioRouter);
-  app.use('/api/trade', requireAuth, requireStepUp, tradeRouter);
   // MEXC futures trading is intentionally mounted without `requireStepUp` — the
   // MEXC trading UX does not require a fresh 2FA step-up (auth + idempotency only).
+  // IMPORTANT: this mount must come BEFORE `/api/trade` below — `app.use('/api/trade', ...)`
+  // is a prefix match, so it would otherwise intercept `/api/trade/mexc/*` and run
+  // requireStepUp before mexcTradeRouter is reached.
   app.use('/api/trade/mexc', requireAuth, mexcTradeRouter);
+  app.use('/api/trade', requireAuth, requireStepUp, tradeRouter);
   app.use('/api/exit-watch', requireAuth, requireStepUp, exitWatchRouter);
 
   app.use('/api/session', requireAuth, sessionRouter);

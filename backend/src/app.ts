@@ -11,6 +11,7 @@ import { requireStepUp } from './middleware/requireStepUp.js';
 import { authRouteLimiter } from './middleware/rateLimit.js';
 import { portfolioRouter } from './routes/portfolio.js';
 import { tradeRouter } from './routes/trade.js';
+import { mexcTradeRouter } from './routes/mexcTrade.js';
 import { exitWatchRouter } from './routes/exitWatch.js';
 import { sessionRouter } from './routes/session.routes.js';
 import { exchangeRouter } from './routes/exchange.routes.js';
@@ -92,6 +93,9 @@ export function createApp() {
   app.use('/api/auth', authRouteLimiter, authRouter);
   app.use('/api/portfolio', requireAuth, portfolioRouter);
   app.use('/api/trade', requireAuth, requireStepUp, tradeRouter);
+  // MEXC futures trading is intentionally mounted without `requireStepUp` — the
+  // MEXC trading UX does not require a fresh 2FA step-up (auth + idempotency only).
+  app.use('/api/trade/mexc', requireAuth, mexcTradeRouter);
   app.use('/api/exit-watch', requireAuth, requireStepUp, exitWatchRouter);
 
   app.use('/api/session', requireAuth, sessionRouter);

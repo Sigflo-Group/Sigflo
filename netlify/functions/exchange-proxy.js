@@ -1,8 +1,9 @@
 import { ensureRootEnvLoaded } from './lib/load-root-env.mjs';
 
-const BACKEND_ORIGIN = (
+const rawOrigin = (
   process.env.BACKEND_API_ORIGIN ?? process.env.VITE_BACKEND_API_BASE ?? ''
 ).replace(/\/+$/, '').replace(/\/api$/, '');
+const BACKEND_ORIGIN = rawOrigin && !rawOrigin.startsWith('http') ? `https://${rawOrigin}` : rawOrigin;
 
 function buildTargetUrl(event) {
   const origPath = event.path

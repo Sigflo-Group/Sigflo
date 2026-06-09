@@ -12,8 +12,9 @@ import { requireIdempotency } from '../middleware/requireIdempotency.js';
 /**
  * MEXC futures order routes.
  *
- * NOTE: mounted with `requireStepUp` in `app.ts` — MEXC trading requires
- * fresh 2FA step-up (auth + step-up + idempotency), same as Bybit.
+ * NOTE: mounted without `requireStepUp` in `app.ts` — MEXC trading does not
+ * require fresh 2FA step-up (only auth + idempotency). Aligns with the MEXC
+ * trading UX choice documented in the MEXC trade flow.
  */
 export const mexcTradeRouter = Router();
 mexcTradeRouter.use(requireIdempotency);

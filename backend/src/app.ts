@@ -107,8 +107,12 @@ export function createApp() {
   // to avoid sharing a prefix with tradeRouter (/api/trade/bybit/*) which would
   // make route conflicts invisible until a path clash actually occurs.
   app.use('/api/trade/managed', requireAuth, requireStepUp, secureTradeRouter);
-  app.get('/api/trades', requireAuth, (req, res, next) => {
-    listTrades(req as Parameters<typeof listTrades>[0], res).catch(next);
+  app.get('/api/trades', requireAuth, async (req, res, next) => {
+    try {
+      await listTrades(req, res);
+    } catch (err) {
+      next(err);
+    }
   });
   app.use('/api/signals', requireAuth, signalRouter);
   app.use('/api/ai', requireAuth, aiRouter);

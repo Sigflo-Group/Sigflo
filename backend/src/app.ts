@@ -45,7 +45,7 @@ export function createApp() {
   app.set('trust proxy', 1);
   app.use(
     helmet({
-      strictTransportSecurity: isProd ? true : false,
+      strictTransportSecurity: isProd,
       contentSecurityPolicy: isProd
         ? true
         : {

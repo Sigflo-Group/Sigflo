@@ -99,7 +99,7 @@ export function createApp() {
   // requireStepUp before mexcTradeRouter is reached.
   app.use('/api/trade/mexc', requireAuth, mexcTradeRouter);
   app.use('/api/trade', requireAuth, requireStepUp, tradeRouter);
-  app.use('/api/exit-watch', requireAuth, requireStepUp, exitWatchRouter);
+  app.use('/api/exit-watch', requireAuth, exitWatchRouter);
 
   app.use('/api/session', requireAuth, sessionRouter);
   app.use('/api/exchange', requireAuth, exchangeRouter);

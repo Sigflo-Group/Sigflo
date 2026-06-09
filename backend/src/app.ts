@@ -84,7 +84,8 @@ export function createApp() {
   try {
     await db.query('SELECT 1');
     res.json({ ok: true, db: 'connected' });
-  } catch {
+  } catch (error) {
+    console.error('Health check failed: database connectivity issue', error);
     res.status(503).json({ ok: false, db: 'disconnected' });
   }
 });

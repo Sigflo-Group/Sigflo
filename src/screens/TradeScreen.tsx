@@ -803,10 +803,14 @@ export function TradeScreen() {
     if (managePositionExchange) return managePositionExchange;
     if (tradeExchangeFromQuery === 'bybit' && bybitSnap) return 'bybit';
     if (tradeExchangeFromQuery === 'mexc' && mexcSnap) return 'mexc';
-    if (preferredActiveExchange === 'bybit' && bybitSnap) return 'bybit';
-    if (preferredActiveExchange === 'mexc' && mexcSnap) return 'mexc';
+    if (preferredActiveExchange === 'bybit') {
+      return bybitSnap ? 'bybit' : null;
+    }
+    if (preferredActiveExchange === 'mexc') {
+      return mexcSnap ? 'mexc' : null;
+    }
     return bybitSnap ? 'bybit' : mexcSnap ? 'mexc' : null;
-  }, [managePositionExchange, isManageMode, tradeExchangeFromQuery, preferredActiveExchange, bybitSnap, mexcSnap]);
+  }, [managePositionExchange, tradeExchangeFromQuery, preferredActiveExchange, bybitSnap, mexcSnap]);
   const activeExchangeSnap = useMemo(() => {
     if (activeExchange === 'bybit') return bybitSnap ?? null;
     if (activeExchange === 'mexc') return mexcSnap ?? null;
@@ -3236,7 +3240,12 @@ export function TradeScreen() {
             const qtyStr = linearQtyFromNotionalUsd(orderNotionalUsd, entryMark);
             const positionIdx = isManageMode
               ? (exchangePositionForSymbol?.positionIdx ?? manageCtx?.positionIdx ?? 0)
-              : inferBybitOpenPositionIdx(bybitSnap?.positions, orderSymbol, nextSide);
+              : inferBybitOpenPositionIdx(
+                  bybitSnap?.positions,
+                  orderSymbol,
+                  nextSide,
+                  bybitSnap?.linearPositionMode,
+                );
             if (activeExchange === 'mexc') {
               // ── MEXC futures path ──────────────────────────────────────────
               // MEXC doesn't support hedge mode or positionIdx; reverse = close then open sequentially.
@@ -3398,7 +3407,12 @@ export function TradeScreen() {
                         slTriggerBy: futuresTpSlTriggerBy,
                       }
                     : {};
-                const openIdx = inferBybitOpenPositionIdx(bybitSnap?.positions, orderSymbol, nextSide);
+                const openIdx = inferBybitOpenPositionIdx(
+                  bybitSnap?.positions,
+                  orderSymbol,
+                  nextSide,
+                  bybitSnap?.linearPositionMode,
+                );
                 openedNewFuturesEntry = {
                   side: sideBybit,
                   qty: qtyStr,

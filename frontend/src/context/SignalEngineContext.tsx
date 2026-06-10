@@ -765,8 +765,7 @@ function useSignalEngineValue(): SignalEngineState {
     // - feed 15m closed bars through detector pipeline
     let startupDone = false;
 
-    void backfillFromRest('startup').then(() => {
-      if (cancelled) return;
+    function connectStream() {
       startupDone = true;
       exchangeManager.current.connectWebSocket({
         klineSymbols: STREAM_SYMBOLS,
@@ -816,7 +815,24 @@ function useSignalEngineValue(): SignalEngineState {
           if (interval === '15') recomputeForSymbol(symbol, 'WS');
         },
       });
+    }
+
+    function rebootMarketData(reason: 'startup' | 'reconnect') {
+      exchangeManager.current.disconnectWebSocket();
+      pendingWSCandlesRef.current = [];
+      wsConnectedRef.current = false;
+      return backfillFromRest(reason).then(() => {
+        if (cancelled) return;
+        connectStream();
+      });
+    }
+
+    exchangeManager.setReconnectHook(() => {
+      if (cancelled) return;
+      void rebootMarketData('reconnect');
     });
+
+    void rebootMarketData('startup');
 
     const healthSummaryTimer =
       import.meta.env.DEV
@@ -858,6 +874,7 @@ function useSignalEngineValue(): SignalEngineState {
       if (d.lifecycle) persistLifecycleRef(lifecycle);
       if (d.userAdaptation) persistUserAdaptationStore(userAdaptation);
       if (d.aiSnapshot) persistAiSnapshotStore(aiSnapshot);
+      exchangeManager.setReconnectHook(null);
       exchangeManager.current.disconnectWebSocket();
     };
   }, []);

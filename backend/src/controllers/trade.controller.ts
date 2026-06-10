@@ -1,7 +1,7 @@
 import type { Response } from 'express';
 import type { z } from 'zod';
 import type { AuthedRequest } from '../middleware/auth.js';
-import { getBrokerAccountForUser, listBrokerAccountsForUser } from '../db/queries/brokerAccounts.js';
+import { getActiveBrokerAccount, getBrokerAccountForUser } from '../db/queries/brokerAccounts.js';
 import { consumeTradeIntent, createTradeIntent, resolveTradeIntentByToken } from '../services/tradeIntent.service.js';
 import { computeRiskSummary, validateTradePolicy } from '../services/tradePolicy.service.js';
 import { executeBrokerOrder } from '../services/brokerExecution.service.js';
@@ -25,8 +25,7 @@ export async function postTradeIntent(req: AuthedRequest, res: Response) {
     ? await getBrokerAccountForUser(req.user.userId, body.brokerAccountId)
     : null;
   if (!account) {
-    const accounts = await listBrokerAccountsForUser(req.user.userId);
-    account = accounts.find((a) => a.status === 'connected') ?? null;
+    account = await getActiveBrokerAccount(req.user.userId);
   }
   if (!account) return res.status(400).json({ error: 'No linked broker account.' });
 

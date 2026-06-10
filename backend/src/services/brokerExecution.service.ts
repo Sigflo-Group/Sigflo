@@ -32,12 +32,16 @@ export async function executeBrokerOrder(input: {
   const rawQty = input.positionSizeUsd / input.entryPrice;
   const qty = rawQty.toFixed(8).replace(/\.?0+$/, '') || '0';
 
+  const linearMode = await bybitAdapter.fetchLinearPositionMode(creds);
+  const positionIdx =
+    linearMode === 'hedge' ? (input.direction === 'long' ? 1 : 2) : 0;
+
   const result = await bybitAdapter.placeLinearOrder(creds, {
     symbol: input.symbol,
     side,
     orderType: 'Market',
     qty,
-    positionIdx: 0,
+    positionIdx,
   });
 
   return {

@@ -94,18 +94,13 @@ async function fetchApi(path: string, init: RequestInit | undefined, token: stri
 
 export async function apiJson<T>(path: string, init?: RequestInit): Promise<T> {
   let token = await resolveAccessToken();
-  let res: Response;
-  try {
-    res = await fetchApi(path, init, token);
-    if (res.status === 401 && supabase && token) {
-      const refreshed = await resolveAccessToken(true);
-      if (refreshed && refreshed !== token) {
-        token = refreshed;
-        res = await fetchApi(path, init, token);
-      }
+  let res = await fetchApi(path, init, token);
+  if (res.status === 401 && supabase && token) {
+    const refreshed = await resolveAccessToken(true);
+    if (refreshed && refreshed !== token) {
+      token = refreshed;
+      res = await fetchApi(path, init, token);
     }
-  } catch (e) {
-    throw e;
   }
   if (!res.ok) {
     const ct = res.headers.get('content-type') ?? '';

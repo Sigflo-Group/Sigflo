@@ -767,6 +767,32 @@ export class BybitAdapter implements ExchangeAdapter {
       .filter((p) => p.size > 0);
   }
 
+  /**
+   * Detect linear hedge mode from position slots (includes zero-size hedge legs).
+   * Defaults to one-way when the account has no hedge indices.
+   */
+  async fetchLinearPositionMode(input: ConnectInput): Promise<'hedge' | 'oneWay'> {
+    type RawPos = { positionIdx?: number };
+    const [usdtRes, usdcRes] = await Promise.all([
+      privateGet<{ list?: RawPos[] }>(
+        '/v5/position/list',
+        { category: 'linear', settleCoin: 'USDT', limit: '200' },
+        input,
+      ),
+      privateGet<{ list?: RawPos[] }>(
+        '/v5/position/list',
+        { category: 'linear', settleCoin: 'USDC', limit: '200' },
+        input,
+      ).catch(() => ({ list: [] as RawPos[] })),
+    ]);
+    const all = [...(usdtRes.list ?? []), ...(usdcRes.list ?? [])];
+    const hedge = all.some((p) => {
+      const idx = p.positionIdx ?? 0;
+      return idx === 1 || idx === 2;
+    });
+    return hedge ? 'hedge' : 'oneWay';
+  }
+
   /** Throws if Bybit marks the key as read-only (`readOnly === 1`). */
   async ensureTradeEnabled(input: ConnectInput): Promise<void> {
     const r = await privateGet<BybitQueryApiResult>('/v5/user/query-api', {}, input);

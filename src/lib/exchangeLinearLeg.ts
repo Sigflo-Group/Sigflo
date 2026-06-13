@@ -1,4 +1,4 @@
-import type { PositionItem } from '@/types/integrations';
+import type { ExchangeSnapshot, PositionItem } from '@/types/integrations';
 import type { TradeSide } from '@/types/trade';
 
 /** True when any synced leg uses Bybit hedge indices (1 = long, 2 = short). */
@@ -56,4 +56,39 @@ export function resolveExchangeLinearLeg(
     if (byIdx) return byIdx;
   }
   return open.find((x) => x.side === legSide) ?? open[0];
+}
+
+export type LinearLegExchangeHint = 'bybit' | 'mexc' | null | undefined;
+
+/** True when `snap` has an open leg matching `pos` (symbol, side, optional idx). */
+export function linearLegExistsOnSnapshot(
+  snap: ExchangeSnapshot | null | undefined,
+  pos: Pick<PositionItem, 'symbol' | 'side' | 'positionIdx'>,
+): boolean {
+  if (!snap || snap.status !== 'connected' || !snap.positions?.length) return false;
+  const leg = resolveExchangeLinearLeg(snap.positions, pos.symbol, pos.side, pos.positionIdx ?? 0);
+  return leg != null && Math.abs(leg.size) > 0;
+}
+
+/**
+ * Which connected exchange owns this linear leg — used before submit so MEXC closes
+ * don't fall through to Bybit routes (which require 2FA step-up).
+ */
+export function resolveOwningExchangeForLinearLeg(
+  bybitSnap: ExchangeSnapshot | null | undefined,
+  mexcSnap: ExchangeSnapshot | null | undefined,
+  pos: Pick<PositionItem, 'symbol' | 'side' | 'positionIdx'>,
+  opts?: { preferred?: LinearLegExchangeHint },
+): 'bybit' | 'mexc' | null {
+  const onBybit = linearLegExistsOnSnapshot(bybitSnap, pos);
+  const onMexc = linearLegExistsOnSnapshot(mexcSnap, pos);
+  if (onBybit && !onMexc) return 'bybit';
+  if (onMexc && !onBybit) return 'mexc';
+
+  const pref = opts?.preferred;
+  if (pref === 'mexc' && onMexc) return 'mexc';
+  if (pref === 'bybit' && onBybit) return 'bybit';
+  if (onBybit) return 'bybit';
+  if (onMexc) return 'mexc';
+  return null;
 }

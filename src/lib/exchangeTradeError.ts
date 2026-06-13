@@ -6,8 +6,11 @@ export function formatExchangeTradeErrorMessage(
   err: unknown,
   fallback: string,
 ): string {
+  const msg = err instanceof Error ? err.message : String(err);
+  if (/step-up verification required/i.test(msg)) {
+    return 'Step-up verification required for this action. Open Security → Step-up verification, enter your authenticator code, then retry.';
+  }
   if (exchange === 'mexc') {
-    const msg = err instanceof Error ? err.message : String(err);
     if (/^MEXC/i.test(msg.trim())) return msg;
     return msg.trim() ? `MEXC: ${msg}` : fallback;
   }

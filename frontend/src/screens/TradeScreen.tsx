@@ -132,6 +132,7 @@ import {
   bybitLinearPositionIdxForOpenSide,
   inferBybitOpenPositionIdx,
   resolveExchangeLinearLeg,
+  resolveOwningExchangeForLinearLeg,
 } from '@/lib/exchangeLinearLeg';
 import { formatLinearPriceStringForBybit, linearTpSlStringsForOpen } from '@/lib/bybitLinearTpSl';
 import {
@@ -816,6 +817,25 @@ export function TradeScreen() {
     if (activeExchange === 'mexc') return mexcSnap ?? null;
     return bybitSnap ?? mexcSnap ?? null;
   }, [activeExchange, bybitSnap, mexcSnap]);
+
+  const resolvePositionExchange = useCallback(
+    (pos: PositionItem): 'bybit' | 'mexc' | null =>
+      resolveOwningExchangeForLinearLeg(bybitSnap, mexcSnap, pos, {
+        preferred:
+          manageCtx?.exchange ??
+          tradeExchangeFromQuery ??
+          managePositionExchange ??
+          activeExchange,
+      }),
+    [
+      activeExchange,
+      bybitSnap,
+      manageCtx?.exchange,
+      managePositionExchange,
+      mexcSnap,
+      tradeExchangeFromQuery,
+    ],
+  );
 
   const live = useLiveTradeMarket(liveSymbol, chartInterval, {
     uiThrottleMs: isManageMode ? 16 : undefined,
@@ -2721,7 +2741,12 @@ export function TradeScreen() {
       setLeverage(lev);
       if (isManageMode) setManageOrderDraftDirty(true);
 
-      if (activeExchange === 'mexc') {
+      const positionExchange =
+        exchangePositionForSymbol != null
+          ? resolvePositionExchange(exchangePositionForSymbol)
+          : activeExchange;
+
+      if (positionExchange === 'mexc') {
         if (!mexcSnap || mexcSnap.status !== 'connected') return;
         if (!exchangePositionForSymbol) return;
         window.clearTimeout(leverageExchangeSyncTimerRef.current);
@@ -2747,7 +2772,7 @@ export function TradeScreen() {
         return;
       }
 
-      if (activeExchange !== 'bybit') return;
+      if (positionExchange !== 'bybit') return;
       if (!bybitSnap || bybitSnap.status !== 'connected') return;
 
       window.clearTimeout(leverageExchangeSyncTimerRef.current);
@@ -2780,6 +2805,7 @@ export function TradeScreen() {
       mexcSnap,
       orderSymbol,
       refreshAccountSnapshots,
+      resolvePositionExchange,
       useRealExecution,
     ],
   );
@@ -3006,10 +3032,15 @@ export function TradeScreen() {
           });
         } else {
           const pos = args.pos;
+          const positionExchange = resolvePositionExchange(pos);
+          if (!positionExchange) {
+            flashTradeToast('Could not determine which exchange owns this position — refresh Account and retry.');
+            return;
+          }
           const qtyBase = Math.abs(pos.size) * Math.min(1, Math.max(0, fraction));
           const qtyStr = linearQtyFromBaseAmount(qtyBase);
           const closeSide = pos.side === 'long' ? 'Sell' : 'Buy';
-          if (activeExchange === 'mexc') {
+          if (positionExchange === 'mexc') {
             await postMexcLinearOrder({
               symbol: pos.symbol,
               side: closeSide,
@@ -3065,11 +3096,16 @@ export function TradeScreen() {
             message: `Manual partial close ${pct}% submitted — syncing exchange fill…`,
           });
         }
-        if (fraction >= 0.995 && args.kind === 'linear' && activeExchange) {
+        if (fraction >= 0.995 && args.kind === 'linear') {
           const pos = args.pos;
+          const positionExchange = resolvePositionExchange(pos);
+          if (!positionExchange) {
+            await refreshAccountSnapshots({ silent: false });
+            return;
+          }
           const { closed } = await pollUntilExchangeLinearLegClosed(
             () => refreshAccountSnapshots({ silent: true }),
-            activeExchange,
+            positionExchange,
             pos.symbol,
             pos.side,
             pos.positionIdx ?? 0,
@@ -3106,7 +3142,11 @@ export function TradeScreen() {
             message: `Manual partial close ${pct}% failed — review order state and retry.`,
           });
         }
-        flashTradeToast(formatExchangeTradeErrorMessage(activeExchange, e, 'Close failed'), 5200);
+        const errExchange =
+          args.kind === 'linear'
+            ? resolvePositionExchange(args.pos) ?? activeExchange
+            : activeExchange;
+        flashTradeToast(formatExchangeTradeErrorMessage(errExchange, e, 'Close failed'), 5200);
       } finally {
         pendingManualPartialClosePctRef.current = null;
         setOrderPending(null);
@@ -3125,6 +3165,7 @@ export function TradeScreen() {
       paperModeActive,
       primaryOpenPosition,
       refreshAccountSnapshots,
+      resolvePositionExchange,
       throttledOpenPnl.mark,
       forcePaperMode,
       liveOrderSubmitEnabled,
@@ -3767,7 +3808,12 @@ export function TradeScreen() {
           : '0');
       setOrderPending('tpsl');
       try {
-        if (activeExchange === 'mexc') {
+        const positionExchange = resolvePositionExchange(exchangePositionForSymbol);
+        if (!positionExchange) {
+          flashTradeToast('Could not determine which exchange owns this position — refresh Account and retry.');
+          return false;
+        }
+        if (positionExchange === 'mexc') {
           const qtyStr = linearQtyFromBaseAmount(Math.abs(exchangePositionForSymbol.size));
           const res = await postMexcLinearTradingStop({
             symbol: orderSymbol,
@@ -3796,7 +3842,10 @@ export function TradeScreen() {
         await refreshAccountSnapshots({ silent: false });
         return true;
       } catch (e) {
-        flashTradeToast(formatExchangeTradeErrorMessage(activeExchange, e, 'Failed to update TP/SL'), 5200);
+        const errExchange = exchangePositionForSymbol
+          ? resolvePositionExchange(exchangePositionForSymbol) ?? activeExchange
+          : activeExchange;
+        flashTradeToast(formatExchangeTradeErrorMessage(errExchange, e, 'Failed to update TP/SL'), 5200);
         return false;
       } finally {
         setOrderPending(null);
@@ -3814,6 +3863,7 @@ export function TradeScreen() {
       orderSymbol,
       paperModeActive,
       refreshAccountSnapshots,
+      resolvePositionExchange,
       riskSettings.allowLiveExecution,
       useRealExecution,
     ],

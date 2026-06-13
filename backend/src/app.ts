@@ -44,7 +44,7 @@ export function createApp() {
   app.set('trust proxy', 1);
   app.use(
     helmet({
-      strictTransportSecurity: isProd ? true : false,
+      strictTransportSecurity: isProd,
       contentSecurityPolicy: isProd
         ? true
         : {
@@ -83,7 +83,8 @@ export function createApp() {
   try {
     await db.query('SELECT 1');
     res.json({ ok: true, db: 'connected' });
-  } catch {
+  } catch (error) {
+    console.error('Health check failed: database connectivity issue', error);
     res.status(503).json({ ok: false, db: 'disconnected' });
   }
 });
@@ -104,8 +105,12 @@ export function createApp() {
   // to avoid sharing a prefix with tradeRouter (/api/trade/bybit/*) which would
   // make route conflicts invisible until a path clash actually occurs.
   app.use('/api/trade/managed', requireAuth, secureTradeRouter);
-  app.get('/api/trades', requireAuth, (req, res, next) => {
-    listTrades(req as Parameters<typeof listTrades>[0], res).catch(next);
+  app.get('/api/trades', requireAuth, async (req, res, next) => {
+    try {
+      await listTrades(req as Parameters<typeof listTrades>[0], res);
+    } catch (err) {
+      next(err);
+    }
   });
   app.use('/api/signals', requireAuth, signalRouter);
   app.use('/api/ai', requireAuth, aiRouter);

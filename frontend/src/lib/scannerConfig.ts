@@ -46,10 +46,10 @@ export interface ScannerLifecycleConfig {
 
 export const SCANNER_LIFECYCLE_CONFIG: ScannerLifecycleConfig = {
   historyLimit: 10,
-  readyTimingMin: 58,
-  triggeredActionabilityMin: 58,
-  triggeredFreshnessMin: 45,
-  extendedAfterCandles: 5,
+  readyTimingMin: 52,
+  triggeredActionabilityMin: 52,
+  triggeredFreshnessMin: 38,
+  extendedAfterCandles: 8,
   expiredAfterCandles: 8,
   expiredViabilityFloor: 40,
   timingDropFromPeakToExtend: 18,

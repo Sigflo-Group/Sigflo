@@ -131,9 +131,16 @@ export function persistProIntelligencePrefs(prefs: ProIntelligencePrefs): void {
 
 function sanitizeLifecycleStore(parsed: Record<string, CandidateLifecycle>): Record<string, CandidateLifecycle> {
   const out: Record<string, CandidateLifecycle> = {};
+  const staleTriggerMs = 15 * 60 * 1000 * 12; // 12 closed 15m bars
+  const now = Date.now();
   for (const [key, lc] of Object.entries(parsed)) {
     if (!lc || typeof lc !== 'object') continue;
-    if (lc.state === 'triggered' && (lc.trigger?.triggerCandleTs == null)) continue;
+    const triggerTs = lc.trigger?.triggerCandleTs;
+    if (triggerTs != null && now - triggerTs > staleTriggerMs) {
+      // Drop persisted triggers that predate the candle buffer — they force extended/expired on reload.
+      continue;
+    }
+    if (lc.state === 'triggered' && triggerTs == null) continue;
     out[key] = lc;
   }
   return out;

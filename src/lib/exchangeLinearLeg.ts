@@ -71,8 +71,7 @@ export function linearLegExistsOnSnapshot(
 }
 
 /**
- * Which connected exchange owns this linear leg — used before submit so MEXC closes
- * don't fall through to Bybit routes (which require 2FA step-up).
+ * Which connected exchange owns this linear leg — used before submit so closes route to the correct venue.
  */
 export function resolveOwningExchangeForLinearLeg(
   bybitSnap: ExchangeSnapshot | null | undefined,

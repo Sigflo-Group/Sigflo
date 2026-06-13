@@ -258,7 +258,7 @@ export function deriveMarketStatus(signal: CryptoSignal): MarketRowStatus {
   // Only promote non-synthetic signals via score alone when lifecycle evidence exists.
   if (
     !isSyntheticMoverSignal(signal) &&
-    signal.setupScore >= 70 &&
+    signal.setupScore >= 62 &&
     signal.triggerType != null &&
     signal.triggerType !== 'unknown'
   ) {

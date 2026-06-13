@@ -9,7 +9,8 @@ import {
   type ReactNode,
 } from 'react';
 import { runScannerDeterminismCheck } from '@/engine/scannerDeterminism';
-import { exchangeManager } from '@/core/exchange-manager';
+import { createAdapter } from '@/core/exchange-registry';
+import type { MarketDataAdapter } from '@/core/market-data-interface';
 import { buildSignalFromMarket, inferMarketRegime } from '@/lib/signalDetectors';
 import { atr } from '@/lib/indicators';
 import { updateMarketMemory, type MarketMemorySnapshot } from '@/lib/marketMemory';
@@ -116,7 +117,8 @@ type CandleStore = Record<string, Record<string, Candle[]>>;
 /** Same as Markets Tracked list — WS klines + tickers for live scanner + detectors. */
 const STREAM_SYMBOLS: string[] = [...TRACKED_SYMBOLS];
 
-const SignalEngineContext = createContext<SignalEngineState | null>(null);
+/** Scanner always uses Bybit public data — independent of the user's active trading venue. */
+const SCANNER_MARKET_DATA: MarketDataAdapter = createAdapter('bybit');
 
 function useSignalEngineValue(): SignalEngineState {
   type EngineSnapshotState = Pick<
@@ -339,16 +341,21 @@ function useSignalEngineValue(): SignalEngineState {
       if (DEBUG) console.log(`[Sigflo][Engine] REST bootstrap (${reason})`);
       streamReadyRef.current = false;
       try {
-        const [tickers, ...symbolResults] = await Promise.all([
-          exchangeManager.current.fetchTickers(STREAM_SYMBOLS),
-          ...STREAM_SYMBOLS.map(async (symbol) => {
-            const [candles5m, candles15m] = await Promise.all([
-              exchangeManager.current.fetchKlines(symbol, '5', 240),
-              exchangeManager.current.fetchKlines(symbol, '15', 240),
-            ]);
-            return { symbol, candles5m, candles15m };
+        const tickerResult = await SCANNER_MARKET_DATA.fetchTickers(STREAM_SYMBOLS).catch(() => [] as SymbolTicker[]);
+        const symbolResults = await Promise.all(
+          STREAM_SYMBOLS.map(async (symbol) => {
+            try {
+              const [candles5m, candles15m] = await Promise.all([
+                SCANNER_MARKET_DATA.fetchKlines(symbol, '5', 240),
+                SCANNER_MARKET_DATA.fetchKlines(symbol, '15', 240),
+              ]);
+              return { symbol, candles5m, candles15m };
+            } catch {
+              return { symbol, candles5m: [] as Candle[], candles15m: [] as Candle[] };
+            }
           }),
-        ]);
+        );
+        const tickers = tickerResult;
         if (gen !== backfillGen || cancelled) return;
         for (const ticker of tickers) tickersRef.current[ticker.symbol] = ticker;
         for (const { symbol, candles5m, candles15m } of symbolResults) {
@@ -641,6 +648,7 @@ function useSignalEngineValue(): SignalEngineState {
           },
           healthCtx(),
         );
+      lastEmittedCandleTsRef.current[symbol] = lastClosedTs;
       pushState(mode, wsConnectedRef.current ? 'connected' : 'disconnected');
       return;
     }
@@ -752,6 +760,7 @@ function useSignalEngineValue(): SignalEngineState {
         },
         healthCtx(),
       );
+      lastEmittedCandleTsRef.current[symbol] = lastClosedTs;
       pushState(mode, wsConnectedRef.current ? 'connected' : 'disconnected');
     }
 
@@ -767,7 +776,7 @@ function useSignalEngineValue(): SignalEngineState {
 
     function connectStream() {
       startupDone = true;
-      exchangeManager.current.connectWebSocket({
+      SCANNER_MARKET_DATA.connectWebSocket({
         klineSymbols: STREAM_SYMBOLS,
         tickerSymbols: STREAM_SYMBOLS,
         includeTickers: true,
@@ -818,7 +827,7 @@ function useSignalEngineValue(): SignalEngineState {
     }
 
     function rebootMarketData(reason: 'startup' | 'reconnect') {
-      exchangeManager.current.disconnectWebSocket();
+      SCANNER_MARKET_DATA.disconnectWebSocket();
       pendingWSCandlesRef.current = [];
       wsConnectedRef.current = false;
       return backfillFromRest(reason).then(() => {
@@ -826,11 +835,6 @@ function useSignalEngineValue(): SignalEngineState {
         connectStream();
       });
     }
-
-    exchangeManager.setReconnectHook(() => {
-      if (cancelled) return;
-      void rebootMarketData('reconnect');
-    });
 
     void rebootMarketData('startup');
 
@@ -874,13 +878,12 @@ function useSignalEngineValue(): SignalEngineState {
       if (d.lifecycle) persistLifecycleRef(lifecycle);
       if (d.userAdaptation) persistUserAdaptationStore(userAdaptation);
       if (d.aiSnapshot) persistAiSnapshotStore(aiSnapshot);
-      exchangeManager.setReconnectHook(null);
-      exchangeManager.current.disconnectWebSocket();
+      SCANNER_MARKET_DATA.disconnectWebSocket();
     };
   }, []);
 
   useEffect(() => {
-    exchangeManager.current.updateTickerSymbols(mergedTickerSymbols);
+    SCANNER_MARKET_DATA.updateTickerSymbols(mergedTickerSymbols);
   }, [mergedTickerSymbols]);
 
   return useMemo(

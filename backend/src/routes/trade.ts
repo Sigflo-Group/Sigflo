@@ -4,7 +4,7 @@ import type { AuthedRequest } from '../middleware/auth.js';
 import { BybitAdapter } from '../exchanges/bybit.js';
 import { resolveBrokerCredentials } from '../services/brokerCredentials.js';
 import { clientSafeExchangeError } from '../lib/clientSafeError.js';
-import { listBrokerAccountsForUser } from '../db/queries/brokerAccounts.js';
+import { getConnectedBrokerAccount } from '../db/queries/brokerAccounts.js';
 import { log } from '../lib/logger.js';
 import { formatZodIssuesForApi } from '../lib/formatZodError.js';
 import { isBybitTradingStopNoopError } from '../lib/bybitNoopErrors.js';
@@ -55,8 +55,7 @@ tradeRouter.post('/bybit/linear-order', async (req: AuthedRequest, res) => {
     return;
   }
 
-  const accounts = await listBrokerAccountsForUser(req.user.userId);
-  const row = accounts.find((a) => a.broker === 'bybit' && a.status === 'connected');
+  const row = await getConnectedBrokerAccount(req.user.userId, 'bybit');
   if (!row) {
     res.status(400).json({ error: 'Connect Bybit in Account first.' });
     return;
@@ -147,8 +146,7 @@ tradeRouter.post('/bybit/linear-trading-stop', async (req: AuthedRequest, res) =
     return;
   }
 
-  const accounts = await listBrokerAccountsForUser(req.user.userId);
-  const row = accounts.find((a) => a.broker === 'bybit' && a.status === 'connected');
+  const row = await getConnectedBrokerAccount(req.user.userId, 'bybit');
   if (!row) {
     res.status(400).json({ error: 'Connect Bybit in Account first.' });
     return;
@@ -219,8 +217,7 @@ tradeRouter.post('/bybit/set-leverage', async (req: AuthedRequest, res) => {
     return;
   }
 
-  const accounts = await listBrokerAccountsForUser(req.user.userId);
-  const row = accounts.find((i) => i.broker === 'bybit' && i.status === 'connected');
+  const row = await getConnectedBrokerAccount(req.user.userId, 'bybit');
   if (!row) {
     res.status(400).json({ error: 'Connect Bybit in Account first.' });
     return;
@@ -270,8 +267,7 @@ tradeRouter.post('/bybit/spot-order', async (req: AuthedRequest, res) => {
     return;
   }
 
-  const accounts = await listBrokerAccountsForUser(req.user.userId);
-  const row = accounts.find((i) => i.broker === 'bybit' && i.status === 'connected');
+  const row = await getConnectedBrokerAccount(req.user.userId, 'bybit');
   if (!row) {
     res.status(400).json({ error: 'Connect Bybit in Account first.' });
     return;

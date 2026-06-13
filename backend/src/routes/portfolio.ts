@@ -36,12 +36,20 @@ portfolioRouter.get('/accounts', async (req: AuthedRequest, res) => {
       try {
         const adapter = getAdapter(exchange);
         const creds = await resolveBrokerCredentials(account);
-        const [balances, positions, accountBreakdown] = await Promise.all([
+        const [balances, positions, accountBreakdown, linearPositionMode] = await Promise.all([
           adapter.fetchBalances(creds),
           adapter.fetchPositions(creds),
           adapter.fetchAccountBreakdown ? adapter.fetchAccountBreakdown(creds) : Promise.resolve(null),
+          adapter.fetchLinearPositionMode ? adapter.fetchLinearPositionMode(creds) : Promise.resolve(undefined),
         ]);
-        return { exchange, status: 'connected', balances, positions, accountBreakdown };
+        return {
+          exchange,
+          status: 'connected',
+          balances,
+          positions,
+          accountBreakdown,
+          ...(linearPositionMode != null ? { linearPositionMode } : {}),
+        };
       } catch (error) {
         const msg = error instanceof Error ? error.message : String(error);
         logPortfolioWarnThrottled(

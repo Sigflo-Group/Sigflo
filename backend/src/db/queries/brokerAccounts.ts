@@ -33,6 +33,21 @@ export async function listBrokerAccountsForUser(userId: string): Promise<BrokerA
   return rows;
 }
 
+/** Single active + connected exchange for this user (enforced by `is_active` + partial unique index). */
+export async function getActiveBrokerAccount(userId: string): Promise<BrokerAccountRow | null> {
+  const accounts = await listBrokerAccountsForUser(userId);
+  return accounts.find((a) => a.status === 'connected' && a.isActive) ?? null;
+}
+
+/** Connected credentials for a specific venue (manage-mode / venue-specific routes). */
+export async function getConnectedBrokerAccount(
+  userId: string,
+  broker: string,
+): Promise<BrokerAccountRow | null> {
+  const accounts = await listBrokerAccountsForUser(userId);
+  return accounts.find((a) => a.broker === broker && a.status === 'connected') ?? null;
+}
+
 export async function getBrokerAccountForUser(userId: string, accountId: string): Promise<BrokerAccountRow | null> {
   const { rows } = await db.query<BrokerAccountRow>(
     `select ${SELECT_COLS} from broker_accounts where user_id = $1 and id = $2 limit 1`,

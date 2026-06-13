@@ -469,23 +469,33 @@ async function ensureLinearLeverage(
   }
 }
 
-/** "BTCUSDT" → "BTC_USDT" (inserts underscore before USDT) */
+/** "BTCUSDT" → "BTC_USDT" (MEXC futures symbol). Supports USDT/USDC quote suffixes. */
 function standardSymbolToMexc(sym: string): string {
-  return sym.endsWith('USDT') ? sym.slice(0, -4) + '_USDT' : sym;
+  const u = sym.trim().toUpperCase().replace(/-/g, '');
+  if (u.includes('_')) return u;
+  if (u.endsWith('USDT')) return `${u.slice(0, -4)}_USDT`;
+  if (u.endsWith('USDC')) return `${u.slice(0, -4)}_USDC`;
+  return u;
 }
 
 /** "BTC_USDT" → "BTCUSDT" */
 function mexcSymbolToStandard(sym: string): string {
-  return sym.replace('_', '');
+  return sym.trim().toUpperCase().replace(/_/g, '');
 }
 
 // ── Permission helpers ──────────────────────────────────────────────────────
 
-function parsePermission(raw: MexcAccountResponse): PermissionCheck {
+function parsePermission(raw: MexcAccountResponse, futuresReadable: boolean): PermissionCheck {
   const canReadBalances = Array.isArray(raw.balances);
   const withdrawalsEnabled = Boolean(raw.canWithdraw);
   const readOnly = canReadBalances && raw.canTrade === false;
-  return { readOnly, withdrawalsEnabled, canReadBalances, canReadPositions: false, raw };
+  return {
+    readOnly,
+    withdrawalsEnabled,
+    canReadBalances,
+    canReadPositions: futuresReadable,
+    raw,
+  };
 }
 
 // ── Adapter ─────────────────────────────────────────────────────────────────
@@ -502,7 +512,18 @@ export class MexcAdapter implements ExchangeAdapter {
 
   async validateReadOnly(input: ConnectInput): Promise<ValidationResult> {
     const account = await spotPrivateGet<MexcAccountResponse>('/api/v3/account', {}, input);
-    const permission = parsePermission(account);
+    let futuresReadable = false;
+    try {
+      const res = await futuresPrivateGet<MexcFuturesResponse<MexcContractAsset[] | MexcContractAsset>>(
+        '/api/v1/private/account/assets',
+        {},
+        input,
+      );
+      futuresReadable = res.success;
+    } catch {
+      futuresReadable = false;
+    }
+    const permission = parsePermission(account, futuresReadable);
     if (!permission.canReadBalances) {
       return { ok: false, message: 'MEXC key could not read account balances. Ensure the key has "Read Info" permission enabled.', permission };
     }

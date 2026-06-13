@@ -4,6 +4,7 @@ import { useFeedback } from '@/context/FeedbackContext';
 import { submitFeedback, type FeedbackCategory, type FeedbackSeverityInput } from '@/services/api/feedbackClient';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { useAccountSnapshot } from '@/hooks/useAccountSnapshot';
+import { useExchangeIntegrations } from '@/hooks/useExchangeIntegrations';
 
 const CATEGORIES: { id: FeedbackCategory; label: string }[] = [
   { id: 'bug', label: 'Bug Report' },
@@ -29,6 +30,7 @@ export function FeedbackModal() {
   const { isOpen, close } = useFeedback();
   const { pathname } = useLocation();
   const { items: snapshots } = useAccountSnapshot({ pollMs: 0 });
+  const { items: integrations } = useExchangeIntegrations();
 
   const [category, setCategory] = useState<FeedbackCategory>('general');
   const [severity, setSeverity] = useState<FeedbackSeverityInput>('annoying');
@@ -66,7 +68,10 @@ export function FeedbackModal() {
 
   if (!isOpen) return null;
 
-  const activeExchange = snapshots.find((s) => s.status === 'connected')?.exchange ?? null;
+  const activeExchange =
+    integrations.find((item) => item.isActive && item.status === 'connected')?.exchange ??
+    snapshots.find((s) => s.status === 'connected')?.exchange ??
+    null;
 
   async function handleScreenshotChange(file: File | null) {
     if (!file) {

@@ -112,4 +112,6 @@ export interface ExchangeAdapter {
   fetchPositions(input: ConnectInput): Promise<PositionItem[]>;
   /** Recent closed PnL rows; empty if unsupported for this venue. */
   fetchClosedTrades(input: ConnectInput, opts?: { limit?: number }): Promise<ClosedTradeItem[]>;
+  /** Bybit linear hedge vs one-way — used when the book is flat. */
+  fetchLinearPositionMode?(input: ConnectInput): Promise<'hedge' | 'oneWay'>;
 }

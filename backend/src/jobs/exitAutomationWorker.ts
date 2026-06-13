@@ -1,6 +1,6 @@
 import { env } from '../config/env.js';
 import { BybitAdapter } from '../exchanges/bybit.js';
-import { listBrokerAccountsForUser } from '../db/queries/brokerAccounts.js';
+import { getConnectedBrokerAccount } from '../db/queries/brokerAccounts.js';
 import {
   disableExitWatchSystem,
   listEnabledExitWatches,
@@ -62,8 +62,7 @@ async function processOneWatch(w: ExitAutomationWatchRow): Promise<void> {
     return;
   }
 
-  const accounts = await listBrokerAccountsForUser(w.user_id);
-  const account = accounts.find((a) => a.broker === 'bybit' && a.status === 'connected');
+  const account = await getConnectedBrokerAccount(w.user_id, 'bybit');
   if (!account) {
     await updateExitWatchRuntime(w.id, {
       lastCheckedAt: new Date(),

@@ -75,6 +75,8 @@ export type ExchangeSnapshot = {
   balances: BalanceItem[];
   positions: PositionItem[];
   accountBreakdown?: ExchangeAccountBreakdown | null;
+  /** Bybit linear hedge vs one-way (from portfolio sync). */
+  linearPositionMode?: 'hedge' | 'oneWay';
   /** Present when `status === 'error'` — e.g. Bybit HTTP 403 (IP allowlist / API key). */
   syncError?: string;
 };

@@ -4,7 +4,7 @@ import type { AuthedRequest } from '../middleware/auth.js';
 import { MexcAdapter } from '../exchanges/mexc.js';
 import { resolveBrokerCredentials } from '../services/brokerCredentials.js';
 import { clientSafeExchangeError } from '../lib/clientSafeError.js';
-import { listBrokerAccountsForUser } from '../db/queries/brokerAccounts.js';
+import { getConnectedBrokerAccount } from '../db/queries/brokerAccounts.js';
 import { log } from '../lib/logger.js';
 import { formatZodIssuesForApi } from '../lib/formatZodError.js';
 import { requireIdempotency } from '../middleware/requireIdempotency.js';
@@ -40,8 +40,7 @@ mexcTradeRouter.post('/set-leverage', async (req: AuthedRequest, res) => {
     return;
   }
 
-  const accounts = await listBrokerAccountsForUser(req.user.userId);
-  const row = accounts.find((a) => a.broker === 'mexc' && a.status === 'connected');
+  const row = await getConnectedBrokerAccount(req.user.userId, 'mexc');
   if (!row) {
     res.status(400).json({ error: 'Connect MEXC in Account first.' });
     return;
@@ -95,8 +94,7 @@ mexcTradeRouter.post('/linear-order', async (req: AuthedRequest, res) => {
     return;
   }
 
-  const accounts = await listBrokerAccountsForUser(req.user.userId);
-  const row = accounts.find((a) => a.broker === 'mexc' && a.status === 'connected');
+  const row = await getConnectedBrokerAccount(req.user.userId, 'mexc');
   if (!row) {
     res.status(400).json({ error: 'Connect MEXC in Account first.' });
     return;
@@ -165,8 +163,7 @@ mexcTradeRouter.post('/linear-trading-stop', async (req: AuthedRequest, res) => 
     return;
   }
 
-  const accounts = await listBrokerAccountsForUser(req.user.userId);
-  const row = accounts.find((a) => a.broker === 'mexc' && a.status === 'connected');
+  const row = await getConnectedBrokerAccount(req.user.userId, 'mexc');
   if (!row) {
     res.status(400).json({ error: 'Connect MEXC in Account first.' });
     return;

@@ -1476,22 +1476,20 @@ export function PriceChartCard({
       </div>
     ) : null;
 
-  /** Manage dock: PnL + TF chips share one row above the plot. */
+  /** Manage dock: PnL on its own row; TF chips full width below (avoids clipping beside expand control). */
   const pairTfHeroDockedPnlTfRow = (
-    <div className="flex w-full min-w-0 shrink-0 items-center justify-between gap-2 py-1">
-      <div className="min-w-0 flex-1">
-        {pnlHeaderLabel != null && pnlHeaderLabel !== '' ? (
-          <p
-            className={`max-w-full truncate text-[9px] font-semibold tabular-nums leading-tight sm:text-[10px] md:text-[11px] ${pnlHeaderToneClass}`}
-          >
-            {pnlHeaderLabel}
-          </p>
-        ) : null}
-      </div>
-      <div className="flex min-w-0 max-w-[min(100%,11.5rem)] shrink-0 items-center sm:max-w-[min(100%,16rem)] md:max-w-none">
-        {pairTfHeroTfChips}
-      </div>
-      {chartInnerChromeToggle && !exchangeStyleHero ? (
+    <div className="flex w-full min-w-0 shrink-0 flex-col gap-1 py-1">
+      <div className="flex w-full min-w-0 items-center justify-between gap-2">
+        <div className="min-w-0 flex-1">
+          {pnlHeaderLabel != null && pnlHeaderLabel !== '' ? (
+            <p
+              className={`max-w-full truncate text-[9px] font-semibold tabular-nums leading-tight sm:text-[10px] md:text-[11px] ${pnlHeaderToneClass}`}
+            >
+              {pnlHeaderLabel}
+            </p>
+          ) : null}
+        </div>
+        {chartInnerChromeToggle && !exchangeStyleHero ? (
         <button
           type="button"
           onClick={chartInnerChromeToggle.onToggle}
@@ -1560,6 +1558,8 @@ export function PriceChartCard({
           )}
         </button>
       ) : null}
+      </div>
+      <div className="w-full min-w-0 border-t border-white/[0.06] pt-1">{pairTfHeroTfChips}</div>
     </div>
   );
 

@@ -1149,8 +1149,27 @@ export function TradeScreen() {
     [exchangeOpenLegCount],
   );
   const maxOpenPositionsReached = riskMonitoredOpenCount >= riskSettings.maxOpenPositions;
+  const manageExchangeSnap = useMemo((): ExchangeSnapshot | null => {
+    if (!isManageMode) return null;
+    const preferred =
+      managePositionExchange ??
+      (manageCtx?.exchange === 'bybit' || manageCtx?.exchange === 'mexc' ? manageCtx.exchange : null) ??
+      tradeExchangeFromQuery;
+    if (preferred === 'mexc') return mexcSnap?.status === 'connected' ? mexcSnap : null;
+    if (preferred === 'bybit') return bybitSnap?.status === 'connected' ? bybitSnap : null;
+    if (mexcSnap?.status === 'connected') return mexcSnap;
+    if (bybitSnap?.status === 'connected') return bybitSnap;
+    return null;
+  }, [
+    bybitSnap,
+    isManageMode,
+    manageCtx?.exchange,
+    managePositionExchange,
+    mexcSnap,
+    tradeExchangeFromQuery,
+  ]);
   const exchangePositionForSymbol = useMemo((): PositionItem | null => {
-    const snap = activeExchangeSnap;
+    const snap = isManageMode ? (manageExchangeSnap ?? activeExchangeSnap) : activeExchangeSnap;
     if (!snap?.positions?.length) return null;
     const sym = pairBaseToLinearSymbol(mergedModel.pair);
     const legSide = isManageMode && manageCtx ? manageCtx.side : side;
@@ -1159,7 +1178,7 @@ export function TradeScreen() {
         ? manageCtx.positionIdx
         : snap.positions.find((x) => x.symbol === sym && x.size > 0 && x.side === legSide)?.positionIdx;
     return resolveExchangeLinearLeg(snap.positions, sym, legSide, positionIdx);
-  }, [activeExchangeSnap, isManageMode, manageCtx, mergedModel.pair, side]);
+  }, [activeExchangeSnap, isManageMode, manageCtx, manageExchangeSnap, mergedModel.pair, side]);
 
   const spotBaseAsset = useMemo(
     () => spotBaseAssetFromOrderSymbol(pairBaseToLinearSymbol(mergedModel.pair)),
@@ -1176,9 +1195,14 @@ export function TradeScreen() {
   /** Manage-mode PnL UI only while the exchange still shows an open leg (perps or spot balance). */
   const hasManageOpenExposure = useMemo(() => {
     if (!isManageMode) return false;
-    if (market === 'futures') return exchangePositionForSymbol != null;
+    if (market === 'futures') {
+      return (
+        exchangePositionForSymbol != null ||
+        Boolean(manageCtx?.entryPrice && manageCtx?.positionUsd)
+      );
+    }
     return exchangeSpotFreeBaseQty != null && exchangeSpotFreeBaseQty > 0;
-  }, [exchangePositionForSymbol, exchangeSpotFreeBaseQty, isManageMode, market]);
+  }, [exchangePositionForSymbol, exchangeSpotFreeBaseQty, isManageMode, manageCtx, market]);
 
   const hadFuturesManagePositionRef = useRef(false);
   const hadSpotManageBalanceRef = useRef(false);
@@ -4327,7 +4351,7 @@ export function TradeScreen() {
   ]);
 
   const chartPnlHeader = useMemo(() => {
-    if (isManageMode && managePnlDisplay && hasManageOpenExposure) {
+    if (isManageMode && managePnlDisplay) {
       const pnl = managePnlDisplay.pnlUsd;
       const pct = managePnlDisplay.pnlPct;
       if (!Number.isFinite(pnl) || !Number.isFinite(pct)) return { label: undefined, tone: undefined } as const;

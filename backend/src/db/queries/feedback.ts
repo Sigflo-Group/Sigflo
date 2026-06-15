@@ -56,7 +56,7 @@ export async function countFeedbackByUser(): Promise<Array<{ userId: string; ema
        coalesce(p.email, 'unknown') as email,
        count(*)::int as count
      from feedback f
-     left join public.profiles p on p.id = f.user_id
+     left join public.profiles p on p.id::text = f.user_id
      group by f.user_id, p.email
      order by count(*) desc
      limit 20`,

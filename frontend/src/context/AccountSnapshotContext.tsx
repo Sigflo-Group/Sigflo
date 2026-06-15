@@ -66,6 +66,13 @@ export function AccountSnapshotProvider({
 
   const refresh = useCallback(async (opts?: RefreshAccountSnapshotsOptions): Promise<ExchangeSnapshot[]> => {
     const silent = opts?.silent === true;
+    if (!session?.user?.id) {
+      setItems([]);
+      setClosedTrades([]);
+      setError(null);
+      if (!silent) setLoading(false);
+      return [];
+    }
     if (!silent) {
       setLoading(true);
       setError(null);
@@ -97,10 +104,10 @@ export function AccountSnapshotProvider({
 
       setError(errs.length > 0 ? errs.join(' · ') : null);
     } finally {
-      if (!silent && mountedRef.current) setLoading(false);
+      if (!silent) setLoading(false);
     }
     return snapshots;
-  }, []);
+  }, [session?.user?.id]);
 
   const sessionUid = session?.user?.id ?? null;
   useEffect(() => {

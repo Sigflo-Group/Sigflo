@@ -1,5 +1,8 @@
 import type { ScannerTimingState } from '@/lib/scannerConfig';
+import { NOT_TRIGGERED_REASON_LABELS } from '@/lib/scannerEngineConfig';
 import type { SignalSetupType } from '@/types/signal';
+
+export { FUNNEL_STAGE_LABELS } from '@/lib/scannerEngineConfig';
 
 export type ScannerFunnelStage =
   | 'skip_no_ticker'
@@ -88,6 +91,13 @@ export function getScannerPipelineHealth(): ScannerPipelineHealthSnapshot {
 export function isScannerDebugEnabled(): boolean {
   if (import.meta.env.DEV) return true;
   return Boolean((globalThis as { __SIGFLO_SCANNER_DEBUG__?: boolean }).__SIGFLO_SCANNER_DEBUG__);
+}
+
+export function formatNotTriggeredReason(code: string): string {
+  if (NOT_TRIGGERED_REASON_LABELS[code]) return NOT_TRIGGERED_REASON_LABELS[code]!;
+  if (code.startsWith('actionability_below_')) return `Actionability below ${code.split('_').pop()}`;
+  if (code.startsWith('freshness_below_')) return `Freshness below ${code.split('_').pop()}`;
+  return code.replaceAll('_', ' ');
 }
 
 export function explainNotTriggered(args: {

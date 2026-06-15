@@ -68,7 +68,7 @@ export const APP_ROUTE_META: Record<string, AppRouteMeta> = {
   '/trade/:symbol': { requiresAuth: true, requiresStepUp: false, auditLabel: 'view_trade' },
   '/portfolio': { requiresAuth: true, requiresStepUp: false, auditLabel: 'view_portfolio' },
   '/settings/profile': { requiresAuth: true, requiresStepUp: false, auditLabel: 'settings_profile' },
-  '/settings/exchange': { requiresAuth: true, requiresStepUp: true, auditLabel: 'settings_exchange' },
+  '/settings/exchange': { requiresAuth: true, requiresStepUp: false, auditLabel: 'settings_exchange' },
   '/settings/security': { requiresAuth: true, requiresStepUp: false, auditLabel: 'settings_security' },
   '/settings/execution': { requiresAuth: true, requiresStepUp: true, auditLabel: 'settings_execution' },
   '/security/step-up': { requiresAuth: true, requiresStepUp: false, auditLabel: 'security_step_up' },

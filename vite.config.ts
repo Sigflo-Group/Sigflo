@@ -260,6 +260,12 @@ export default defineConfig(({ mode }) => {
       strictPort: true,
       // Only proxy backend routes. `/api/ai/suggest` is handled above (and by Netlify in production).
       proxy: {
+        '/bybit-proxy': {
+          target: 'https://api.bybit.com',
+          changeOrigin: true,
+          secure: true,
+          rewrite: (path) => path.replace(/^\/bybit-proxy/, ''),
+        },
         '/api/exchange': { target: 'http://127.0.0.1:8787', changeOrigin: true },
         '/api/integrations': { target: 'http://127.0.0.1:8787', changeOrigin: true },
         '/api/portfolio': { target: 'http://127.0.0.1:8787', changeOrigin: true },

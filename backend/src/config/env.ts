@@ -1,5 +1,12 @@
-import 'dotenv/config';
+import dotenv from 'dotenv';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
+
+/** Always load `backend/.env` even when `npm run dev:backend` is started from the repo root. */
+const backendRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
+dotenv.config({ path: path.join(backendRoot, '.env') });
+dotenv.config({ path: path.join(backendRoot, '.env.local'), override: true });
 
 const envSchema = z.object({
   NODE_ENV: z.string().optional(),

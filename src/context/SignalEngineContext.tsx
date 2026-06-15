@@ -109,9 +109,10 @@ export type SignalEngineState = {
   setAdvancedPanelExpanded: (panelId: string, expanded: boolean) => void;
 };
 
-const COOLDOWN_MS = 20 * 60 * 1000;
-const SCORE_IMPROVE_BYPASS = 6;
-const ATR_MOVE_BYPASS = 0.6;
+import {
+  ENGINE_EMIT_CONFIG,
+  evaluateEmitGate,
+} from '@/lib/scannerEngineConfig';
 type CandleStore = Record<string, Record<string, Candle[]>>;
 /** Same as Markets Tracked list — WS klines + tickers for live scanner + detectors. */
 const STREAM_SYMBOLS: string[] = [...TRACKED_SYMBOLS];
@@ -412,10 +413,10 @@ function useSignalEngineValue(): SignalEngineState {
       };
     }
 
-    function clearStaleSignalsForSymbol(symbol: string) {
+    function pruneSignalBookForSymbol(symbol: string, keepKey?: string) {
       const prefix = `${symbol}:`;
       for (const key of Object.keys(signalBookRef.current)) {
-        if (key.startsWith(prefix)) delete signalBookRef.current[key];
+        if (key.startsWith(prefix) && key !== keepKey) delete signalBookRef.current[key];
       }
     }
 
@@ -546,7 +547,7 @@ function useSignalEngineValue(): SignalEngineState {
       );
 
       if (!signal) {
-        clearStaleSignalsForSymbol(symbol);
+        pruneSignalBookForSymbol(symbol);
         recordScannerPipelineReport({ symbol, stage: 'skip_no_detector', ts: Date.now() }, healthCtx());
         return;
       }
@@ -555,18 +556,22 @@ function useSignalEngineValue(): SignalEngineState {
       const prev = lastSignalRef.current[key];
       const lastClosedTs = candles15m.at(-1)?.ts ?? 0;
       const prevCandleTs = lastEmittedCandleTsRef.current[symbol];
-      const newClosedBar = prevCandleTs == null || lastClosedTs > prevCandleTs;
       const atrNow = Math.max(0.000001, atr(candles15m, 14).at(-1) ?? 1);
       const priceNow = ticker.lastPrice;
-      const scoreImproved =
-        newClosedBar && prev ? signal.signal.setupScore - prev.setupScore >= SCORE_IMPROVE_BYPASS : false;
-      const priceMoved =
-        newClosedBar && prev
-          ? Math.abs(priceNow - prev.refPrice) / Math.max(atrNow, 0.000001) >= ATR_MOVE_BYPASS
-          : false;
-      const cooldownPassed =
-        !prev ||
-        now - prev.emittedAt >= COOLDOWN_MS * (STRATEGY_PERSONALITY_PROFILES[strategyPersonalityModeRef.current]?.cooldownMultiplier ?? 1);
+      const personalityCooldown =
+        ENGINE_EMIT_CONFIG.cooldownMs *
+        (STRATEGY_PERSONALITY_PROFILES[strategyPersonalityModeRef.current]?.cooldownMultiplier ?? 1);
+      const emitGate = evaluateEmitGate({
+        now,
+        prev,
+        signalSetupScore: signal.signal.setupScore,
+        priceNow,
+        atrNow,
+        lastClosedTs,
+        prevCandleTs,
+        cooldownMs: personalityCooldown,
+      });
+      const { emit: shouldEmit, cooldownPassed, scoreImproved, priceMoved, newClosedBar } = emitGate;
       if (import.meta.env.DEV) {
         console.log(`[Sigflo][Engine] ${symbol} emit gate`, {
           key,
@@ -579,11 +584,13 @@ function useSignalEngineValue(): SignalEngineState {
           cooldownPassed,
           scoreImproved,
           priceMoved,
+          newClosedBar,
+          shouldEmit,
           msSincePrevEmit: prev ? now - prev.emittedAt : null,
-          cooldownMs: COOLDOWN_MS * (STRATEGY_PERSONALITY_PROFILES[strategyPersonalityModeRef.current]?.cooldownMultiplier ?? 1),
+          cooldownMs: personalityCooldown,
         });
       }
-      if (!(cooldownPassed || scoreImproved || priceMoved)) {
+      if (!shouldEmit) {
         // Suppress duplicate emit events, but keep live lifecycle/timing state current in UI.
         const prevLifecycleState = lifecycleRef.current[key]?.state;
         const nextLifecycleState = signal.lifecycle.state;
@@ -609,8 +616,7 @@ function useSignalEngineValue(): SignalEngineState {
           triggerType: signal.signal.triggerType,
           suppressReason: 'cooldown',
         });
-        clearStaleSignalsForSymbol(symbol);
-        signalBookRef.current[key] = signal.signal;
+        pruneSignalBookForSymbol(symbol, key);
         lifecycleRef.current[key] = signal.lifecycle;
         dirtyPersistRef.current.lifecycle = true;
         flushAiSnapshot(nextMemory, signal.signal, nextRegimePredictor.output);
@@ -677,7 +683,7 @@ function useSignalEngineValue(): SignalEngineState {
         suppressReason: null,
       });
       lastSignalRef.current[key] = { emittedAt: now, setupScore: signal.signal.setupScore, refPrice: priceNow, atr: atrNow };
-      clearStaleSignalsForSymbol(symbol);
+      pruneSignalBookForSymbol(symbol, key);
       signalBookRef.current[key] = signal.signal;
       lifecycleRef.current[key] = signal.lifecycle;
       dirtyPersistRef.current.lifecycle = true;

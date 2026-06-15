@@ -1,14 +1,8 @@
-import {
-  detectBreakdownPressure,
-  detectBreakoutPressure,
-  detectOverextendedShort,
-  detectOverextendedWarning,
-  detectPullbackContinuation,
-  detectPullbackContinuationShort,
-  pickBestDirectionalPair,
-} from '@/engine/detectors';
+import { buildSignalFromMarket, inferMarketRegime } from '@/lib/signalDetectors';
+import { ENGINE_EMIT_CONFIG } from '@/lib/scannerEngineConfig';
+import type { Candle } from '@/types/market';
+import type { CryptoSignal } from '@/types/signal';
 import { applySignalQualityControls } from '@/engine/filtering';
-import { deriveIndicatorSnapshot } from '@/engine/indicators';
 import type {
   CandleSeriesByInterval,
   EmittedSignalStateMap,
@@ -34,35 +28,86 @@ const DEFAULT_FILTER_CONFIG: ScannerFilterConfig = {
   minScoreImprovement: 8,
 };
 
+function closedCandles(series: Candle[] | undefined): Candle[] {
+  if (!series?.length) return [];
+  const lastOpen = series.at(-1)?.isClosed === false;
+  return lastOpen ? series.slice(0, -1) : series;
+}
+
+function toSignalCandidate(symbol: string, signal: CryptoSignal, ts: number): SignalCandidate {
+  return {
+    symbol,
+    setupType: signal.setupType,
+    directionBias: signal.side,
+    biasLabel: signal.biasLabel,
+    tags: signal.setupTags,
+    scoreBreakdown: signal.scoreBreakdown,
+    setupScore: signal.setupScore,
+    explanationFacts: {
+      emaTrend:
+        signal.facts?.emaTrend === 'bullish' || signal.facts?.emaTrend === 'bearish'
+          ? signal.facts.emaTrend
+          : 'neutral',
+      rsi: Number(signal.facts?.rsi ?? 50),
+      rsiSlope: 0,
+      volumeRatio: Number(signal.facts?.volumeRatio ?? 1),
+      breakoutDistanceAtr: Number(signal.facts?.distanceToBreakoutAtr ?? 0),
+      pullbackDepthAtr: 0,
+      extensionAtr: 0,
+    },
+    confirmedOnClosedCandle: true,
+    timestamp: ts,
+    timingState: signal.timingState,
+    confidence: signal.confidence,
+    triggerType: signal.triggerType,
+  };
+}
+
 /**
- * Rules-first scanner pipeline (deterministic: outputs depend only on candles + thresholds).
- * Live path uses Bybit REST/WS data into the same shapes; AI consumes explanationFacts after signal creation.
+ * Production scanner pipeline — uses the same `buildSignalFromMarket` path as the live engine.
  */
 export function runScannerPipeline(input: ScannerInput): ScannerOutput {
   const cfg = { ...DEFAULT_FILTER_CONFIG, ...input.filterConfig };
   const allCandidates: SignalCandidate[] = [];
 
+  const btc15 = closedCandles(input.marketBySymbol.BTCUSDT?.['15m']);
+  const eth15 = closedCandles(input.marketBySymbol.ETHUSDT?.['15m']);
+  const regime =
+    btc15.length >= ENGINE_EMIT_CONFIG.minClosedCandles15m &&
+    eth15.length >= ENGINE_EMIT_CONFIG.minClosedCandles15m
+      ? inferMarketRegime({ btc15m: btc15, eth15m: eth15 })
+      : 'neutral';
+
   for (const [symbol, series] of Object.entries(input.marketBySymbol)) {
-    const candles15m = series['15m'];
-    if (!candles15m || candles15m.length < 60) continue;
-    const lastClosed = candles15m.at(-1)?.isClosed ?? true;
-    const indicators = deriveIndicatorSnapshot(candles15m);
-    const detectorInput = { symbol, candles: candles15m, indicators, lastCandleClosed: lastClosed };
-    const candidates = [
-      pickBestDirectionalPair(detectBreakoutPressure(detectorInput), detectBreakdownPressure(detectorInput)),
-      pickBestDirectionalPair(
-        detectPullbackContinuation(detectorInput),
-        detectPullbackContinuationShort(detectorInput),
-      ),
-      pickBestDirectionalPair(detectOverextendedWarning(detectorInput), detectOverextendedShort(detectorInput)),
-    ].filter((s): s is SignalCandidate => Boolean(s));
-    allCandidates.push(...candidates);
+    const candles15m = closedCandles(series['15m']);
+    if (candles15m.length < ENGINE_EMIT_CONFIG.minClosedCandles15m) continue;
+    const candles5m = closedCandles(series['5m']);
+    const last = candles15m.at(-1);
+    const ticker = {
+      symbol,
+      lastPrice: last?.close ?? 0,
+      high24h: last?.high ?? 0,
+      low24h: last?.low ?? 0,
+      volume24h: last?.volume ?? 0,
+      turnover24h: 0,
+      price24hPcnt: 0,
+    };
+    const built = buildSignalFromMarket({
+      symbol,
+      exchange: 'Bybit',
+      ticker,
+      candles15m,
+      candles5m: candles5m.length >= ENGINE_EMIT_CONFIG.minClosedCandles5m ? candles5m : undefined,
+      regime,
+    });
+    if (!built) continue;
+    allCandidates.push(toSignalCandidate(symbol, built.signal, last?.ts ?? Date.now()));
   }
 
   const { accepted, nextState } = applySignalQualityControls(
     allCandidates,
     input.previousState ?? {},
-    cfg
+    cfg,
   );
 
   return {

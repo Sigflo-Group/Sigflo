@@ -33,6 +33,7 @@ export function sigfloActivePositionFromExchange(
   p: PositionItem,
   displayPair: string,
   liveMark: number,
+  exchange: 'bybit' | 'mexc' = 'bybit',
 ): SigfloActivePosition {
   const mark =
     p.markPrice != null && Number.isFinite(p.markPrice) && p.markPrice > 0 ? p.markPrice : liveMark;
@@ -54,7 +55,7 @@ export function sigfloActivePositionFromExchange(
   }
 
   return {
-    id: `bybit:${p.symbol}:${p.side}`,
+    id: `${exchange}:${p.symbol}:${p.side}:${p.positionIdx ?? 0}`,
     pair: displayPair,
     direction: p.side,
     entryPrice: p.entryPrice,
@@ -68,7 +69,7 @@ export function sigfloActivePositionFromExchange(
     liquidationPrice: p.liqPrice ?? null,
     targets,
     openedAt: p.openedAtMs ?? Date.now(),
-    source: 'bybit',
+    source: exchange,
   };
 }
 

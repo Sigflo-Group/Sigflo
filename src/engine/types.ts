@@ -70,6 +70,10 @@ export interface SignalCandidate {
   explanationFacts: ExplanationFacts;
   confirmedOnClosedCandle: boolean;
   timestamp: number;
+  /** Present when produced by the live `buildSignalFromMarket` pipeline. */
+  timingState?: import('@/lib/scannerConfig').ScannerTimingState;
+  confidence?: number;
+  triggerType?: string;
 }
 
 export interface DetectorInput {

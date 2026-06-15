@@ -16,6 +16,7 @@ export {
   MIN_ENGINE_BARS,
   deriveIndicators,
   engineSnapshotToDerivedIndicators,
+  isLabTimingTriggered,
   playbackCandlesToEngine,
   runScannerLabEngineEvaluations,
 } from '@/lib/scannerLabEngineAdapter';

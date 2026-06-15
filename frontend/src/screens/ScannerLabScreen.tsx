@@ -1,11 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card } from '@/components/ui/Card';
-import { breakoutScenario5m, overextendedScenario5m, pullbackScenario5m } from '@/data/scannerLabCandles';
+import {
+  breakoutScenario5m,
+  overextendedScenario5m,
+  pullbackScenario5m,
+  SCENARIO_TRIGGER_CANDLE,
+} from '@/data/scannerLabCandles';
 import {
   deriveIndicators,
   MIN_ENGINE_BARS,
   runScannerLabEngineEvaluations,
+  isLabTimingTriggered,
   type DetectorEvaluation,
 } from '@/lib/detectors';
 import { useSignalEngine } from '@/hooks/useSignalEngine';
@@ -37,6 +43,11 @@ const SCENARIO_CANDLES: Record<ScenarioKey, typeof breakoutScenario5m> = {
   pullback: pullbackScenario5m,
   overextended: overextendedScenario5m,
 };
+const SCENARIO_PRIMARY_SETUP: Record<ScenarioKey, 'breakout' | 'pullback' | 'overextended'> = {
+  breakout: 'breakout',
+  pullback: 'pullback',
+  overextended: 'overextended',
+};
 
 function formatTs(ts: number) {
   return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -60,13 +71,7 @@ function statusFromEvaluation(r: DetectorEvaluation, score: number | null) {
   if (r.timingTriggered) return 'triggered' as const;
   const isWaiting = r.reasons.some((reason) => reason.includes('Need at least') || reason.includes('not closed'));
   if (isWaiting) return 'invalid' as const;
-  if (!r.detectorQualified) {
-    const failCount = r.reasons.length;
-    const potential = score ?? 0;
-    if (failCount <= 1 || potential >= 70) return 'close' as const;
-    if (failCount <= 3 || potential >= 55) return 'developing' as const;
-    return 'invalid' as const;
-  }
+  if (!r.detectorQualified) return 'invalid' as const;
   if (r.timingState === 'ready' || r.timingState === 'extended') return 'close' as const;
   if (score != null && score >= 55) return 'developing' as const;
   return 'close' as const;
@@ -128,6 +133,10 @@ export function ScannerLabScreen() {
 
   const latestEvaluations = useMemo(() => {
     const rows = lastStep?.detectorEvaluations ?? [];
+    const candleIndex = lastStep?.index ?? 0;
+    const triggerCandle = SCENARIO_TRIGGER_CANDLE[scenario];
+    const primarySetup = SCENARIO_PRIMARY_SETUP[scenario];
+    const outcomeTotal = SCENARIO_CANDLES[scenario].length - triggerCandle;
     return rows.map((r) => ({
       setupType: r.setupType,
       reasons: r.reasons.length > 0 ? r.reasons : ['Conditions not met'],
@@ -147,22 +156,62 @@ export function ScannerLabScreen() {
               ? 'weakening'
               : 'flat';
       const raw = rows.find((r) => r.setupType === row.setupType);
-      const status = raw ? statusFromEvaluation(raw, row.score) : 'invalid';
-      if (status === 'triggered') return { ...row, status, nextNeed: 'Timing trigger fired — in play now.', trend };
-      if (raw?.detectorQualified && status !== 'triggered') {
-        return { ...row, status, nextNeed: raw.reasons.at(-1) ?? 'Detector qualified; timing not confirmed yet.', trend };
+      let status = raw ? statusFromEvaluation(raw, row.score) : 'invalid';
+      let timingState = row.timingState;
+      let triggerType = row.triggerType;
+      let score = row.score;
+      let reasons = row.reasons;
+      let nextNeed = nextNeedFromReasons(row.reasons);
+
+      const lifecycle = session.lifecycleRegistry[row.setupType as keyof typeof session.lifecycleRegistry];
+      const lastSignal = session.state.emittedSignals
+        .filter((s) => s.scenario === scenario && s.setupType === row.setupType)
+        .at(-1);
+      const onOutcomeBar = candleIndex > triggerCandle && row.setupType === primarySetup;
+
+      if (onOutcomeBar && lastSignal && lifecycle && !raw?.detectorQualified) {
+        timingState = lifecycle.state;
+        triggerType = lifecycle.trigger.triggerType;
+        score = lastSignal.setupScore;
+        reasons = [
+          `Outcome bar +${candleIndex - triggerCandle}/${outcomeTotal} after trigger on candle ${lastSignal.candleIndex}.`,
+          `Lifecycle: ${lifecycle.state}${lifecycle.trigger.triggerType !== 'unknown' ? ` (${String(lifecycle.trigger.triggerType).replaceAll('_', ' ')})` : ''}.`,
+        ];
+        if (lifecycle.state === 'triggered' || isLabTimingTriggered(lifecycle)) {
+          status = 'triggered';
+          nextNeed = 'Post-trigger outcome window — detector idle on this bar; timing lifecycle still active.';
+        } else if (lifecycle.state === 'extended' || lifecycle.state === 'ready') {
+          status = 'close';
+          nextNeed = `Lifecycle ${lifecycle.state} — measuring follow-through on outcome bars.`;
+        }
+      } else if (status === 'triggered') {
+        nextNeed = 'Timing trigger fired — in play now.';
+      } else if (raw?.detectorQualified && status !== 'triggered') {
+        nextNeed = raw.reasons.at(-1) ?? 'Detector qualified; timing not confirmed yet.';
       }
-      return { ...row, status, nextNeed: nextNeedFromReasons(row.reasons), trend };
+
+      if (status === 'triggered') {
+        return { ...row, status, timingState, triggerType, score, reasons, nextNeed, trend };
+      }
+      return { ...row, status, timingState, triggerType, score, reasons, nextNeed, trend };
     });
-  }, [lastStep]);
+  }, [lastStep, scenario, session.lifecycleRegistry, session.state.emittedSignals]);
 
   const fireMoment = useMemo(() => {
+    const primary = SCENARIO_PRIMARY_SETUP[scenario];
+    const triggerCandle = SCENARIO_TRIGGER_CANDLE[scenario];
+    const primarySignal = session.state.emittedSignals.find(
+      (s) => s.scenario === scenario && s.setupType === primary && s.candleIndex === triggerCandle,
+    );
+    if (primarySignal) {
+      return { candleIndex: primarySignal.candleIndex, setupTypes: new Set([primary]) };
+    }
     if (!lastStep || lastStep.newSignals.length === 0) return null;
     return {
       candleIndex: lastStep.index,
       setupTypes: new Set(lastStep.newSignals.map((s) => s.setupType)),
     };
-  }, [lastStep]);
+  }, [lastStep, scenario, session.state.emittedSignals]);
 
   const topPanel = useMemo(() => {
     if (lastStep) {
@@ -446,6 +495,12 @@ export function ScannerLabScreen() {
             FIRE MOMENT • Candle {fireMoment.candleIndex}
           </div>
         ) : null}
+        {lastStep && lastStep.index > SCENARIO_TRIGGER_CANDLE[scenario] ? (
+          <p className="mt-2 text-[11px] text-cyan-200/90">
+            Outcome bar {lastStep.index - SCENARIO_TRIGGER_CANDLE[scenario]}/
+            {SCENARIO_CANDLES[scenario].length - SCENARIO_TRIGGER_CANDLE[scenario]} — measuring post-trigger follow-through.
+          </p>
+        ) : null}
         <div className="mt-2 grid grid-cols-2 gap-2 text-xs">
           <div className="rounded-lg border border-sigflo-border bg-sigflo-bg/50 p-2">
             <p className="text-sigflo-muted">Price</p>
@@ -514,7 +569,9 @@ export function ScannerLabScreen() {
                       ? '⚠️ Close'
                       : row.status === 'developing'
                         ? '🔄 Developing'
-                        : '❌ Invalid'}
+                        : row.detectorQualified === false && row.reasons.some((r) => r.includes('Outcome bar'))
+                          ? '📊 Outcome'
+                          : '❌ Idle'}
                 </span>
               </p>
               <p className="mt-1 text-xs text-white">

@@ -346,7 +346,7 @@ export function ScannerLabScreen() {
         <h2 className="text-sm font-semibold text-white">How to use this lab</h2>
         <p className="text-xs text-sigflo-muted">1) Pick a scenario. 2) Press Step or Play. 3) Watch detector status, setup score, and signal history.</p>
         <p className="text-xs text-sigflo-muted">
-          Rules match the production engine (`src/lib/signalDetectors.ts`): long/short pairs and fixed thresholds. Window needs at least {MIN_ENGINE_BARS} bars before setups can fire.
+          Rules match the production engine (`src/lib/signalDetectors.ts`): long/short pairs and fixed thresholds. Window needs at least {MIN_ENGINE_BARS} bars before setups can fire. Emit threshold matches live engine ({session.config.minSetupScore} setup score). Each scenario is designed to fire on the last candle — step or play to the end.
         </p>
       </Card>
 
@@ -410,8 +410,8 @@ export function ScannerLabScreen() {
       <Card className="p-4">
         <p className="text-xs text-sigflo-muted">
           {lastStep
-            ? `Candle ${lastStep.index}/${session.state.total} • ${formatTs(lastStep.currentCandle.timestamp)}`
-            : `Candle 0/${session.state.total}`}
+            ? `Candle ${lastStep.index}/${session.state.total} • ${formatTs(lastStep.currentCandle.timestamp)} • Window ${lastStep.visibleCandles.length}/${MIN_ENGINE_BARS} bars`
+            : `Candle 0/${session.state.total} • Window 0/${MIN_ENGINE_BARS} bars`}
         </p>
         {fireMoment ? (
           <div className="mt-2 inline-flex items-center rounded-full border border-emerald-400/40 bg-emerald-500/15 px-3 py-1 text-[11px] font-semibold tracking-wide text-emerald-200 shadow-[0_0_20px_rgba(16,185,129,0.25)]">
@@ -536,7 +536,11 @@ export function ScannerLabScreen() {
       <Card className="space-y-2 p-4">
         <h2 className="text-sm font-semibold text-white">Signal history</h2>
         {session.state.emittedSignals.length === 0 ? (
-          <p className="text-xs text-sigflo-muted">No signals yet. Step forward to validate timing and frequency.</p>
+          <p className="text-xs text-sigflo-muted">
+            {lastStep?.done && latestEvaluations.some((r) => r.status === 'triggered')
+              ? `Detector qualified on the last bar but did not pass emit gate (score must be ≥ ${session.config.minSetupScore}).`
+              : 'No signals yet. Step or play to the end of the scenario — fire moment is on the last candle.'}
+          </p>
         ) : (
           session.state.emittedSignals
             .slice()

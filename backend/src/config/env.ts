@@ -78,6 +78,8 @@ const envSchema = z.object({
    * Same list used by the Netlify admin-beta function.
    */
   SIGFLO_BETA_ADMIN_EMAILS: z.string().optional(),
+  /** Optional comma/semicolon-separated Supabase user UUIDs (same list as Netlify admin-beta). */
+  SIGFLO_BETA_ADMIN_USER_IDS: z.string().optional(),
 
 });
 

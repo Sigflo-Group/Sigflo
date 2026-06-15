@@ -1,4 +1,5 @@
 import type { PlaybackCandle } from '@/types/market';
+import { MIN_ENGINE_BARS } from '@/lib/scannerLabEngineAdapter';
 
 const START_TS = Date.UTC(2026, 0, 5, 12, 0, 0);
 const STEP_MS = 5 * 60 * 1000;
@@ -22,108 +23,62 @@ function c(
   };
 }
 
-function prependWarmup(
-  seed: PlaybackCandle[],
-  opts: { count: number; startPrice: number; drift: number; spread: number; baseVolume: number }
-): PlaybackCandle[] {
-  const warm: PlaybackCandle[] = [];
-  let price = opts.startPrice;
-  for (let i = 0; i < opts.count; i += 1) {
-    const wobble = Math.sin(i / 3) * opts.spread * 0.35;
-    const close = Math.max(0.0001, price + opts.drift + wobble);
-    const high = Math.max(price, close) + opts.spread;
-    const low = Math.min(price, close) - opts.spread;
-    const vol = opts.baseVolume * (0.92 + (i % 6) * 0.03);
-    warm.push(c(i, price, high, low, close, vol));
-    price = close;
+/** Breakout: choppy flat base (RSI ~60), tight coil under resistance, volume push into breakout zone. */
+function buildBreakoutLabSeries(): PlaybackCandle[] {
+  const bars: PlaybackCandle[] = [];
+  for (let i = 0; i < 64; i += 1) {
+    const close = 108.5 + Math.sin(i / 2.5) * 0.35;
+    bars.push(c(i, close - 0.06, close + 0.28, close - 0.28, close, 1100));
   }
-  const shifted = seed.map((bar, idx) =>
-    c(
-      opts.count + idx,
-      bar.open + (price - opts.startPrice),
-      bar.high + (price - opts.startPrice),
-      bar.low + (price - opts.startPrice),
-      bar.close + (price - opts.startPrice),
-      bar.volume
-    )
-  );
-  return [...warm, ...shifted];
+  for (let i = 0; i < 8; i += 1) {
+    const close = 108.95 + (i % 2) * 0.03;
+    bars.push(c(64 + i, close - 0.04, 109.14, 108.82, close, 1040));
+  }
+  bars.push(c(72, 108.94, 109.16, 108.92, 109.1, 2300));
+  return bars;
 }
 
-const breakoutCore: PlaybackCandle[] = [
-  c(0, 100, 101.4, 99.2, 100.8, 920),
-  c(1, 100.8, 102.1, 100.2, 101.7, 980),
-  c(2, 101.7, 103, 101.1, 102.5, 1000),
-  c(3, 102.5, 103.2, 101.9, 102.8, 960),
-  c(4, 102.8, 103.4, 102.2, 103.1, 940),
-  c(5, 103.1, 103.6, 102.7, 103.3, 930),
-  c(6, 103.3, 103.7, 102.9, 103.4, 950),
-  c(7, 103.4, 103.8, 103.0, 103.5, 980),
-  c(8, 103.5, 103.85, 103.2, 103.7, 1040),
-  c(9, 103.7, 103.95, 103.3, 103.8, 1080),
-  c(10, 103.8, 104.0, 103.45, 103.9, 1120),
-  c(11, 103.9, 104.05, 103.5, 104.0, 1200),
-  c(12, 104.0, 104.7, 103.9, 104.6, 1380),
-  c(13, 104.6, 105.4, 104.4, 105.2, 1600),
-  c(14, 105.2, 105.9, 104.9, 105.7, 1820),
-];
+/** Pullback: steady uptrend, shallow dip into EMA zone, bounce on last bar. */
+function buildPullbackLabSeries(): PlaybackCandle[] {
+  const bars: PlaybackCandle[] = [];
+  const baseCount = MIN_ENGINE_BARS + 16;
+  for (let i = 0; i < baseCount; i += 1) {
+    bars.push(c(i, 110, 112, 108, 110, 1000));
+  }
+  let price = 110;
+  for (let i = 0; i < 4; i += 1) {
+    const close = price + 0.45;
+    bars.push(c(baseCount + i, price, close + 0.25, price - 0.05, close, 1500));
+    price = close;
+  }
+  for (let i = 0; i < 3; i += 1) {
+    const close = price - 0.55;
+    bars.push(c(baseCount + 4 + i, price, price + 0.1, close - 0.25, close, 880));
+    price = close;
+  }
+  const bounce = price + 0.45;
+  bars.push(c(baseCount + 7, price, bounce + 0.2, price - 0.15, bounce, 1050));
+  return bars;
+}
 
-const pullbackCore: PlaybackCandle[] = [
-  c(0, 200, 201.8, 199.7, 201.4, 1450),
-  c(1, 201.4, 203.1, 201.1, 202.7, 1520),
-  c(2, 202.7, 204.6, 202.3, 204.1, 1600),
-  c(3, 204.1, 205.9, 203.9, 205.6, 1680),
-  c(4, 205.6, 207.1, 205.2, 206.8, 1720),
-  c(5, 206.8, 207.2, 206.0, 206.2, 1300),
-  c(6, 206.2, 206.6, 205.3, 205.7, 1180),
-  c(7, 205.7, 206.1, 204.9, 205.2, 1100),
-  c(8, 205.2, 205.6, 204.5, 204.9, 1040),
-  c(9, 204.9, 205.4, 204.3, 204.7, 980),
-  c(10, 204.7, 205.3, 204.4, 205.1, 940),
-  c(11, 205.1, 205.9, 204.9, 205.6, 1020),
-  c(12, 205.6, 206.5, 205.4, 206.2, 1120),
-  c(13, 206.2, 207.0, 205.9, 206.8, 1230),
-  c(14, 206.8, 207.8, 206.5, 207.5, 1360),
-];
+/** Overextended: flat base then parabolic stretch with hot RSI. */
+function buildOverextendedLabSeries(): PlaybackCandle[] {
+  const bars: PlaybackCandle[] = [];
+  const flatCount = MIN_ENGINE_BARS + 10;
+  for (let i = 0; i < flatCount; i += 1) {
+    const close = 50 + (i % 4) * 0.04;
+    bars.push(c(i, close - 0.05, close + 0.35, close - 0.35, close, 1100));
+  }
+  let price = 50.2;
+  for (let i = flatCount; i < flatCount + 12; i += 1) {
+    const step = 1.6 + (i - flatCount) * 0.35;
+    const close = price + step;
+    bars.push(c(i, price, close + 0.55, price - 0.15, close, 1800 + i * 120));
+    price = close;
+  }
+  return bars;
+}
 
-const overextendedCore: PlaybackCandle[] = [
-  c(0, 50, 50.8, 49.7, 50.5, 1200),
-  c(1, 50.5, 51.2, 50.2, 50.9, 1280),
-  c(2, 50.9, 51.5, 50.7, 51.3, 1320),
-  c(3, 51.3, 52.4, 51.1, 52.1, 1450),
-  c(4, 52.1, 53.4, 51.8, 53.0, 1620),
-  c(5, 53.0, 54.5, 52.7, 54.1, 1760),
-  c(6, 54.1, 55.9, 53.8, 55.6, 1910),
-  c(7, 55.6, 57.5, 55.2, 57.2, 2080),
-  c(8, 57.2, 59.4, 56.8, 59.0, 2260),
-  c(9, 59.0, 61.3, 58.6, 60.9, 2440),
-  c(10, 60.9, 63.5, 60.2, 63.0, 2680),
-  c(11, 63.0, 65.9, 62.1, 65.3, 2950),
-  c(12, 65.3, 67.8, 64.9, 67.4, 3140),
-  c(13, 67.4, 69.6, 66.9, 69.1, 3260),
-  c(14, 69.1, 70.7, 67.9, 70.1, 3400),
-];
-
-export const breakoutScenario5m = prependWarmup(breakoutCore, {
-  count: 48,
-  startPrice: 96,
-  drift: 0.16,
-  spread: 0.55,
-  baseVolume: 860,
-});
-
-export const pullbackScenario5m = prependWarmup(pullbackCore, {
-  count: 20,
-  startPrice: 192,
-  drift: 0.28,
-  spread: 0.9,
-  baseVolume: 1200,
-});
-
-export const overextendedScenario5m = prependWarmup(overextendedCore, {
-  count: 48,
-  startPrice: 45,
-  drift: 0.18,
-  spread: 0.45,
-  baseVolume: 980,
-});
+export const breakoutScenario5m = buildBreakoutLabSeries();
+export const pullbackScenario5m = buildPullbackLabSeries();
+export const overextendedScenario5m = buildOverextendedLabSeries();

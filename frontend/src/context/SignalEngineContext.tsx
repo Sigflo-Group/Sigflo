@@ -402,7 +402,7 @@ function useSignalEngineValue(): SignalEngineState {
 
     function pipelineHealthCtx(mode: SignalEngineState['mode'], connection: SignalEngineState['connection']) {
       const triggeredPairs = Object.values(signalBookRef.current)
-        .filter((s) => deriveMarketStatus(s) === 'triggered')
+        .filter((s) => s.timingState === 'triggered')
         .map((s) => s.pair);
       return {
         engineMode: mode,
@@ -549,6 +549,7 @@ function useSignalEngineValue(): SignalEngineState {
       if (!signal) {
         pruneSignalBookForSymbol(symbol);
         recordScannerPipelineReport({ symbol, stage: 'skip_no_detector', ts: Date.now() }, healthCtx());
+        pushState(mode, connection);
         return;
       }
       const key = signalEmitKey(symbol, signal.signal.setupType, signal.signal.side);
@@ -617,6 +618,7 @@ function useSignalEngineValue(): SignalEngineState {
           suppressReason: 'cooldown',
         });
         pruneSignalBookForSymbol(symbol, key);
+        signalBookRef.current[key] = signal.signal;
         lifecycleRef.current[key] = signal.lifecycle;
         dirtyPersistRef.current.lifecycle = true;
         flushAiSnapshot(nextMemory, signal.signal, nextRegimePredictor.output);
@@ -683,6 +685,7 @@ function useSignalEngineValue(): SignalEngineState {
         suppressReason: null,
       });
       lastSignalRef.current[key] = { emittedAt: now, setupScore: signal.signal.setupScore, refPrice: priceNow, atr: atrNow };
+      lastEmittedCandleTsRef.current[symbol] = lastClosedTs;
       pruneSignalBookForSymbol(symbol, key);
       signalBookRef.current[key] = signal.signal;
       lifecycleRef.current[key] = signal.lifecycle;

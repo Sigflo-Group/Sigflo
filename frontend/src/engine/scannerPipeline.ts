@@ -1,5 +1,6 @@
 import { buildSignalFromMarket, inferMarketRegime } from '@/lib/signalDetectors';
-import { ENGINE_EMIT_CONFIG } from '@/lib/scannerEngineConfig';
+import { atr } from '@/lib/indicators';
+import { defaultScannerFilterConfig, ENGINE_EMIT_CONFIG } from '@/lib/scannerEngineConfig';
 import type { Candle } from '@/types/market';
 import type { CryptoSignal } from '@/types/signal';
 import { applySignalQualityControls } from '@/engine/filtering';
@@ -22,11 +23,7 @@ export interface ScannerOutput {
   nextState: EmittedSignalStateMap;
 }
 
-const DEFAULT_FILTER_CONFIG: ScannerFilterConfig = {
-  minSetupScore: 60,
-  cooldownMs: 30 * 60 * 1000,
-  minScoreImprovement: 8,
-};
+const DEFAULT_FILTER_CONFIG = defaultScannerFilterConfig();
 
 function closedCandles(series: Candle[] | undefined): Candle[] {
   if (!series?.length) return [];
@@ -34,7 +31,9 @@ function closedCandles(series: Candle[] | undefined): Candle[] {
   return lastOpen ? series.slice(0, -1) : series;
 }
 
-function toSignalCandidate(symbol: string, signal: CryptoSignal, ts: number): SignalCandidate {
+function toSignalCandidate(symbol: string, signal: CryptoSignal, ts: number, candles15m: Candle[]): SignalCandidate {
+  const close = candles15m.at(-1)?.close ?? 0;
+  const atrNow = Math.max(atr(candles15m, 14).at(-1) ?? 0, 1e-6);
   return {
     symbol,
     setupType: signal.setupType,
@@ -60,6 +59,8 @@ function toSignalCandidate(symbol: string, signal: CryptoSignal, ts: number): Si
     timingState: signal.timingState,
     confidence: signal.confidence,
     triggerType: signal.triggerType,
+    refPrice: close,
+    atr: atrNow,
   };
 }
 
@@ -101,7 +102,7 @@ export function runScannerPipeline(input: ScannerInput): ScannerOutput {
       regime,
     });
     if (!built) continue;
-    allCandidates.push(toSignalCandidate(symbol, built.signal, last?.ts ?? Date.now()));
+    allCandidates.push(toSignalCandidate(symbol, built.signal, last?.ts ?? Date.now(), candles15m));
   }
 
   const { accepted, nextState } = applySignalQualityControls(

@@ -147,7 +147,8 @@ function computeState(args: {
     }
     return 'extended';
   }
-  return 'triggered';
+  if (args.timingScore >= config.readyTimingMin) return 'ready';
+  return 'developing';
 }
 
 export function evaluateTimingLifecycle(args: {

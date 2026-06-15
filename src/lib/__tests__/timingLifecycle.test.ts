@@ -129,7 +129,7 @@ describe('evaluateTimingLifecycle — breakout', () => {
 
     // Tick forward with the price at 111 — close never re-crosses the swingHigh
     // (retest hold), so triggerHit stays false after tick 1.
-    // The trigger will be cleared once previousCandlesSinceTrigger > expiredAfterCandles (5).
+    // The trigger will be cleared once previousCandlesSinceTrigger > expiredAfterCandles.
     // Before that happens we can verify the counter increments.
     for (let i = 0; i < 3; i++) {
       ({ candles, result: { lifecycle } } = tick(candles, lifecycle, { close: 111, high: 111.5, low: 110.5 }));
@@ -170,7 +170,7 @@ describe('evaluateTimingLifecycle — breakout', () => {
   });
 
   it('stale trigger is cleared after expiredAfterCandles ticks without re-hit', () => {
-    // expiredAfterCandles (8) > extendedAfterCandles (5): stale triggers clear after 8 bars
+    // expiredAfterCandles > extendedAfterCandles: stale triggers clear after expiredAfterCandles bars
     // without re-confirmation; extended is reached earlier via timing-score drop or candle count.
     const { expiredAfterCandles } = SCANNER_LIFECYCLE_CONFIG;
     let candles = buildBreakoutCandles(80, 109.5, 111);

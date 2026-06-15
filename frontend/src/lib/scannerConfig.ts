@@ -49,8 +49,10 @@ export const SCANNER_LIFECYCLE_CONFIG: ScannerLifecycleConfig = {
   readyTimingMin: 58,
   triggeredActionabilityMin: 58,
   triggeredFreshnessMin: 45,
-  extendedAfterCandles: 5,
-  expiredAfterCandles: 8,
+  /** Closed 15m bars in triggered state before extended (~2h at 15m). */
+  extendedAfterCandles: 8,
+  /** Bars without trigger re-hit before clearing stale trigger (~3h at 15m). */
+  expiredAfterCandles: 12,
   expiredViabilityFloor: 40,
   timingDropFromPeakToExtend: 18,
   atrExtensionWarning: 0.9,

@@ -74,6 +74,9 @@ export interface SignalCandidate {
   timingState?: import('@/lib/scannerConfig').ScannerTimingState;
   confidence?: number;
   triggerType?: string;
+  /** Last closed 15m close — used by offline emit-gate price-move bypass. */
+  refPrice?: number;
+  atr?: number;
 }
 
 export interface DetectorInput {
@@ -84,14 +87,20 @@ export interface DetectorInput {
 }
 
 export interface ScannerFilterConfig {
+  /** Matches live personality `minConfidenceToEmit` (balanced default 45). */
+  minConfidenceToEmit: number;
   minSetupScore: number;
   cooldownMs: number;
   minScoreImprovement: number;
+  atrMoveBypass: number;
 }
 
 export interface EmittedSignalState {
   lastEmittedAt: number;
   lastSetupScore: number;
+  lastRefPrice?: number;
+  lastAtr?: number;
+  lastCandleTs?: number;
 }
 
 export type EmittedSignalStateMap = Record<string, EmittedSignalState>;

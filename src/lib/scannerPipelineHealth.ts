@@ -109,7 +109,7 @@ export function explainNotTriggered(args: {
   triggeredFreshnessMin: number;
 }): string[] {
   const out: string[] = [];
-  if (!args.triggerHit) out.push('no_breakout_trigger_close');
+  if (!args.triggerHit) out.push('no_timing_trigger');
   if (args.timingState === 'extended') out.push('lifecycle_extended');
   if (args.timingState === 'expired') out.push('lifecycle_expired');
   if (args.timingState === 'developing' || args.timingState === 'ready') {

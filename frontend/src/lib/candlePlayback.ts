@@ -1,3 +1,4 @@
+import { defaultScannerFilterConfig } from '@/lib/scannerEngineConfig';
 import {
   DEFAULT_DETECTOR_OPTIONS,
   runScannerLabEngineEvaluations,
@@ -67,12 +68,14 @@ type CooldownState = {
   lastSetupScore: number;
 };
 
+const LAB_EMIT = defaultScannerFilterConfig();
+
 const DEFAULT_CONFIG: PlaybackConfig = {
   symbol: 'SOLUSDT',
   windowSize: 120,
-  minSetupScore: 55,
+  minSetupScore: LAB_EMIT.minSetupScore,
   cooldownCandles: 4,
-  minScoreImprovement: 8,
+  minScoreImprovement: LAB_EMIT.minScoreImprovement,
   detectorOptions: { ...DEFAULT_DETECTOR_OPTIONS },
 };
 

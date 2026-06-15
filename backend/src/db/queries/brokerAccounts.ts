@@ -92,19 +92,33 @@ export async function upsertBrokerAccount(input: {
 
 /**
  * Atomically deactivate all accounts for the user then activate the specified one.
- * Uses a CTE so both updates happen in one round-trip with no gap where zero are active.
+ * Uses an explicit transaction so the partial unique index never sees two actives.
  */
 export async function setActiveExchange(userId: string, accountId: string): Promise<BrokerAccountRow | null> {
-  const { rows } = await db.query<BrokerAccountRow>(
-    `with deactivate as (
-       update broker_accounts set is_active = false, updated_at = now()
-       where user_id = $1
-     )
-     update broker_accounts
-       set is_active = true, updated_at = now()
-     where user_id = $1 and id = $2
-     returning ${SELECT_COLS}`,
-    [userId, accountId],
-  );
-  return rows[0] ?? null;
+  const client = await db.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query(
+      `update broker_accounts set is_active = false, updated_at = now() where user_id = $1::uuid`,
+      [userId],
+    );
+    const { rows } = await client.query<BrokerAccountRow>(
+      `update broker_accounts
+         set is_active = true, updated_at = now()
+       where user_id = $1::uuid and id = $2::uuid
+       returning ${SELECT_COLS}`,
+      [userId, accountId],
+    );
+    await client.query('COMMIT');
+    return rows[0] ?? null;
+  } catch (err) {
+    try {
+      await client.query('ROLLBACK');
+    } catch {
+      // Transaction may already be rolled back.
+    }
+    throw err;
+  } finally {
+    client.release();
+  }
 }

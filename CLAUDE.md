@@ -21,8 +21,12 @@ The signal engine runs **client-side** in `SignalEngineContext.tsx`. Key facts:
 - **Overextended timing:** Uses `evaluateMeanReversionTiming` (not `reclaimTiming`). Triggers on RSI cooling from extreme, not EMA reclaim.
 - **Continuation trigger:** `breakoutTiming.ts` has a `continuationMomentum` trigger (`trend_continuation_resume`) that re-arms an extended signal without waiting for full expiry.
 - **Confidence caps:** Anti-spam caps in `assessDirectionalBias` halve the personality `chopPenalty`/`weakVolumePenalty` when those caps have already fired (prevents double-penalising the same condition).
+- **5m confirmation:** `assessDirectionalBias` uses ≥20 closed 5m bars (when available) for lower-timeframe direction confirmation on breakout/pullback setups.
+- **Config:** `src/lib/scannerEngineConfig.ts` centralises emit cooldown, warmup bars, regime detector thresholds, and funnel debug labels.
+- **Single pipeline:** Live engine and `runScannerPipeline` / determinism checks both call `buildSignalFromMarket` (no duplicate `src/engine/detectors.ts`).
+- **Signal book:** `pruneSignalBookForSymbol(symbol, keepKey)` retains the active setup while dropping stale competing keys for the same symbol.
 
-**Debug:** `window.__SIGFLO_DEBUG__ = true` enables verbose detector/bias logging. `[BREAKOUT DEBUG]` logs are always-on (unconditional) for forensic tracing. `[DETECTOR LIFECYCLE]` logs every signal lifecycle transition.
+**Debug:** `window.__SIGFLO_DEBUG__ = true` enables verbose detector/bias logging. `[DETECTOR LIFECYCLE]` logs lifecycle transitions in dev. Engine Debug screen shows pipeline funnel + "why not triggered" reasons via `getScannerPipelineHealth()`.
 
 ---
 
@@ -71,7 +75,7 @@ Other localStorage keys:
 **Test file:** `src/lib/__tests__/timingLifecycle.test.ts` — 9 tests covering lifecycle state transitions, timestamp-based candle counting, peak tracking tie-reset fix, stale trigger clearing, continuation trigger, pullback evaluator type isolation, and mean-reversion evaluator.
 
 Key test facts learned from writing the tests:
-- `expiredAfterCandles (5) < extendedAfterCandles (8)` → stale triggers are cleared before `extended` state is reached via candle count alone. Extended is reached via timing score drop (`timingDropFromPeakToExtend = 18`) instead.
+- `extendedAfterCandles (5) < expiredAfterCandles (8)` → extended is reached via timing score drop or candle count; stale triggers clear after 8 bars without re-hit.
 - `candlesSinceTrigger` correctly increments (timestamp-based), but the stale-trigger clear fires at tick 6 without a re-confirmation.
 
 ---

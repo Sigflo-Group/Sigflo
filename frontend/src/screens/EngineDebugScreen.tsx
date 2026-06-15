@@ -3,6 +3,13 @@ import { Link, useNavigate } from 'react-router-dom';
 import { Card } from '@/components/ui/Card';
 import { runScannerDeterminismCheck } from '@/engine/scannerDeterminism';
 import type { ScannerDeterminismFrame } from '@/engine/scannerDeterminism';
+import {
+  formatNotTriggeredReason,
+  FUNNEL_STAGE_LABELS,
+  getScannerPipelineHealth,
+  type ScannerPipelineHealthSnapshot,
+} from '@/lib/scannerPipelineHealth';
+import { lifecycleConfigSummary } from '@/lib/scannerEngineConfig';
 
 function PassCard({ frame, title }: { frame: ScannerDeterminismFrame; title: string }) {
   return (
@@ -29,16 +36,21 @@ function PassCard({ frame, title }: { frame: ScannerDeterminismFrame; title: str
         ) : (
           frame.accepted.map((s) => (
             <div
-              key={`${s.symbol}-${s.setupType}-${s.setupScore}`}
+              key={`${s.symbol}-${s.setupType}-${s.setupScore}-${s.directionBias ?? 'na'}`}
               className="rounded-xl border border-sigflo-border bg-sigflo-bg/45 px-3 py-2"
             >
               <div className="flex items-center justify-between">
-                <p className="text-xs font-medium text-white">{s.symbol}</p>
+                <p className="text-xs font-medium text-white">
+                  {s.symbol} · {s.directionBias ?? '—'}
+                </p>
                 <p className="text-xs text-emerald-300">{s.setupScore}</p>
               </div>
               <p className="mt-1 text-[11px] uppercase tracking-wide text-sigflo-muted">
-                {s.setupType} • {s.tags.join(', ')}
+                {s.setupType} · {s.timingState ?? 'n/a'} · {s.tags.join(', ')}
               </p>
+              {s.confidence != null ? (
+                <p className="mt-1 text-[10px] text-cyan-200/90">confidence {s.confidence}</p>
+              ) : null}
             </div>
           ))
         )}
@@ -78,6 +90,74 @@ function readScannerDiagnostics(): ScannerDiagnosticRow[] {
   const g = globalThis as Record<string, unknown>;
   const raw = g.__SIGFLO_SCANNER_DIAGNOSTICS__;
   return Array.isArray(raw) ? (raw as ScannerDiagnosticRow[]).slice().reverse() : [];
+}
+
+function PipelineHealthCard({ health }: { health: ScannerPipelineHealthSnapshot }) {
+  if (!health.updatedAt) {
+    return (
+      <Card className="p-4">
+        <h2 className="text-sm font-semibold text-white">Pipeline funnel</h2>
+        <p className="mt-2 text-xs text-sigflo-muted">No live pipeline data yet. Open /feed and wait for scanner ticks.</p>
+      </Card>
+    );
+  }
+
+  const symbols = Object.values(health.lastBySymbol);
+
+  return (
+    <Card className="p-4">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <h2 className="text-sm font-semibold text-white">Pipeline funnel · why not triggered?</h2>
+        <span className="text-[11px] text-sigflo-muted">{lifecycleConfigSummary()}</span>
+      </div>
+      <p className="mb-3 text-xs text-sigflo-muted">
+        Mode {health.engineMode} · {health.connection} · stream {health.streamReady ? 'ready' : 'bootstrapping'} · triggered{' '}
+        {health.triggeredPairs.length ? health.triggeredPairs.join(', ') : 'none'}
+      </p>
+      <div className="mb-3 grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
+        {Object.entries(health.funnel).map(([stage, count]) => (
+          <div key={stage} className="rounded-lg border border-sigflo-border bg-sigflo-bg/50 p-2">
+            <p className="text-[10px] text-sigflo-muted">{FUNNEL_STAGE_LABELS[stage] ?? stage}</p>
+            <p className="mt-1 font-semibold text-white">{count}</p>
+          </div>
+        ))}
+      </div>
+      <div className="space-y-2">
+        {symbols.length === 0 ? (
+          <p className="text-xs text-sigflo-muted">No per-symbol reports yet.</p>
+        ) : (
+          symbols.map((r) => (
+            <div key={`${r.symbol}-${r.ts}`} className="rounded-xl border border-sigflo-border bg-sigflo-bg/45 px-3 py-2">
+              <div className="flex flex-wrap items-center justify-between gap-1">
+                <p className="text-xs font-medium text-white">
+                  {r.symbol}
+                  {r.setupType ? ` · ${r.setupType}` : ''}
+                  {r.side ? ` ${r.side}` : ''}
+                </p>
+                <p className="text-[11px] text-sigflo-muted">{FUNNEL_STAGE_LABELS[r.stage] ?? r.stage}</p>
+              </div>
+              {r.timingState ? (
+                <p className="mt-1 text-[11px] text-cyan-200">
+                  lifecycle {r.timingState}
+                  {r.actionabilityScore != null ? ` · actionability ${r.actionabilityScore}` : ''}
+                  {r.entryFreshnessScore != null ? ` · freshness ${r.entryFreshnessScore}` : ''}
+                </p>
+              ) : null}
+              {r.notTriggeredReasons && r.notTriggeredReasons.length > 0 ? (
+                <ul className="mt-1 list-inside list-disc text-[10px] text-amber-200/90">
+                  {r.notTriggeredReasons.map((code) => (
+                    <li key={code}>{formatNotTriggeredReason(code)}</li>
+                  ))}
+                </ul>
+              ) : r.timingState === 'triggered' ? (
+                <p className="mt-1 text-[10px] text-emerald-200/90">Trigger conditions met on last evaluation.</p>
+              ) : null}
+            </div>
+          ))
+        )}
+      </div>
+    </Card>
+  );
 }
 
 function ScannerDiagnosticsCard({
@@ -153,6 +233,7 @@ export function EngineDebugScreen() {
   );
   const determinism = useMemo(() => runScannerDeterminismCheck(), [rerunTick]);
   const diagnostics = useMemo(() => readScannerDiagnostics(), [diagTick, rerunTick]);
+  const pipelineHealth = useMemo(() => getScannerPipelineHealth(), [diagTick, rerunTick]);
 
   useEffect(() => {
     const id = window.setInterval(() => setDiagTick((n) => n + 1), 1000);
@@ -194,13 +275,14 @@ export function EngineDebugScreen() {
         </div>
         <h1 className="text-2xl font-semibold tracking-tight text-white">Engine Debug</h1>
         <p className="mt-1 text-sm text-sigflo-muted">
-          Deterministic scanner check. Pass 2 should be reduced by cooldown/dedup.
+          Deterministic scanner check using the live <code className="text-xs">buildSignalFromMarket</code> path. Pass 2 should be reduced by cooldown/dedup.
         </p>
         <p className="mt-1 text-[11px] text-sigflo-muted">
           Reruns: {rerunTick} · Last run: {lastRerunAt.toLocaleTimeString()}
         </p>
       </header>
 
+      <PipelineHealthCard health={pipelineHealth} />
       <PassCard frame={determinism.firstPass} title={`Pass 1: initial emit #${rerunTick + 1}`} />
       <PassCard frame={determinism.secondPass} title={`Pass 2: cooldown and dedup #${rerunTick + 1}`} />
       <ScannerDiagnosticsCard
@@ -215,4 +297,3 @@ export function EngineDebugScreen() {
     </div>
   );
 }
-

@@ -170,9 +170,8 @@ describe('evaluateTimingLifecycle — breakout', () => {
   });
 
   it('stale trigger is cleared after expiredAfterCandles ticks without re-hit', () => {
-    // Real behavior: expiredAfterCandles (5) < extendedAfterCandles (8), so the stale-trigger
-    // clear fires before the candle-count path to extended. This is intentional: stale triggers
-    // should not persist indefinitely without a price re-confirmation.
+    // expiredAfterCandles (8) > extendedAfterCandles (5): stale triggers clear after 8 bars
+    // without re-confirmation; extended is reached earlier via timing-score drop or candle count.
     const { expiredAfterCandles } = SCANNER_LIFECYCLE_CONFIG;
     let candles = buildBreakoutCandles(80, 109.5, 111);
     let lifecycle: CandidateLifecycle | undefined;

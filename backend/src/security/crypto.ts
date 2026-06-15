@@ -1,11 +1,8 @@
 import crypto from 'node:crypto';
+import { env } from '../config/env.js';
 
 function getEncryptionKey() {
-  const raw = process.env.CREDENTIAL_ENCRYPTION_KEY;
-  if (!raw || !/^[a-fA-F0-9]{64}$/.test(raw)) {
-    throw new Error('CREDENTIAL_ENCRYPTION_KEY must be a 64-character hex string.');
-  }
-  return Buffer.from(raw, 'hex');
+  return Buffer.from(env.CREDENTIAL_ENCRYPTION_KEY, 'hex');
 }
 
 type Encrypted = {

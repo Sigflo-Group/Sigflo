@@ -26,6 +26,7 @@ function clamp(n: number, lo: number, hi: number): number {
 export interface TriggerMetadata {
   triggerType: ScannerTriggerType;
   triggerReason: string;
+  /** @deprecated Use triggerCandleTs — ring-buffer indices are unreliable. */
   firstValidEntryCandleIndex: number | null;
   /** Timestamp (ms) of the candle on which the trigger was first confirmed.
    *  Used for candlesSinceTrigger counting — the ring-buffered array index is unreliable. */
@@ -34,6 +35,7 @@ export interface TriggerMetadata {
 }
 
 export interface TimingSnapshot {
+  /** @deprecated Use candle ts fields — ring-buffer indices are unreliable. */
   candleIndex: number;
   timingScore: number;
   entryFreshnessScore: number;
@@ -47,10 +49,12 @@ export interface CandidateLifecycle {
   trigger: TriggerMetadata;
   timingHistory: TimingSnapshot[];
   peakTimingScore: number;
+  /** @deprecated Use peakTimingCandleTs. */
   peakTimingCandleIndex: number | null;
   /** Timestamp of the candle where timing score peaked. Replaces index for elapsed-candle counting. */
   peakTimingCandleTs: number | null;
   peakActionabilityScore: number;
+  /** @deprecated Use peakActionabilityCandleTs. */
   peakActionabilityCandleIndex: number | null;
   /** Timestamp of the candle where actionability score peaked. */
   peakActionabilityCandleTs: number | null;
@@ -187,7 +191,7 @@ export function evaluateTimingLifecycle(args: {
     config,
   });
 
-  const existingTrigger = args.previous?.trigger?.firstValidEntryCandleIndex != null;
+  const existingTrigger = args.previous?.trigger?.triggerCandleTs != null;
   const breakout = evaluateBreakoutTiming({
     side: args.side,
     close,

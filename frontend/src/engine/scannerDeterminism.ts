@@ -6,7 +6,13 @@ export interface ScannerDeterminismFrame {
   run: number;
   acceptedCount: number;
   candidateCount: number;
-  accepted: Array<Pick<SignalCandidate, 'symbol' | 'setupType' | 'setupScore' | 'tags'>>;
+  accepted: Array<
+    Pick<SignalCandidate, 'symbol' | 'setupType' | 'setupScore' | 'tags'> & {
+      directionBias?: SignalCandidate['directionBias'];
+      timingState?: SignalCandidate['timingState'];
+      confidence?: number;
+    }
+  >;
 }
 
 export interface ScannerDeterminismResult {
@@ -24,6 +30,9 @@ function toFrame(run: number, accepted: SignalCandidate[], allCandidates: Signal
       setupType: s.setupType,
       setupScore: s.setupScore,
       tags: s.tags,
+      directionBias: s.directionBias,
+      timingState: s.timingState,
+      confidence: s.confidence,
     })),
   };
 }

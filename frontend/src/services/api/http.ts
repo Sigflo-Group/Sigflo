@@ -37,13 +37,32 @@ function cdnBlockedMessage(status: number): string {
 
 const REQUEST_TIMEOUT_MS = 15_000;
 const SESSION_READ_TIMEOUT_MS = 5_000;
+const SESSION_REFRESH_TIMEOUT_MS = 8_000;
 
-async function resolveAccessToken(forceRefresh = false): Promise<string | null> {
+async function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) => {
+      window.setTimeout(() => reject(new Error(`${label} timed out.`)), ms);
+    }),
+  ]);
+}
+
+async function resolveAccessToken(forceRefresh = false, depth = 0): Promise<string | null> {
   if (!supabase) return null;
+  if (depth > 1) return null;
 
   if (forceRefresh) {
-    const { data, error } = await supabase.auth.refreshSession();
-    if (!error && data.session?.access_token) return data.session.access_token;
+    try {
+      const { data, error } = await withTimeout(
+        supabase.auth.refreshSession(),
+        SESSION_REFRESH_TIMEOUT_MS,
+        'Session refresh',
+      );
+      if (!error && data.session?.access_token) return data.session.access_token;
+    } catch {
+      return null;
+    }
   }
 
   const sessionResult = await Promise.race([
@@ -55,7 +74,7 @@ async function resolveAccessToken(forceRefresh = false): Promise<string | null> 
 
   const expiresAtMs = (session.expires_at ?? 0) * 1000;
   if (!forceRefresh && expiresAtMs > 0 && expiresAtMs <= Date.now() + 60_000) {
-    return resolveAccessToken(true);
+    return resolveAccessToken(true, depth + 1);
   }
 
   return session.access_token;
@@ -94,18 +113,13 @@ async function fetchApi(path: string, init: RequestInit | undefined, token: stri
 
 export async function apiJson<T>(path: string, init?: RequestInit): Promise<T> {
   let token = await resolveAccessToken();
-  let res: Response;
-  try {
-    res = await fetchApi(path, init, token);
-    if (res.status === 401 && supabase && token) {
-      const refreshed = await resolveAccessToken(true);
-      if (refreshed && refreshed !== token) {
-        token = refreshed;
-        res = await fetchApi(path, init, token);
-      }
+  let res = await fetchApi(path, init, token);
+  if (res.status === 401 && supabase && token) {
+    const refreshed = await resolveAccessToken(true);
+    if (refreshed && refreshed !== token) {
+      token = refreshed;
+      res = await fetchApi(path, init, token);
     }
-  } catch (e) {
-    throw e;
   }
   if (!res.ok) {
     const ct = res.headers.get('content-type') ?? '';

@@ -10,7 +10,9 @@ import {
 } from 'react';
 import { runScannerDeterminismCheck } from '@/engine/scannerDeterminism';
 import { exchangeManager } from '@/core/exchange-manager';
-import { buildSignalFromMarket, inferMarketRegime } from '@/lib/signalDetectors';
+import { buildAllSignalsFromMarket, inferMarketRegime } from '@/lib/signalDetectors';
+import { timingStatePriority } from '@/lib/detectors/shared';
+import { deriveMarketStatus } from '@/lib/marketScannerRows';
 import { atr } from '@/lib/indicators';
 import { updateMarketMemory, type MarketMemorySnapshot } from '@/lib/marketMemory';
 import {
@@ -34,7 +36,6 @@ import {
 } from '@/lib/signalLifecycleTracker';
 import { recordScannerDiagnostic } from '@/lib/scannerDiagnostics';
 import { SCANNER_LIFECYCLE_CONFIG } from '@/lib/scannerConfig';
-import { deriveMarketStatus } from '@/lib/marketScannerRows';
 import {
   explainNotTriggered,
   logScannerHealthSummary,
@@ -51,7 +52,7 @@ import type { CandidateLifecycle } from '@/lib/timingLifecycle';
 import type { NormalizedKline } from '@/core/market-data-interface';
 import type { Candle, SymbolTicker } from '@/types/market';
 import type { AiSnapshotStore } from '@/types/aiSnapshot';
-import type { CryptoSignal } from '@/types/signal';
+import type { CryptoSignal, SignalSetupType, SignalSide } from '@/types/signal';
 import type { RegimePredictorOutput, RegimePredictorState } from '@/types/regimePredictor';
 import { shouldAnnounceScannerBiasFlip } from '@/lib/biasFlipNotifyGate';
 import { emitGlobalAnnouncement } from '@/lib/globalAnnouncements';
@@ -280,23 +281,28 @@ function useSignalEngineValue(): SignalEngineState {
       console.log('[Sigflo][Engine] determinism pass 2', check.secondPass);
     }
 
+    function rankCryptoSignals(signals: CryptoSignal[]): CryptoSignal[] {
+      return [...signals].sort((a, b) => {
+        const triggeredDelta =
+          (deriveMarketStatus(b) === 'triggered' ? 1 : 0) - (deriveMarketStatus(a) === 'triggered' ? 1 : 0);
+        if (triggeredDelta !== 0) return triggeredDelta;
+        const timingDelta = timingStatePriority(b.timingState) - timingStatePriority(a.timingState);
+        if (timingDelta !== 0) return timingDelta;
+        return b.setupScore - a.setupScore;
+      });
+    }
+
     function pickCryptoSignalForSymbol(sym: string): CryptoSignal | null {
-      let best: CryptoSignal | null = null;
-      for (const s of Object.values(signalBookRef.current)) {
-        if (signalPairToLinearKey(s.pair) !== sym) continue;
-        if (!best || s.setupScore > best.setupScore) best = s;
-      }
-      return best;
+      const matches = Object.values(signalBookRef.current).filter(
+        (s) => signalPairToLinearKey(s.pair) === sym,
+      );
+      return rankCryptoSignals(matches)[0] ?? null;
     }
 
     function pushState(mode: SignalEngineState['mode'], connection: SignalEngineState['connection'], error?: string) {
-      const ranked = Object.values(signalBookRef.current).sort((a, b) => b.setupScore - a.setupScore);
+      const ranked = rankCryptoSignals(Object.values(signalBookRef.current));
       for (const sym of STREAM_SYMBOLS) {
-        let best: CryptoSignal | null = null;
-        for (const s of ranked) {
-          if (signalPairToLinearKey(s.pair) !== sym) continue;
-          if (!best || s.setupScore > best.setupScore) best = s;
-        }
+        const best = pickCryptoSignalForSymbol(sym);
         if (!best) {
           delete biasSideBySymbolRef.current[sym];
           continue;
@@ -401,9 +407,13 @@ function useSignalEngineValue(): SignalEngineState {
     }
 
     function pipelineHealthCtx(mode: SignalEngineState['mode'], connection: SignalEngineState['connection']) {
-      const triggeredPairs = Object.values(signalBookRef.current)
-        .filter((s) => s.timingState === 'triggered')
-        .map((s) => s.pair);
+      const triggeredPairs = [
+        ...new Set(
+          Object.values(signalBookRef.current)
+            .filter((s) => deriveMarketStatus(s) === 'triggered')
+            .map((s) => s.pair),
+        ),
+      ];
       return {
         engineMode: mode,
         connection,
@@ -413,10 +423,23 @@ function useSignalEngineValue(): SignalEngineState {
       };
     }
 
-    function pruneSignalBookForSymbol(symbol: string, keepKey?: string) {
+    function pruneSignalBookForSymbol(symbol: string) {
       const prefix = `${symbol}:`;
       for (const key of Object.keys(signalBookRef.current)) {
-        if (key.startsWith(prefix) && key !== keepKey) delete signalBookRef.current[key];
+        if (key.startsWith(prefix)) delete signalBookRef.current[key];
+      }
+      for (const key of Object.keys(lifecycleRef.current)) {
+        if (key.startsWith(prefix)) delete lifecycleRef.current[key];
+      }
+    }
+
+    function pruneStaleSetupKeysForSymbol(symbol: string, activeKeys: Set<string>) {
+      const prefix = `${symbol}:`;
+      for (const key of Object.keys(signalBookRef.current)) {
+        if (key.startsWith(prefix) && !activeKeys.has(key)) delete signalBookRef.current[key];
+      }
+      for (const key of Object.keys(lifecycleRef.current)) {
+        if (key.startsWith(prefix) && !activeKeys.has(key)) delete lifecycleRef.current[key];
       }
     }
 
@@ -430,6 +453,7 @@ function useSignalEngineValue(): SignalEngineState {
           { symbol, stage: 'skip_no_ticker', ts: Date.now() },
           healthCtx(),
         );
+        pushState(mode, connection);
         return;
       }
       // Strip the currently forming (open) candle so detectors always run on closed bars.
@@ -445,6 +469,7 @@ function useSignalEngineValue(): SignalEngineState {
         if (import.meta.env.DEV && openCandleStripped) {
           console.log(`[Sigflo][Engine] ${symbol} open candle stripped → only ${candles15m.length} closed bars available`);
         }
+        pushState(mode, connection);
         return;
       }
       const btc15raw = candlesRef.current.BTCUSDT?.['15'] ?? [];
@@ -453,6 +478,7 @@ function useSignalEngineValue(): SignalEngineState {
       const eth15 = eth15raw.at(-1)?.isClosed === false ? eth15raw.slice(0, -1) : eth15raw;
       if (btc15.length < 60 || eth15.length < 60) {
         recordScannerPipelineReport({ symbol, stage: 'skip_btc_eth_warmup', ts: Date.now() }, healthCtx());
+        pushState(mode, connection);
         return;
       }
       if (import.meta.env.DEV && openCandleStripped) {
@@ -462,31 +488,39 @@ function useSignalEngineValue(): SignalEngineState {
       const candles5m = raw5m.at(-1)?.isClosed === false ? raw5m.slice(0, -1) : raw5m;
       const rejectCounters: Record<string, number> = {};
       const regime = inferMarketRegime({ btc15m: btc15, eth15m: eth15 });
-      const signal = buildSignalFromMarket({
+      const marketInput = {
         symbol,
-        exchange: 'Bybit',
+        exchange: 'Bybit' as const,
         ticker,
         candles15m,
         candles5m,
         regime,
-        previousLifecycleForSetupSide: (setupType, side) =>
+        previousLifecycleForSetupSide: (setupType: SignalSetupType, side: SignalSide) =>
           lifecycleRef.current[signalEmitKey(symbol, setupType, side)],
         previousMarketMemory: marketMemoryRef.current[symbol],
         strategyPersonalityMode: strategyPersonalityModeRef.current,
         strategyPersonalityProfile: STRATEGY_PERSONALITY_PROFILES[strategyPersonalityModeRef.current],
-        adaptationConfidenceAdjustmentForSetup: (setupType) =>
+        adaptationConfidenceAdjustmentForSetup: (setupType: SignalSetupType) =>
           adaptationConfidenceAdjustment(userAdaptationRef.current, setupType),
-        adaptiveFeedbackForSetup: (setupType, side) =>
+        adaptiveFeedbackForSetup: (setupType: SignalSetupType, side: SignalSide) =>
           deriveAdaptiveFeedback(signalLifecycleStoreRef.current, symbol, setupType, side),
-        onReject: (detectorName, reason, meta) => {
-          const key = `${detectorName}:${reason}`;
-          rejectCounters[key] = (rejectCounters[key] ?? 0) + 1;
+        onReject: (detectorName: string, reason: 'no_signal' | 'confidence_below_threshold', meta?: { confidence?: number; threshold?: number }) => {
+          const rejectKey = `${detectorName}:${reason}`;
+          rejectCounters[rejectKey] = (rejectCounters[rejectKey] ?? 0) + 1;
           if (import.meta.env.DEV) {
             console.log(`[Sigflo][Engine] ${symbol} detector rejected`, { detectorName, reason, ...meta });
           }
         },
-      });
-      if (import.meta.env.DEV && Object.keys(rejectCounters).length > 0 && !signal) {
+      };
+      const builtSignals = buildAllSignalsFromMarket(marketInput);
+      const primaryBuilt =
+        builtSignals.length === 0
+          ? null
+          : (() => {
+              const topId = rankCryptoSignals(builtSignals.map((b) => b.signal))[0]?.id;
+              return builtSignals.find((b) => b.signal.id === topId) ?? builtSignals[0]!;
+            })();
+      if (import.meta.env.DEV && Object.keys(rejectCounters).length > 0 && builtSignals.length === 0) {
         console.log(`[Sigflo][Engine] ${symbol} ALL detectors rejected`, rejectCounters);
       }
       signalLifecycleStoreRef.current = updateSignalLifecycleOutcomes({
@@ -501,7 +535,7 @@ function useSignalEngineValue(): SignalEngineState {
         symbol,
         previous: marketMemoryRef.current[symbol],
         candles15m,
-        signal: signal?.signal ?? null,
+        signal: primaryBuilt?.signal ?? null,
         now: Date.now(),
       });
       marketMemoryRef.current[symbol] = nextMemory;
@@ -542,19 +576,23 @@ function useSignalEngineValue(): SignalEngineState {
 
       flushAiSnapshot(
         nextMemory,
-        signal?.signal ?? pickCryptoSignalForSymbol(symbol),
+        primaryBuilt?.signal ?? pickCryptoSignalForSymbol(symbol),
         nextRegimePredictor.output,
       );
 
-      if (!signal) {
+      if (builtSignals.length === 0) {
         pruneSignalBookForSymbol(symbol);
         recordScannerPipelineReport({ symbol, stage: 'skip_no_detector', ts: Date.now() }, healthCtx());
         pushState(mode, connection);
         return;
       }
-      const key = signalEmitKey(symbol, signal.signal.setupType, signal.signal.side);
+
+      const activeKeys = new Set(
+        builtSignals.map((entry) => signalEmitKey(symbol, entry.signal.setupType, entry.signal.side)),
+      );
+      pruneStaleSetupKeysForSymbol(symbol, activeKeys);
+
       const now = Date.now();
-      const prev = lastSignalRef.current[key];
       const lastClosedTs = candles15m.at(-1)?.ts ?? 0;
       const prevCandleTs = lastEmittedCandleTsRef.current[symbol];
       const atrNow = Math.max(0.000001, atr(candles15m, 14).at(-1) ?? 1);
@@ -562,164 +600,80 @@ function useSignalEngineValue(): SignalEngineState {
       const personalityCooldown =
         ENGINE_EMIT_CONFIG.cooldownMs *
         (STRATEGY_PERSONALITY_PROFILES[strategyPersonalityModeRef.current]?.cooldownMultiplier ?? 1);
-      const emitGate = evaluateEmitGate({
-        now,
-        prev,
-        signalSetupScore: signal.signal.setupScore,
-        priceNow,
-        atrNow,
-        lastClosedTs,
-        prevCandleTs,
-        cooldownMs: personalityCooldown,
-      });
-      const { emit: shouldEmit, cooldownPassed, scoreImproved, priceMoved, newClosedBar } = emitGate;
-      if (import.meta.env.DEV) {
-        console.log(`[Sigflo][Engine] ${symbol} emit gate`, {
-          key,
-          timingState: signal.signal.timingState,
-          triggerType: signal.signal.triggerType,
-          confidence: signal.signal.confidence,
-          actionabilityScore: signal.signal.actionabilityScore,
-          entryFreshnessScore: signal.signal.entryFreshnessScore,
-          candlesSinceTrigger: signal.signal.candlesSinceTrigger,
-          cooldownPassed,
-          scoreImproved,
-          priceMoved,
-          newClosedBar,
-          shouldEmit,
-          msSincePrevEmit: prev ? now - prev.emittedAt : null,
+
+      let anyEmitted = false;
+      for (const entry of builtSignals) {
+        const key = signalEmitKey(symbol, entry.signal.setupType, entry.signal.side);
+        const prev = lastSignalRef.current[key];
+        const emitGate = evaluateEmitGate({
+          now,
+          prev,
+          signalSetupScore: entry.signal.setupScore,
+          priceNow,
+          atrNow,
+          lastClosedTs,
+          prevCandleTs,
           cooldownMs: personalityCooldown,
         });
-      }
-      if (!shouldEmit) {
-        // Suppress duplicate emit events, but keep live lifecycle/timing state current in UI.
-        const prevLifecycleState = lifecycleRef.current[key]?.state;
-        const nextLifecycleState = signal.lifecycle.state;
-        const lifecycleTransition =
-          prevLifecycleState === undefined
-            ? 'created'
-            : nextLifecycleState === 'expired'
-              ? 'expired'
-              : prevLifecycleState !== nextLifecycleState
-                ? `${prevLifecycleState}→${nextLifecycleState}`
-                : 'cached';
-        if (DEBUG) console.log('[DETECTOR LIFECYCLE]', {
-          symbol,
-          key,
-          transition: lifecycleTransition,
-          prevState: prevLifecycleState ?? null,
-          nextState: nextLifecycleState,
-          setupType: signal.signal.setupType,
-          side: signal.signal.side,
-          timingState: signal.signal.timingState,
-          confidence: signal.signal.confidence,
-          candlesSinceTrigger: signal.signal.candlesSinceTrigger ?? null,
-          triggerType: signal.signal.triggerType,
-          suppressReason: 'cooldown',
+        const { emit: shouldEmit } = emitGate;
+
+        signalBookRef.current[key] = entry.signal;
+        lifecycleRef.current[key] = entry.lifecycle;
+
+        if (!shouldEmit) {
+          if (DEBUG) {
+            console.log('[DETECTOR LIFECYCLE]', {
+              symbol,
+              key,
+              setupType: entry.signal.setupType,
+              side: entry.signal.side,
+              timingState: entry.signal.timingState,
+              suppressReason: 'cooldown',
+            });
+          }
+          continue;
+        }
+
+        anyEmitted = true;
+        userAdaptationRef.current = registerSignalImpression(userAdaptationRef.current, {
+          setupType: entry.signal.setupType,
+          riskLevel: entry.signal.riskLevel ?? 'moderate',
+          confidence: entry.signal.confidence ?? entry.signal.setupScore,
+          counterTrend: entry.signal.facts?.counterTrend === 'yes',
         });
-        pruneSignalBookForSymbol(symbol, key);
-        signalBookRef.current[key] = signal.signal;
-        lifecycleRef.current[key] = signal.lifecycle;
-        dirtyPersistRef.current.lifecycle = true;
-        flushAiSnapshot(nextMemory, signal.signal, nextRegimePredictor.output);
-        recordScannerPipelineReport(
-          {
-            symbol,
-            stage: 'emitted_cooldown_suppressed',
-            setupType: signal.signal.setupType,
-            side: signal.signal.side,
-            timingState: signal.signal.timingState,
-            setupScore: signal.signal.setupScore,
-            actionabilityScore: signal.signal.actionabilityScore,
-            entryFreshnessScore: signal.signal.entryFreshnessScore,
-            timingScore: signal.signal.timingScore,
-            triggerHit: signal.signal.triggerType != null && signal.signal.triggerType !== 'unknown',
-            triggerType: signal.signal.triggerType,
-            emitThreshold:
-              STRATEGY_PERSONALITY_PROFILES[strategyPersonalityModeRef.current]?.minConfidenceToEmit ?? 45,
-            notTriggeredReasons: explainNotTriggered({
-              timingState: signal.signal.timingState,
-              triggerHit: signal.signal.triggerType != null && signal.signal.triggerType !== 'unknown',
-              actionabilityScore: signal.signal.actionabilityScore,
-              entryFreshnessScore: signal.signal.entryFreshnessScore,
-              triggeredActionabilityMin: SCANNER_LIFECYCLE_CONFIG.triggeredActionabilityMin,
-              triggeredFreshnessMin: SCANNER_LIFECYCLE_CONFIG.triggeredFreshnessMin,
-            }),
-            ts: Date.now(),
-          },
-          healthCtx(),
-        );
-      pushState(mode, wsConnectedRef.current ? 'connected' : 'disconnected');
-      return;
-    }
-    userAdaptationRef.current = registerSignalImpression(userAdaptationRef.current, {
-        setupType: signal.signal.setupType,
-        riskLevel: signal.signal.riskLevel ?? 'moderate',
-        confidence: signal.signal.confidence ?? signal.signal.setupScore,
-        counterTrend: signal.signal.facts?.counterTrend === 'yes',
-      });
-      dirtyPersistRef.current.userAdaptation = true;
-      setAdaptationTick((n) => n + 1);
-      const prevLifecycleStateOnEmit = lifecycleRef.current[key]?.state;
-      const nextLifecycleStateOnEmit = signal.lifecycle.state;
-      const lifecycleTransitionOnEmit =
-        prevLifecycleStateOnEmit === undefined
-          ? 'created'
-          : nextLifecycleStateOnEmit === 'expired'
-            ? 'expired'
-            : prevLifecycleStateOnEmit !== nextLifecycleStateOnEmit
-              ? `${prevLifecycleStateOnEmit}→${nextLifecycleStateOnEmit}`
-              : 'updated';
-      if (DEBUG) console.log('[DETECTOR LIFECYCLE]', {
-        symbol,
-        key,
-        transition: lifecycleTransitionOnEmit,
-        prevState: prevLifecycleStateOnEmit ?? null,
-        nextState: nextLifecycleStateOnEmit,
-        setupType: signal.signal.setupType,
-        side: signal.signal.side,
-        timingState: signal.signal.timingState,
-        confidence: signal.signal.confidence,
-        candlesSinceTrigger: signal.signal.candlesSinceTrigger ?? null,
-        triggerType: signal.signal.triggerType,
-        suppressReason: null,
-      });
-      lastSignalRef.current[key] = { emittedAt: now, setupScore: signal.signal.setupScore, refPrice: priceNow, atr: atrNow };
-      lastEmittedCandleTsRef.current[symbol] = lastClosedTs;
-      pruneSignalBookForSymbol(symbol, key);
-      signalBookRef.current[key] = signal.signal;
-      lifecycleRef.current[key] = signal.lifecycle;
-      dirtyPersistRef.current.lifecycle = true;
-      signalLifecycleStoreRef.current = registerSignalLifecycleEvent({
-        store: signalLifecycleStoreRef.current,
-        signal: signal.signal,
-        symbol,
-        atrNow,
-        now,
-        strategyPersonalityMode: strategyPersonalityModeRef.current,
-      });
-      dirtyPersistRef.current.signalLifecycle = true;
-      flushAiSnapshot(nextMemory, signal.signal, nextRegimePredictor.output);
-      recordScannerDiagnostic({
-        symbol,
-        setupScore: signal.signal.setupScore,
-        ...{
-          setupType: signal.signal.setupType,
-          timingScore: signal.signal.timingScore ?? 0,
-          entryFreshnessScore: signal.signal.entryFreshnessScore ?? 0,
-          roomToTargetScore: signal.signal.roomToTargetScore ?? 0,
-          actionabilityScore: signal.signal.actionabilityScore ?? 0,
-          state: signal.signal.timingState ?? 'developing',
-          triggerType: signal.signal.triggerType ?? 'unknown',
-          idealEntryPrice: signal.signal.idealEntryPrice ?? null,
+        lastSignalRef.current[key] = {
+          emittedAt: now,
+          setupScore: entry.signal.setupScore,
+          refPrice: priceNow,
+          atr: atrNow,
+        };
+        signalLifecycleStoreRef.current = registerSignalLifecycleEvent({
+          store: signalLifecycleStoreRef.current,
+          signal: entry.signal,
+          symbol,
+          atrNow,
+          now,
+          strategyPersonalityMode: strategyPersonalityModeRef.current,
+        });
+        recordScannerDiagnostic({
+          symbol,
+          setupScore: entry.signal.setupScore,
+          setupType: entry.signal.setupType,
+          timingScore: entry.signal.timingScore ?? 0,
+          entryFreshnessScore: entry.signal.entryFreshnessScore ?? 0,
+          roomToTargetScore: entry.signal.roomToTargetScore ?? 0,
+          actionabilityScore: entry.signal.actionabilityScore ?? 0,
+          state: entry.signal.timingState ?? 'developing',
+          triggerType: entry.signal.triggerType ?? 'unknown',
+          idealEntryPrice: entry.signal.idealEntryPrice ?? null,
           currentPrice: ticker.lastPrice,
           atrExtensionFromIdeal:
-            signal.signal.idealEntryPrice && atrNow > 0
-              ? Math.abs(ticker.lastPrice - signal.signal.idealEntryPrice) / atrNow
+            entry.signal.idealEntryPrice && atrNow > 0
+              ? Math.abs(ticker.lastPrice - entry.signal.idealEntryPrice) / atrNow
               : 0,
-          candlesSinceTrigger: signal.signal.candlesSinceTrigger ?? null,
-          candlesSincePeakTiming: signal.signal.candlesSincePeakTiming ?? null,
-          penalties: signal.signal.penaltyBreakdown ?? {
+          candlesSinceTrigger: entry.signal.candlesSinceTrigger ?? null,
+          candlesSincePeakTiming: entry.signal.candlesSincePeakTiming ?? null,
+          penalties: entry.signal.penaltyBreakdown ?? {
             candlesLatePenalty: 0,
             atrExtensionPenalty: 0,
             percentExtensionPenalty: 0,
@@ -727,33 +681,40 @@ function useSignalEngineValue(): SignalEngineState {
             crowdedLevelPenalty: 0,
             rrCompressionPenalty: 0,
           },
-          positiveFactors: signal.signal.positiveTimingFactors ?? [],
-        },
-        ts: now,
-      });
-      if (DEBUG) console.log(
-        `[Sigflo][Engine] detector triggered ${symbol} ${signal.signal.setupType} ${signal.signal.setupScore} state=${signal.signal.timingState ?? 'n/a'}`
-      );
+          positiveFactors: entry.signal.positiveTimingFactors ?? [],
+          ts: now,
+        });
+      }
+
+      if (anyEmitted) {
+        lastEmittedCandleTsRef.current[symbol] = lastClosedTs;
+        dirtyPersistRef.current.userAdaptation = true;
+        dirtyPersistRef.current.signalLifecycle = true;
+        setAdaptationTick((n) => n + 1);
+      }
+      dirtyPersistRef.current.lifecycle = true;
+
+      const reportSignal = primaryBuilt!.signal;
       recordScannerPipelineReport(
         {
           symbol,
-          stage: 'emitted',
-          setupType: signal.signal.setupType,
-          side: signal.signal.side,
-          timingState: signal.signal.timingState,
-          setupScore: signal.signal.setupScore,
-          actionabilityScore: signal.signal.actionabilityScore,
-          entryFreshnessScore: signal.signal.entryFreshnessScore,
-          timingScore: signal.signal.timingScore,
-          triggerHit: signal.signal.triggerType != null && signal.signal.triggerType !== 'unknown',
-          triggerType: signal.signal.triggerType,
+          stage: anyEmitted ? 'emitted' : 'emitted_cooldown_suppressed',
+          setupType: reportSignal.setupType,
+          side: reportSignal.side,
+          timingState: reportSignal.timingState,
+          setupScore: reportSignal.setupScore,
+          actionabilityScore: reportSignal.actionabilityScore,
+          entryFreshnessScore: reportSignal.entryFreshnessScore,
+          timingScore: reportSignal.timingScore,
+          triggerHit: reportSignal.triggerType != null && reportSignal.triggerType !== 'unknown',
+          triggerType: reportSignal.triggerType,
           emitThreshold:
             STRATEGY_PERSONALITY_PROFILES[strategyPersonalityModeRef.current]?.minConfidenceToEmit ?? 45,
           notTriggeredReasons: explainNotTriggered({
-            timingState: signal.signal.timingState,
-            triggerHit: signal.signal.triggerType != null && signal.signal.triggerType !== 'unknown',
-            actionabilityScore: signal.signal.actionabilityScore,
-            entryFreshnessScore: signal.signal.entryFreshnessScore,
+            timingState: reportSignal.timingState,
+            triggerHit: reportSignal.triggerType != null && reportSignal.triggerType !== 'unknown',
+            actionabilityScore: reportSignal.actionabilityScore,
+            entryFreshnessScore: reportSignal.entryFreshnessScore,
             triggeredActionabilityMin: SCANNER_LIFECYCLE_CONFIG.triggeredActionabilityMin,
             triggeredFreshnessMin: SCANNER_LIFECYCLE_CONFIG.triggeredFreshnessMin,
           }),
@@ -761,7 +722,8 @@ function useSignalEngineValue(): SignalEngineState {
         },
         healthCtx(),
       );
-      pushState(mode, wsConnectedRef.current ? 'connected' : 'disconnected');
+      flushAiSnapshot(nextMemory, reportSignal, nextRegimePredictor.output);
+      pushState(mode, connection);
     }
 
     function recomputeAllFromStore(mode: SignalEngineState['mode']) {

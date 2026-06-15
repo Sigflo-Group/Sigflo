@@ -9,12 +9,15 @@ export function evaluatePullbackTiming(args: {
   close: number;
   prevClose: number;
   ema20: number;
+  ema50: number;
   atrNow: number;
   pullbackDepthAtr: number;
   bounceCandleStrengthAtr: number;
   roomToTargetAtr: number;
   rsiNow: number;
   rsiSlope: number;
+  /** Recent bars had meaningful dip into the pullback zone (ATR-normalized). */
+  hadRecentPullbackDip?: boolean;
 }): {
   timingScore: number;
   triggerHit: boolean;
@@ -22,19 +25,33 @@ export function evaluatePullbackTiming(args: {
   triggerReason: string;
   positiveFactors: string[];
 } {
+  const trendAligned = args.side === 'long' ? args.ema20 > args.ema50 : args.ema20 < args.ema50;
   const depthFit = clamp(1 - Math.abs(args.pullbackDepthAtr - 0.45) / 1.2, 0, 1);
-  const bounceConfirm = args.bounceCandleStrengthAtr > 0.25;
+  const bounceConfirm = args.bounceCandleStrengthAtr > 0.18;
   const reclaimEma =
     args.side === 'long'
       ? args.close >= args.ema20 && args.prevClose <= args.ema20
       : args.close <= args.ema20 && args.prevClose >= args.ema20;
-  const triggerHit = bounceConfirm && (reclaimEma || depthFit > 0.5);
+  const nearEmaHold =
+    args.atrNow > 0 &&
+    Math.abs(args.close - args.ema20) <= args.atrNow * 0.45 &&
+    (args.side === 'long' ? args.close >= args.prevClose : args.close <= args.prevClose);
+  const hadDip = args.hadRecentPullbackDip !== false;
+  const triggerHit =
+    trendAligned &&
+    hadDip &&
+    bounceConfirm &&
+    (reclaimEma || depthFit > 0.4 || nearEmaHold);
   const triggerType: ScannerTriggerType = triggerHit
     ? 'pullback_bounce_confirmed'
     : 'unknown';
   const triggerReason = triggerHit
     ? 'Pullback reached support zone and bounce confirmed.'
-    : 'Pullback still forming; bounce confirmation not complete.';
+    : !trendAligned
+      ? 'Pullback timing needs trend alignment (EMA20 vs EMA50).'
+      : !hadDip
+        ? 'No recent dip into the pullback zone yet.'
+        : 'Pullback still forming; bounce confirmation not complete.';
 
   const room = clamp(args.roomToTargetAtr / 2.0, 0, 1);
   const rsiFitMid = 50;

@@ -57,14 +57,19 @@ function nextNeedFromReasons(reasons: string[]): string {
 }
 
 function statusFromEvaluation(r: DetectorEvaluation, score: number | null) {
-  if (r.triggered) return 'triggered' as const;
+  if (r.timingTriggered) return 'triggered' as const;
   const isWaiting = r.reasons.some((reason) => reason.includes('Need at least') || reason.includes('not closed'));
   if (isWaiting) return 'invalid' as const;
-  const failCount = r.reasons.length;
-  const potential = score ?? 0;
-  if (failCount <= 1 || potential >= 70) return 'close' as const;
-  if (failCount <= 3 || potential >= 55) return 'developing' as const;
-  return 'invalid' as const;
+  if (!r.detectorQualified) {
+    const failCount = r.reasons.length;
+    const potential = score ?? 0;
+    if (failCount <= 1 || potential >= 70) return 'close' as const;
+    if (failCount <= 3 || potential >= 55) return 'developing' as const;
+    return 'invalid' as const;
+  }
+  if (r.timingState === 'ready' || r.timingState === 'extended') return 'close' as const;
+  if (score != null && score >= 55) return 'developing' as const;
+  return 'close' as const;
 }
 
 export function ScannerLabScreen() {
@@ -81,10 +86,13 @@ export function ScannerLabScreen() {
 
   useEffect(() => {
     if (stopAutoRef.current) stopAutoRef.current();
-    const next = setPlaybackScenario(session, scenario);
+    stopAutoRef.current = null;
+    const next = createPlaybackSession({ scenario });
     setSession(next);
     setLastStep(next.lastStep);
     setIsPlaying(false);
+    prevDetectorScoresRef.current = {};
+    prevSetupScoreRef.current = null;
   }, [scenario]);
 
   useEffect(() => {
@@ -125,6 +133,9 @@ export function ScannerLabScreen() {
       reasons: r.reasons.length > 0 ? r.reasons : ['Conditions not met'],
       score: r.scoreBreakdown ? calculateSetupScore(r.scoreBreakdown) : null,
       facts: r.explanationFacts,
+      detectorQualified: r.detectorQualified,
+      timingState: r.timingState,
+      triggerType: r.triggerType,
     })).map((row) => {
       const prevScore = prevDetectorScoresRef.current[row.setupType];
       const trend =
@@ -137,7 +148,10 @@ export function ScannerLabScreen() {
               : 'flat';
       const raw = rows.find((r) => r.setupType === row.setupType);
       const status = raw ? statusFromEvaluation(raw, row.score) : 'invalid';
-      if (status === 'triggered') return { ...row, status, nextNeed: 'In play now.', trend };
+      if (status === 'triggered') return { ...row, status, nextNeed: 'Timing trigger fired — in play now.', trend };
+      if (raw?.detectorQualified && status !== 'triggered') {
+        return { ...row, status, nextNeed: raw.reasons.at(-1) ?? 'Detector qualified; timing not confirmed yet.', trend };
+      }
       return { ...row, status, nextNeed: nextNeedFromReasons(row.reasons), trend };
     });
   }, [lastStep]);
@@ -218,13 +232,25 @@ export function ScannerLabScreen() {
       overextended: [],
     };
 
+    let lifecycleRegistry: Partial<Record<(typeof detectorKeys)[number], import('@/lib/timingLifecycle').CandidateLifecycle>> = {};
+
     for (let i = 1; i <= upto; i += 1) {
       const visible = candles.slice(0, i);
-      const { evaluations } = runScannerLabEngineEvaluations(session.config.symbol, visible);
+      const { evaluations } = runScannerLabEngineEvaluations(
+        session.config.symbol,
+        visible,
+        'neutral',
+        lifecycleRegistry,
+      );
       for (const ev of evaluations) {
+        if (ev.lifecycle) lifecycleRegistry[ev.setupType] = ev.lifecycle;
         const score = ev.scoreBreakdown ? calculateSetupScore(ev.scoreBreakdown) : null;
         const status = statusFromEvaluation(ev, score);
-        if (status === 'developing' && firstDeveloping[ev.setupType] == null) {
+        const inPlayBeforeTrigger =
+          status === 'developing' ||
+          status === 'close' ||
+          (ev.detectorQualified && status !== 'triggered');
+        if (inPlayBeforeTrigger && firstDeveloping[ev.setupType] == null) {
           firstDeveloping[ev.setupType] = i;
         }
         if (status === 'triggered') {
@@ -237,7 +263,9 @@ export function ScannerLabScreen() {
 
     const triggerByType = detectorKeys.reduce(
       (acc, key) => {
-        acc[key] = session.state.emittedSignals.filter((s) => s.setupType === key);
+        acc[key] = session.state.emittedSignals.filter(
+          (s) => s.setupType === key && s.scenario === scenario,
+        );
         return acc;
       },
       {} as Record<(typeof detectorKeys)[number], typeof session.state.emittedSignals>
@@ -346,7 +374,7 @@ export function ScannerLabScreen() {
         <h2 className="text-sm font-semibold text-white">How to use this lab</h2>
         <p className="text-xs text-sigflo-muted">1) Pick a scenario. 2) Press Step or Play. 3) Watch detector status, setup score, and signal history.</p>
         <p className="text-xs text-sigflo-muted">
-          Rules match the production engine (`src/lib/signalDetectors.ts`): long/short pairs and fixed thresholds. Window needs at least {MIN_ENGINE_BARS} bars before setups can fire. Emit threshold matches live engine ({session.config.minSetupScore} setup score). Each scenario is designed to fire on the last candle — step or play to the end.
+          Rules match the production engine (`src/lib/signalDetectors.ts`): long/short pairs and fixed thresholds. Window needs at least {MIN_ENGINE_BARS} bars before setups can fire. Emit threshold matches live engine ({session.config.minSetupScore} setup score). Each scenario fires on its trigger candle; step through the 5 outcome bars after for follow-through metrics.
         </p>
       </Card>
 
@@ -421,7 +449,7 @@ export function ScannerLabScreen() {
         <div className="mt-2 grid grid-cols-2 gap-2 text-xs">
           <div className="rounded-lg border border-sigflo-border bg-sigflo-bg/50 p-2">
             <p className="text-sigflo-muted">Price</p>
-            <p className="mt-0.5 text-sm font-semibold text-white">{Math.round(topPanel.price).toLocaleString()}</p>
+            <p className="mt-0.5 text-sm font-semibold text-white">{topPanel.price.toFixed(2)}</p>
           </div>
           <div className="rounded-lg border border-sigflo-border bg-sigflo-bg/50 p-2">
             <p className="text-sigflo-muted">RSI</p>
@@ -429,12 +457,12 @@ export function ScannerLabScreen() {
           </div>
           <div className="rounded-lg border border-sigflo-border bg-sigflo-bg/50 p-2">
             <p className="text-sigflo-muted">ATR</p>
-            <p className="mt-0.5 text-sm font-semibold text-white">{Math.round(topPanel.atr).toLocaleString()}</p>
+            <p className="mt-0.5 text-sm font-semibold text-white">{topPanel.atr.toFixed(2)}</p>
           </div>
           <div className="rounded-lg border border-sigflo-border bg-sigflo-bg/50 p-2">
             <p className="text-sigflo-muted">EMA20 / EMA50</p>
             <p className="mt-0.5 text-sm font-semibold text-white">
-              {Math.round(topPanel.ema20).toLocaleString()} / {Math.round(topPanel.ema50).toLocaleString()}
+              {topPanel.ema20.toFixed(1)} / {topPanel.ema50.toFixed(1)}
             </p>
           </div>
         </div>
@@ -481,7 +509,7 @@ export function ScannerLabScreen() {
                   }
                 >
                   {row.status === 'triggered'
-                    ? '✅ In play'
+                    ? '✅ Triggered'
                     : row.status === 'close'
                       ? '⚠️ Close'
                       : row.status === 'developing'
@@ -502,6 +530,12 @@ export function ScannerLabScreen() {
                   {String(row.facts?.compressionThreshold ?? '-')}
                 </p>
               ) : null}
+              <p className="mt-1 text-[11px] text-sigflo-muted">
+                Timing: {row.timingState ?? '—'}
+                {row.triggerType && row.triggerType !== 'unknown'
+                  ? ` • ${String(row.triggerType).replaceAll('_', ' ')}`
+                  : ''}
+              </p>
               <div className="mt-1 text-[11px] text-sigflo-muted">
                 {row.status === 'triggered' ? (
                   <>
@@ -514,10 +548,12 @@ export function ScannerLabScreen() {
                   </>
                 ) : (
                   <>
-                    <p className={row.status === 'developing' ? 'text-cyan-300' : 'text-red-300'}>
+                    <p className={row.status === 'developing' ? 'text-cyan-300' : row.detectorQualified ? 'text-amber-300' : 'text-red-300'}>
                       {row.status === 'developing'
                         ? `🔄 ${row.setupType[0].toUpperCase() + row.setupType.slice(1)} developing`
-                        : `❌ ${row.setupType[0].toUpperCase() + row.setupType.slice(1)} not in play`}
+                        : row.detectorQualified
+                          ? `⚠️ ${row.setupType[0].toUpperCase() + row.setupType.slice(1)} qualified — timing pending`
+                          : `❌ ${row.setupType[0].toUpperCase() + row.setupType.slice(1)} not in play`}
                     </p>
                     {row.reasons.map((reason, idx) => (
                       <p key={`${row.setupType}-reason-${idx}`} className="leading-relaxed">
@@ -535,14 +571,15 @@ export function ScannerLabScreen() {
 
       <Card className="space-y-2 p-4">
         <h2 className="text-sm font-semibold text-white">Signal history</h2>
-        {session.state.emittedSignals.length === 0 ? (
+        {session.state.emittedSignals.filter((s) => s.scenario === scenario).length === 0 ? (
           <p className="text-xs text-sigflo-muted">
             {lastStep?.done && latestEvaluations.some((r) => r.status === 'triggered')
-              ? `Detector qualified on the last bar but did not pass emit gate (score must be ≥ ${session.config.minSetupScore}).`
-              : 'No signals yet. Step or play to the end of the scenario — fire moment is on the last candle.'}
+              ? `Timing trigger fired on the last bar but did not pass emit gate (score must be ≥ ${session.config.minSetupScore}).`
+              : 'No timing triggers yet. Step or play to the bounce/breakout bar — detector qualification alone does not emit.'}
           </p>
         ) : (
           session.state.emittedSignals
+            .filter((s) => s.scenario === scenario)
             .slice()
             .reverse()
             .map((s, idx) => (
@@ -569,8 +606,8 @@ export function ScannerLabScreen() {
         <h2 className="text-sm font-semibold text-white">Usefulness Metrics</h2>
         <div className="rounded-xl border border-sigflo-border bg-sigflo-bg/50 px-3 py-2 text-[11px] text-sigflo-muted">
           <p>
-            <span className="text-white">Lead/Lag:</span> candles from first <span className="text-cyan-200">Developing</span> state to
-            trigger. Lower is faster; very low may be noisy.
+            <span className="text-white">Lead/Lag:</span> candles from first in-play state (developing/close/qualified) to
+            timing trigger. Lower is faster; very low may be noisy.
           </p>
           <p>
             <span className="text-white">Signal Density:</span> triggers per 100 candles. Higher = more frequent signals.

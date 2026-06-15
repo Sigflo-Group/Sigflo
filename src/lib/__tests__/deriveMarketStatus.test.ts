@@ -27,10 +27,18 @@ describe('deriveMarketStatus', () => {
     ).toBe('triggered');
   });
 
-  it('does not promote ready state via score and stale triggerType alone', () => {
+  it('maps ready with confirmed trigger to triggered in UI', () => {
     expect(
       deriveMarketStatus(
         shell({ timingState: 'ready', setupScore: 80, triggerType: 'breakout_first_close' }),
+      ),
+    ).toBe('triggered');
+  });
+
+  it('keeps ready without trigger metadata as developing', () => {
+    expect(
+      deriveMarketStatus(
+        shell({ timingState: 'ready', setupScore: 80, triggerType: 'unknown' }),
       ),
     ).toBe('developing');
   });

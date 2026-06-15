@@ -51,7 +51,7 @@ const MARKET_DETECTORS = [
   overextendedShortDetector,
 ] as const;
 
-export function buildSignalFromMarket(input: {
+export type BuildSignalFromMarketInput = {
   symbol: string;
   exchange: string;
   ticker: SymbolTicker;
@@ -70,81 +70,16 @@ export function buildSignalFromMarket(input: {
     reason: 'no_signal' | 'confidence_below_threshold',
     meta?: { confidence?: number; threshold?: number },
   ) => void;
-}): { signal: CryptoSignal; lifecycle: CandidateLifecycle } | null {
-  const thresholds = thresholdsForRegime(input.regime ?? 'neutral');
-  let best: {
-    out: DetectorOutput;
-    setupScore: number;
-    bias: BiasAssessment;
-    lifecycle: CandidateLifecycle;
-    diagnostics: TimingDiagnostics;
-  } | null = null;
-  const debugRejectLog: Array<{ detector: string; reason: string; detail?: Record<string, unknown> }> = [];
-  const debugAcceptLog: Array<{ detector: string; confidence: number; timingState: string; setupScore: number }> = [];
-  for (const detector of MARKET_DETECTORS) {
-    const out = detector(input.candles15m, thresholds);
-    if (!out) {
-      input.onReject?.(detector.name, 'no_signal');
-      if (DEBUG) debugRejectLog.push({ detector: detector.name, reason: 'no_signal' });
-      continue;
-    }
-    const setupScore = calculateSetupScore(out.breakdown);
-    const bias = assessDirectionalBias({
-      side: out.side,
-      setupScore,
-      setupType: out.setupType,
-      candles15m: input.candles15m,
-      candles5m: input.candles5m,
-      marketMemory: input.previousMarketMemory,
-      strategyPersonalityMode: input.strategyPersonalityMode,
-      strategyPersonalityProfile: input.strategyPersonalityProfile,
-      adaptationConfidenceAdjustment: input.adaptationConfidenceAdjustmentForSetup?.(out.setupType),
-      adaptiveFeedback: input.adaptiveFeedbackForSetup?.(out.setupType, out.side),
-    });
-    const emitThreshold = input.strategyPersonalityProfile?.minConfidenceToEmit ?? 45;
-    if (bias.confidence < emitThreshold) {
-      input.onReject?.(detector.name, 'confidence_below_threshold', {
-        confidence: bias.confidence,
-        threshold: emitThreshold,
-      });
-      if (DEBUG) debugRejectLog.push({ detector: detector.name, reason: 'confidence_below_threshold', detail: { confidence: bias.confidence, threshold: emitThreshold } });
-      continue;
-    }
-    const previousLifecycle =
-      input.previousLifecycleForSetupSide?.(out.setupType, out.side) ?? input.previousLifecycle;
-    const { lifecycle, diagnostics } = evaluateTimingLifecycle({
-      setupType: out.setupType,
-      side: out.side,
-      setupScore,
-      candles: input.candles15m,
-      previous: previousLifecycle,
-    });
-    if (DEBUG) debugAcceptLog.push({ detector: detector.name, confidence: bias.confidence, timingState: lifecycle.state, setupScore });
-    if (!best) {
-      best = { out, setupScore, bias, lifecycle, diagnostics };
-      continue;
-    }
-    const nextPriority = timingStatePriority(lifecycle.state);
-    const bestPriority = timingStatePriority(best.lifecycle.state);
-    if (
-      nextPriority > bestPriority ||
-      (nextPriority === bestPriority && bias.confidence > best.bias.confidence) ||
-      (nextPriority === bestPriority && bias.confidence === best.bias.confidence && setupScore > best.setupScore)
-    ) {
-      best = { out, setupScore, bias, lifecycle, diagnostics };
-    }
-  }
-  if (DEBUG) {
-    console.log(`[Sigflo][Engine] ${input.symbol} buildSignalFromMarket`, {
-      regime: input.regime ?? 'neutral',
-      candleCount: input.candles15m.length,
-      rejected: debugRejectLog,
-      accepted: debugAcceptLog,
-      selected: best ? { detector: `${best.out.setupType}/${best.out.side}`, confidence: best.bias.confidence, timingState: best.lifecycle.state } : null,
-    });
-  }
-  if (!best) return null;
-  const { out, setupScore, bias, lifecycle, diagnostics } = best;
+};
+
+function composeSignalFromParts(
+  input: BuildSignalFromMarketInput,
+  out: DetectorOutput,
+  setupScore: number,
+  bias: BiasAssessment,
+  lifecycle: CandidateLifecycle,
+  diagnostics: TimingDiagnostics,
+): { signal: CryptoSignal; lifecycle: CandidateLifecycle } {
   const signal: CryptoSignal = {
     id: `live-${input.symbol}-${out.setupType}-${out.side}`,
     pair: input.symbol.replace('USDT', ''),
@@ -193,6 +128,105 @@ export function buildSignalFromMarket(input: {
       'Timing now follows lifecycle memory (first trigger capture, peak tracking, and freshness decay) instead of a late static snapshot.',
   };
   return { signal, lifecycle };
+}
+
+/** Runs all six detectors and returns every setup that passes the confidence gate. */
+export function buildAllSignalsFromMarket(
+  input: BuildSignalFromMarketInput,
+): Array<{ signal: CryptoSignal; lifecycle: CandidateLifecycle }> {
+  const thresholds = thresholdsForRegime(input.regime ?? 'neutral');
+  const accepted: Array<{
+    out: DetectorOutput;
+    setupScore: number;
+    bias: BiasAssessment;
+    lifecycle: CandidateLifecycle;
+    diagnostics: TimingDiagnostics;
+  }> = [];
+  const debugRejectLog: Array<{ detector: string; reason: string; detail?: Record<string, unknown> }> = [];
+  const debugAcceptLog: Array<{ detector: string; confidence: number; timingState: string; setupScore: number }> = [];
+
+  for (const detector of MARKET_DETECTORS) {
+    const out = detector(input.candles15m, thresholds);
+    if (!out) {
+      input.onReject?.(detector.name, 'no_signal');
+      if (DEBUG) debugRejectLog.push({ detector: detector.name, reason: 'no_signal' });
+      continue;
+    }
+    const setupScore = calculateSetupScore(out.breakdown);
+    const bias = assessDirectionalBias({
+      side: out.side,
+      setupScore,
+      setupType: out.setupType,
+      candles15m: input.candles15m,
+      candles5m: input.candles5m,
+      marketMemory: input.previousMarketMemory,
+      strategyPersonalityMode: input.strategyPersonalityMode,
+      strategyPersonalityProfile: input.strategyPersonalityProfile,
+      adaptationConfidenceAdjustment: input.adaptationConfidenceAdjustmentForSetup?.(out.setupType),
+      adaptiveFeedback: input.adaptiveFeedbackForSetup?.(out.setupType, out.side),
+    });
+    const emitThreshold = input.strategyPersonalityProfile?.minConfidenceToEmit ?? 45;
+    if (bias.confidence < emitThreshold) {
+      input.onReject?.(detector.name, 'confidence_below_threshold', {
+        confidence: bias.confidence,
+        threshold: emitThreshold,
+      });
+      if (DEBUG) debugRejectLog.push({ detector: detector.name, reason: 'confidence_below_threshold', detail: { confidence: bias.confidence, threshold: emitThreshold } });
+      continue;
+    }
+    const previousLifecycle =
+      input.previousLifecycleForSetupSide?.(out.setupType, out.side) ?? input.previousLifecycle;
+    const { lifecycle, diagnostics } = evaluateTimingLifecycle({
+      setupType: out.setupType,
+      side: out.side,
+      setupScore,
+      candles: input.candles15m,
+      previous: previousLifecycle,
+    });
+    if (DEBUG) debugAcceptLog.push({ detector: detector.name, confidence: bias.confidence, timingState: lifecycle.state, setupScore });
+    accepted.push({ out, setupScore, bias, lifecycle, diagnostics });
+  }
+
+  if (DEBUG) {
+    console.log(`[Sigflo][Engine] ${input.symbol} buildAllSignalsFromMarket`, {
+      regime: input.regime ?? 'neutral',
+      candleCount: input.candles15m.length,
+      rejected: debugRejectLog,
+      accepted: debugAcceptLog,
+      count: accepted.length,
+    });
+  }
+
+  return accepted.map(({ out, setupScore, bias, lifecycle, diagnostics }) =>
+    composeSignalFromParts(input, out, setupScore, bias, lifecycle, diagnostics),
+  );
+}
+
+export function buildSignalFromMarket(input: BuildSignalFromMarketInput): { signal: CryptoSignal; lifecycle: CandidateLifecycle } | null {
+  const all = buildAllSignalsFromMarket(input);
+  if (all.length === 0) return null;
+  let best = all[0]!;
+  for (const candidate of all.slice(1)) {
+    const nextPriority = timingStatePriority(candidate.lifecycle.state);
+    const bestPriority = timingStatePriority(best.lifecycle.state);
+    if (
+      nextPriority > bestPriority ||
+      (nextPriority === bestPriority && (candidate.signal.confidence ?? 0) > (best.signal.confidence ?? 0)) ||
+      (nextPriority === bestPriority &&
+        (candidate.signal.confidence ?? 0) === (best.signal.confidence ?? 0) &&
+        candidate.signal.setupScore > best.signal.setupScore)
+    ) {
+      best = candidate;
+    }
+  }
+  if (DEBUG) {
+    console.log(`[Sigflo][Engine] ${input.symbol} buildSignalFromMarket selected`, {
+      setupType: best.signal.setupType,
+      side: best.signal.side,
+      timingState: best.signal.timingState,
+    });
+  }
+  return best;
 }
 
 export type LabDetectorResults = {

@@ -113,6 +113,24 @@ describe('evaluateTimingLifecycle — breakout', () => {
     expect(lifecycle.state).toBe('triggered');
   });
 
+  it('backfills trigger when crossover happened earlier but detector joins late', () => {
+    // Base below 110, breakout 5 bars ago, then drift above without re-crossing.
+    let candles = buildBreakoutCandles(80, 109.5, 111);
+    for (let i = 0; i < 5; i += 1) {
+      ({ candles } = tick(candles, undefined, { close: 111.2, high: 111.8, low: 110.8, volume: 1500 }));
+    }
+    const { lifecycle } = evaluateTimingLifecycle({
+      setupType: 'breakout',
+      side: 'long',
+      setupScore: 75,
+      candles,
+    });
+    expect(lifecycle.trigger.triggerCandleTs).not.toBeNull();
+    expect(lifecycle.trigger.triggerType).not.toBe('unknown');
+    expect(lifecycle.candlesSinceTrigger).toBeGreaterThan(0);
+    expect(lifecycle.state).toBe('triggered');
+  });
+
   it('candlesSinceTrigger increments by 1 per closed candle (not stuck at 0)', () => {
     // This was the critical ring-buffer bug: index was always 239 so 239-239=0 forever.
     let candles = buildBreakoutCandles(80, 109.5, 111);

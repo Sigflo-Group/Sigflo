@@ -34,11 +34,18 @@ function buildBreakoutLabSeries(): PlaybackCandle[] {
     const close = 108.95 + (i % 2) * 0.03;
     bars.push(c(64 + i, close - 0.04, 109.14, 108.82, close, 1040));
   }
-  bars.push(c(72, 108.94, 109.16, 108.92, 109.1, 2300));
+  bars.push(c(71, 109.0, 109.08, 108.96, 109.04, 1100));
+  bars.push(c(72, 109.04, 109.22, 109.0, 109.15, 2300));
+  let price = 109.15;
+  for (let i = 0; i < 5; i += 1) {
+    const close = price + 0.14;
+    bars.push(c(73 + i, price, close + 0.18, price - 0.06, close, 1350));
+    price = close;
+  }
   return bars;
 }
 
-/** Pullback: steady uptrend, shallow dip into EMA zone, bounce on last bar. */
+/** Pullback: steady uptrend base, shallow dip into EMA zone, bounce on last bar. */
 function buildPullbackLabSeries(): PlaybackCandle[] {
   const bars: PlaybackCandle[] = [];
   const baseCount = MIN_ENGINE_BARS + 16;
@@ -58,6 +65,12 @@ function buildPullbackLabSeries(): PlaybackCandle[] {
   }
   const bounce = price + 0.45;
   bars.push(c(baseCount + 7, price, bounce + 0.2, price - 0.15, bounce, 1050));
+  price = bounce;
+  for (let i = 0; i < 5; i += 1) {
+    const close = price + 0.1;
+    bars.push(c(baseCount + 8 + i, price, close + 0.12, price - 0.05, close, 980));
+    price = close;
+  }
   return bars;
 }
 
@@ -76,9 +89,27 @@ function buildOverextendedLabSeries(): PlaybackCandle[] {
     bars.push(c(i, price, close + 0.55, price - 0.15, close, 1800 + i * 120));
     price = close;
   }
+  for (let i = 0; i < 5; i += 1) {
+    const close = price - 0.85;
+    bars.push(c(flatCount + 12 + i, price, price + 0.08, close - 0.2, close, 1600));
+    price = close;
+  }
   return bars;
 }
 
 export const breakoutScenario5m = buildBreakoutLabSeries();
 export const pullbackScenario5m = buildPullbackLabSeries();
 export const overextendedScenario5m = buildOverextendedLabSeries();
+
+/** 1-based candle index where timing first triggers (outcome bars follow). */
+export const SCENARIO_TRIGGER_CANDLE = {
+  breakout: 74,
+  pullback: 84,
+  overextended: 82,
+} as const;
+
+export function scenarioThroughTrigger(key: keyof typeof SCENARIO_TRIGGER_CANDLE): PlaybackCandle[] {
+  const all =
+    key === 'breakout' ? breakoutScenario5m : key === 'pullback' ? pullbackScenario5m : overextendedScenario5m;
+  return all.slice(0, SCENARIO_TRIGGER_CANDLE[key]);
+}

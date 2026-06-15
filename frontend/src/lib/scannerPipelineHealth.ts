@@ -112,9 +112,8 @@ export function explainNotTriggered(args: {
   if (!args.triggerHit) out.push('no_timing_trigger');
   if (args.timingState === 'extended') out.push('lifecycle_extended');
   if (args.timingState === 'expired') out.push('lifecycle_expired');
-  if (args.timingState === 'developing' || args.timingState === 'ready') {
-    out.push(`lifecycle_${args.timingState}`);
-  }
+  if (args.timingState === 'developing') out.push('lifecycle_developing');
+  if (args.timingState === 'ready' && !args.triggerHit) out.push('lifecycle_ready');
   if ((args.actionabilityScore ?? 0) < args.triggeredActionabilityMin) {
     out.push(`actionability_below_${args.triggeredActionabilityMin}`);
   }

@@ -105,16 +105,13 @@ export function tradeTimingChipProps(
     };
   }
   if (effectiveStatus === 'developing') return { state: 'developing', label: 'Developing' };
-  if (
-    effectiveStatus === 'triggered' &&
-    readiness >= 62 &&
-    tradeScore >= READY_MIN_TRADE_SCORE
-  ) {
-    return { state: 'ready', label: 'Ready' };
+  if (effectiveStatus === 'triggered') {
+    if (readiness >= 42 && tradeScore >= READY_MIN_TRADE_SCORE) {
+      return { state: 'ready', label: 'Ready' };
+    }
+    if (readiness >= 32) return { state: 'developing', label: 'Triggered' };
+    return { state: 'invalid', label: 'Weak timing' };
   }
-  if (effectiveStatus === 'triggered' && readiness < 42) return { state: 'invalid', label: 'Weak timing' };
-  if (effectiveStatus === 'triggered' && readiness < 50) return { state: 'invalid', label: 'Too late' };
-  if (effectiveStatus === 'triggered') return { state: 'developing', label: 'Developing' };
   if (effectiveStatus === 'idle') return { state: 'early', label: 'Too early' };
   return { state: 'early', label: 'Too early' };
 }

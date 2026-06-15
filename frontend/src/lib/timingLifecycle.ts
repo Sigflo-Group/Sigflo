@@ -13,6 +13,10 @@ import {
 } from '@/lib/scannerConfig';
 import { evaluateBreakoutTiming } from '@/lib/timingEvaluators/breakoutTiming';
 import { evaluateMeanReversionTiming } from '@/lib/timingEvaluators/meanReversionTiming';
+import {
+  findRecentBreakoutCrossover,
+  findRecentPullbackBounce,
+} from '@/lib/timingEvaluators/recentTriggerLookback';
 import { evaluatePullbackTiming } from '@/lib/timingEvaluators/pullbackTiming';
 import { evaluateReclaimTiming } from '@/lib/timingEvaluators/reclaimTiming';
 import { atr, ema, recentSwingHigh, recentSwingLow, rsi } from '@/lib/indicators';
@@ -129,11 +133,17 @@ function computeState(args: {
     if (args.timingScore >= config.readyTimingMin) return 'ready';
     return 'developing';
   }
-  if (
+  const withinTriggerWindow = (args.candlesSinceTrigger ?? 0) <= config.extendedAfterCandles;
+  const hardTriggered =
     args.actionabilityScore >= config.triggeredActionabilityMin &&
     args.freshnessScore >= config.triggeredFreshnessMin &&
-    (args.candlesSinceTrigger ?? 0) <= config.extendedAfterCandles
-  ) {
+    withinTriggerWindow;
+  const softTriggered =
+    withinTriggerWindow &&
+    args.timingScore >= config.readyTimingMin - 4 &&
+    args.actionabilityScore >= Math.max(40, config.triggeredActionabilityMin - 6) &&
+    args.freshnessScore >= Math.max(32, config.triggeredFreshnessMin - 6);
+  if (hardTriggered || softTriggered) {
     return 'triggered';
   }
   const timingDroppedFromPeak = args.peakTimingScore - args.timingScore >= config.timingDropFromPeakToExtend;
@@ -169,7 +179,10 @@ export function evaluateTimingLifecycle(args: {
   const rsiPrev = rsiSeries.at(-2) ?? rsiNow;
   const rsiSlope = rsiNow - rsiPrev;
   const ema20Series = ema(candles.map((c) => c.close), 20);
+  const ema50Series = ema(candles.map((c) => c.close), 50);
   const ema20 = ema20Series.at(-1) ?? close;
+  const ema50 = ema50Series.at(-1) ?? close;
+  const atrSeries = atr(candles, 14);
   const swingHigh = recentSwingHigh(candles, 40);
   const swingLow = recentSwingLow(candles, 40);
   // Breakout trigger levels must come from completed history, not the active candle.
@@ -193,6 +206,7 @@ export function evaluateTimingLifecycle(args: {
   });
 
   const existingTrigger = args.previous?.trigger?.triggerCandleTs != null;
+  const previousTriggerTsEarly = args.previous?.trigger?.triggerCandleTs ?? null;
   const breakout = evaluateBreakoutTiming({
     side: args.side,
     close,
@@ -207,17 +221,27 @@ export function evaluateTimingLifecycle(args: {
     hasPreviousTrigger: existingTrigger,
     previousState: args.previous?.state ?? null,
   });
+  const hadRecentPullbackDip = candles.slice(-5, -1).some((bar, offset) => {
+    const idx = candles.length - 5 + offset;
+    if (idx < 0) return false;
+    const barEma20 = ema20Series[idx] ?? bar.close;
+    const barAtr = Math.max(1e-8, atrSeries[idx] ?? 0);
+    const barDepth = args.side === 'long' ? (barEma20 - bar.close) / barAtr : (bar.close - barEma20) / barAtr;
+    return barDepth >= 0.12;
+  });
   const pullback = evaluatePullbackTiming({
     side: args.side,
     close,
     prevClose,
     ema20,
+    ema50,
     atrNow,
     pullbackDepthAtr,
     bounceCandleStrengthAtr: bounceStrengthAtr,
     roomToTargetAtr,
     rsiNow,
     rsiSlope,
+    hadRecentPullbackDip,
   });
   const reclaim = evaluateReclaimTiming({
     side: args.side,
@@ -251,6 +275,40 @@ export function evaluateTimingLifecycle(args: {
           ? meanReversion
           : reclaim;
 
+  let effectiveTriggerHit = selected.triggerHit;
+  let effectiveTriggerType = selected.triggerType;
+  let effectiveTriggerReason = selected.triggerReason;
+  let backfillTriggerTs: number | null = null;
+  let backfillTriggerIndex: number | null = null;
+
+  if (!effectiveTriggerHit && previousTriggerTsEarly == null) {
+    if (args.setupType === 'breakout') {
+      const recent = findRecentBreakoutCrossover(candles, args.side, config.extendedAfterCandles);
+      if (recent) {
+        const stillHolding =
+          args.side === 'long'
+            ? close >= recent.triggerLevel * 0.995
+            : close <= recent.triggerLevel * 1.005;
+        if (stillHolding) {
+          effectiveTriggerHit = true;
+          effectiveTriggerType = 'breakout_first_close';
+          effectiveTriggerReason = 'Breakout crossover within the active window; level still holds.';
+          backfillTriggerTs = recent.ts;
+          backfillTriggerIndex = recent.candleIndex;
+        }
+      }
+    } else if (args.setupType === 'pullback') {
+      const recent = findRecentPullbackBounce(candles, args.side, config.extendedAfterCandles);
+      if (recent) {
+        effectiveTriggerHit = true;
+        effectiveTriggerType = 'pullback_bounce_confirmed';
+        effectiveTriggerReason = 'Pullback bounce confirmed within the active window.';
+        backfillTriggerTs = recent.ts;
+        backfillTriggerIndex = recent.candleIndex;
+      }
+    }
+  }
+
   const candleIndex = Math.max(0, candles.length - 1);
   const lastCandleTs = candles.at(-1)?.ts ?? null;
   const oldestCandleTs = candles.at(0)?.ts ?? null;
@@ -266,7 +324,7 @@ export function evaluateTimingLifecycle(args: {
         : candles.filter((c) => c.ts > previousTriggerTs).length
       : null;
   const shouldRearmTrigger =
-    selected.triggerHit &&
+    effectiveTriggerHit &&
     (
       previousTriggerTs == null ||
       args.previous?.state === 'extended' ||
@@ -274,24 +332,25 @@ export function evaluateTimingLifecycle(args: {
       (previousCandlesSinceTrigger != null && previousCandlesSinceTrigger > config.extendedAfterCandles)
     );
   const shouldClearStaleTrigger =
-    !selected.triggerHit &&
+    !effectiveTriggerHit &&
     previousTriggerTs != null &&
     (
       args.previous?.state === 'expired' ||
+      (oldestCandleTs != null && previousTriggerTs < oldestCandleTs) ||
       (previousCandlesSinceTrigger != null && previousCandlesSinceTrigger > config.expiredAfterCandles)
     );
   const triggerCandleTs = shouldRearmTrigger
-    ? lastCandleTs
+    ? (backfillTriggerTs ?? lastCandleTs)
     : shouldClearStaleTrigger
       ? null
       : previousTriggerTs;
   const firstValidEntryCandleIndex = shouldRearmTrigger
-    ? candleIndex
+    ? (backfillTriggerIndex ?? candleIndex)
     : shouldClearStaleTrigger
       ? null
       : previousTriggerIndex;
   const idealEntryPrice = shouldRearmTrigger
-    ? close
+    ? (backfillTriggerIndex != null ? (candles[backfillTriggerIndex]?.close ?? close) : close)
     : shouldClearStaleTrigger
       ? null
       : (previousTrigger?.idealEntryPrice ?? null);
@@ -411,9 +470,9 @@ export function evaluateTimingLifecycle(args: {
         shouldClearStaleTrigger
           ? 'unknown'
           : shouldRearmTrigger || !previousTrigger?.triggerType || previousTrigger.triggerType === 'unknown'
-          ? selected.triggerType
+          ? effectiveTriggerType
           : previousTrigger.triggerType,
-      triggerReason: selected.triggerReason,
+      triggerReason: effectiveTriggerReason,
       firstValidEntryCandleIndex,
       triggerCandleTs,
       idealEntryPrice,

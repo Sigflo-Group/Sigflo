@@ -47,8 +47,8 @@ export interface ScannerLifecycleConfig {
 export const SCANNER_LIFECYCLE_CONFIG: ScannerLifecycleConfig = {
   historyLimit: 10,
   readyTimingMin: 58,
-  triggeredActionabilityMin: 58,
-  triggeredFreshnessMin: 45,
+  triggeredActionabilityMin: 52,
+  triggeredFreshnessMin: 40,
   /** Closed 15m bars in triggered state before extended (~2h at 15m). */
   extendedAfterCandles: 8,
   /** Bars without trigger re-hit before clearing stale trigger (~3h at 15m). */

@@ -5,8 +5,10 @@ import {
   type DerivedIndicators,
   type DetectorEvaluation,
   type DetectorOptions,
+  type SetupType,
   type SignalCandidate,
 } from '@/lib/detectors';
+import type { CandidateLifecycle } from '@/lib/timingLifecycle';
 import { getSetupScoreLabel } from '@/lib/setupScore';
 import type { PlaybackCandle } from '@/types/market';
 import type { SetupScoreLabel } from '@/types/signal';
@@ -20,6 +22,7 @@ export type ScenarioKey = 'breakout' | 'pullback' | 'overextended';
 
 export type PlaybackSignal = SignalCandidate & {
   symbol: string;
+  scenario: ScenarioKey;
   timestamp: number;
   candleIndex: number;
   scoreLabel: SetupScoreLabel;
@@ -61,6 +64,7 @@ export type PlaybackSession = {
   detectorEvaluations: DetectorEvaluation[];
   lastStep: PlaybackStepResult | null;
   cooldownRegistry: Record<string, CooldownState>;
+  lifecycleRegistry: Partial<Record<SetupType, CandidateLifecycle>>;
 };
 
 type CooldownState = {
@@ -89,12 +93,66 @@ function candidateKey(symbol: string, setupType: SignalCandidate['setupType']) {
   return `${symbol}:${setupType}`;
 }
 
+function applyEvaluationsToSession(args: {
+  symbol: string;
+  scenario: ScenarioKey;
+  index: number;
+  currentCandle: PlaybackCandle;
+  evaluations: DetectorEvaluation[];
+  config: PlaybackConfig;
+  cooldownRegistry: Record<string, CooldownState>;
+  lifecycleRegistry: Partial<Record<SetupType, CandidateLifecycle>>;
+}): {
+  newSignals: PlaybackSignal[];
+  cooldownRegistry: Record<string, CooldownState>;
+  lifecycleRegistry: Partial<Record<SetupType, CandidateLifecycle>>;
+} {
+  const nextCooldown = { ...args.cooldownRegistry };
+  const nextLifecycle = { ...args.lifecycleRegistry };
+  const newSignals: PlaybackSignal[] = [];
+
+  for (const e of args.evaluations) {
+    if (e.lifecycle) nextLifecycle[e.setupType] = e.lifecycle;
+    if (!e.timingTriggered || !e.candidate) continue;
+    if (e.candidate.setupScore < args.config.minSetupScore) continue;
+    if (!args.currentCandle.isClosed) continue;
+
+    const key = candidateKey(args.symbol, e.candidate.setupType);
+    const prior = nextCooldown[key];
+    const cooldownElapsed = !prior || args.index - prior.lastIndex >= args.config.cooldownCandles;
+    const improved = !prior || e.candidate.setupScore - prior.lastSetupScore >= args.config.minScoreImprovement;
+    if (!(cooldownElapsed || improved)) continue;
+
+    const signal: PlaybackSignal = {
+      ...e.candidate,
+      symbol: args.symbol,
+      scenario: args.scenario,
+      timestamp: args.currentCandle.timestamp,
+      candleIndex: args.index,
+      scoreLabel: getSetupScoreLabel(e.candidate.setupScore),
+      whyFired: compactWhyFired(e),
+    };
+    nextCooldown[key] = { lastIndex: args.index, lastSetupScore: e.candidate.setupScore };
+    newSignals.push(signal);
+  }
+
+  return { newSignals, cooldownRegistry: nextCooldown, lifecycleRegistry: nextLifecycle };
+}
+
 function compactReason(reasons: string[]): string {
   const clean = reasons
     .map((r) => r.replace('confirmed on closed candle', '').trim())
     .filter(Boolean)
     .slice(0, 2);
   return clean.join(' + ');
+}
+
+function compactWhyFired(e: DetectorEvaluation): string {
+  const timingLine = e.reasons.find((r) => r.startsWith('Timing trigger:'));
+  if (e.timingTriggered && timingLine) {
+    return timingLine.replace('Timing trigger:', 'Trigger:').trim();
+  }
+  return compactReason(e.reasons);
 }
 
 /** Step-through controller for Scanner Lab (fixture candles, isolated from live transport). */
@@ -213,6 +271,7 @@ export function createPlaybackSession(input?: {
     detectorEvaluations: [],
     lastStep: null,
     cooldownRegistry: {},
+    lifecycleRegistry: {},
   };
 }
 
@@ -223,6 +282,7 @@ export function resetPlayback(session: PlaybackSession): PlaybackSession {
     detectorEvaluations: [],
     lastStep: null,
     cooldownRegistry: {},
+    lifecycleRegistry: {},
   };
 }
 
@@ -236,6 +296,7 @@ export function setScenario(session: PlaybackSession, scenario: ScenarioKey): Pl
     detectorEvaluations: [],
     lastStep: null,
     cooldownRegistry: {},
+    lifecycleRegistry: {},
   };
 }
 
@@ -248,40 +309,31 @@ export function stepForward(session: PlaybackSession): PlaybackSession {
   const currentCandle = visibleCandles.at(-1);
   if (!currentCandle) return session;
 
-  const { indicators, evaluations } = runScannerLabEngineEvaluations(session.config.symbol, visibleCandles);
+  const { indicators, evaluations } = runScannerLabEngineEvaluations(
+    session.config.symbol,
+    visibleCandles,
+    'neutral',
+    session.lifecycleRegistry,
+  );
 
-  const nextCooldown = { ...session.cooldownRegistry };
-  const newSignals: PlaybackSignal[] = [];
-  for (const e of evaluations) {
-    if (!e.triggered || !e.candidate) continue;
-    if (e.candidate.setupScore < session.config.minSetupScore) continue;
-    if (!currentCandle.isClosed) continue;
+  const applied = applyEvaluationsToSession({
+    symbol: session.config.symbol,
+    scenario: session.state.scenario,
+    index: nextIndex,
+    currentCandle,
+    evaluations,
+    config: session.config,
+    cooldownRegistry: session.cooldownRegistry,
+    lifecycleRegistry: session.lifecycleRegistry,
+  });
 
-    const key = candidateKey(session.config.symbol, e.candidate.setupType);
-    const prior = nextCooldown[key];
-    const cooldownElapsed = !prior || nextIndex - prior.lastIndex >= session.config.cooldownCandles;
-    const improved = !prior || e.candidate.setupScore - prior.lastSetupScore >= session.config.minScoreImprovement;
-    if (!(cooldownElapsed || improved)) continue;
-
-    const signal: PlaybackSignal = {
-      ...e.candidate,
-      symbol: session.config.symbol,
-      timestamp: currentCandle.timestamp,
-      candleIndex: nextIndex,
-      scoreLabel: getSetupScoreLabel(e.candidate.setupScore),
-      whyFired: compactReason(e.reasons),
-    };
-    nextCooldown[key] = { lastIndex: nextIndex, lastSetupScore: e.candidate.setupScore };
-    newSignals.push(signal);
-  }
-
-  const emittedSignals = [...session.state.emittedSignals, ...newSignals];
+  const emittedSignals = [...session.state.emittedSignals, ...applied.newSignals];
   const result: PlaybackStepResult = {
     currentCandle,
     visibleCandles,
     indicators,
     detectorEvaluations: evaluations,
-    newSignals,
+    newSignals: applied.newSignals,
     emittedSignals,
     index: nextIndex,
     done: nextIndex >= session.state.total,
@@ -290,7 +342,8 @@ export function stepForward(session: PlaybackSession): PlaybackSession {
   return {
     ...session,
     detectorEvaluations: evaluations,
-    cooldownRegistry: nextCooldown,
+    cooldownRegistry: applied.cooldownRegistry,
+    lifecycleRegistry: applied.lifecycleRegistry,
     lastStep: result,
     state: {
       ...session.state,

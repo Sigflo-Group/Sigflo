@@ -5,10 +5,15 @@ import {
   type LabDetectorResults,
   type MarketRegime,
 } from '@/lib/signalDetectors';
+import {
+  evaluateTimingLifecycle,
+  type CandidateLifecycle,
+} from '@/lib/timingLifecycle';
 import { deriveIndicatorSnapshot } from '@/engine/indicators';
 import type { Candle as EngineCandle, IndicatorSnapshot } from '@/engine/types';
 import type { PlaybackCandle } from '@/types/market';
 import type { SetupScoreBreakdown, SignalSide } from '@/types/signal';
+import type { ScannerTimingState, ScannerTriggerType } from '@/lib/scannerConfig';
 
 export type SetupType = 'breakout' | 'pullback' | 'overextended';
 
@@ -35,12 +40,20 @@ export type SignalCandidate = {
 };
 
 export type DetectorEvaluation = {
+  /** Production detector returned a candidate on this bar. */
+  detectorQualified: boolean;
+  /** Timing lifecycle reached triggered (parity with live engine). */
+  timingTriggered: boolean;
+  /** @deprecated Use timingTriggered — kept for callers that expect this name. */
   triggered: boolean;
   setupType: SetupType;
+  timingState?: ScannerTimingState;
+  triggerType?: ScannerTriggerType;
   reasons: string[];
   scoreBreakdown?: SetupScoreBreakdown;
   explanationFacts?: Record<string, number | string | boolean>;
   candidate?: SignalCandidate;
+  lifecycle?: CandidateLifecycle;
 };
 
 /** Kept on playback config for API stability; ignored — engine uses fixed production thresholds. */
@@ -85,6 +98,31 @@ export function engineSnapshotToDerivedIndicators(snap: IndicatorSnapshot): Deri
   };
 }
 
+export function isLabTimingTriggered(lifecycle: CandidateLifecycle): boolean {
+  if (lifecycle.state === 'triggered') return true;
+  if (
+    lifecycle.state === 'ready' &&
+    lifecycle.trigger.triggerType != null &&
+    lifecycle.trigger.triggerType !== 'unknown'
+  ) {
+    return true;
+  }
+  return false;
+}
+
+function emptyEvaluation(
+  setupType: SetupType,
+  reasons: string[],
+): DetectorEvaluation {
+  return {
+    detectorQualified: false,
+    timingTriggered: false,
+    triggered: false,
+    setupType,
+    reasons,
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Production detector → lab evaluation mapping
 // ---------------------------------------------------------------------------
@@ -118,39 +156,62 @@ function bestOutput(
   return calculateSetupScore(a.breakdown) >= calculateSetupScore(b.breakdown) ? a : b;
 }
 
+function timingReason(lifecycle: CandidateLifecycle): string {
+  if (isLabTimingTriggered(lifecycle)) {
+    return `Timing trigger: ${lifecycle.trigger.triggerType.replaceAll('_', ' ')}`;
+  }
+  if (lifecycle.state === 'ready') return 'Timing ready — waiting for entry confirmation on this setup type.';
+  if (lifecycle.state === 'extended') return 'Timing extended — move may be late.';
+  if (lifecycle.state === 'expired') return 'Prior timing window expired.';
+  return 'Timing developing — trigger conditions not met yet.';
+}
+
 function evaluationFromOutput(
   setupType: SetupType,
   output: DetectorOutput | null,
   lastClosed: boolean,
   barCount: number,
+  engineCandles: EngineCandle[],
+  previousLifecycle?: CandidateLifecycle,
 ): DetectorEvaluation {
   if (barCount < MIN_ENGINE_BARS) {
-    return {
-      triggered: false,
-      setupType,
-      reasons: [
-        `Need at least ${MIN_ENGINE_BARS} candles in window (${barCount} visible, engine parity)`,
-      ],
-    };
+    return emptyEvaluation(setupType, [
+      `Need at least ${MIN_ENGINE_BARS} candles in window (${barCount} visible, engine parity)`,
+    ]);
   }
   if (!lastClosed) {
-    return { triggered: false, setupType, reasons: ['Last candle is not closed'] };
+    return emptyEvaluation(setupType, ['Last candle is not closed']);
   }
   if (!output) {
-    return {
-      triggered: false,
-      setupType,
-      reasons: ['Engine: long/short pair did not qualify on this bar'],
-    };
+    return emptyEvaluation(setupType, ['Engine: long/short pair did not qualify on this bar']);
   }
+
   const candidate = productionOutputToCandidate(output);
+  const { lifecycle } = evaluateTimingLifecycle({
+    setupType: output.setupType,
+    side: output.side,
+    setupScore: candidate.setupScore,
+    candles: engineCandles,
+    previous: previousLifecycle,
+  });
+  const timingTriggered = isLabTimingTriggered(lifecycle);
+  const reasons = [
+    `${output.biasLabel} — detector qualified`,
+    timingReason(lifecycle),
+  ];
+
   return {
-    triggered: true,
+    detectorQualified: true,
+    timingTriggered,
+    triggered: timingTriggered,
     setupType,
-    reasons: [`${output.biasLabel} — closed bar (engine)`],
+    timingState: lifecycle.state,
+    triggerType: lifecycle.trigger.triggerType,
+    reasons,
     scoreBreakdown: output.breakdown,
     explanationFacts: candidate.explanationFacts,
     candidate,
+    lifecycle,
   };
 }
 
@@ -168,6 +229,7 @@ export function runScannerLabEngineEvaluations(
   _symbol: string,
   visible: PlaybackCandle[],
   regime: MarketRegime = 'neutral',
+  previousLifecycleBySetup?: Partial<Record<SetupType, CandidateLifecycle>>,
 ): {
   indicators: DerivedIndicators;
   evaluations: DetectorEvaluation[];
@@ -179,7 +241,6 @@ export function runScannerLabEngineEvaluations(
   const lastClosed = Boolean(last?.isClosed);
   const n = visible.length;
 
-  // Run all six production detectors in one call — no separate stub file needed.
   const results: LabDetectorResults = lastClosed && n >= MIN_ENGINE_BARS
     ? runAllDetectorsForLab(engineCandles, regime)
     : { breakoutLong: null, breakdownShort: null, pullbackLong: null, pullbackShort: null, overextendedLong: null, overextendedShort: null };
@@ -191,9 +252,9 @@ export function runScannerLabEngineEvaluations(
   return {
     indicators,
     evaluations: [
-      evaluationFromOutput('breakout', breakout, lastClosed, n),
-      evaluationFromOutput('pullback', pullback, lastClosed, n),
-      evaluationFromOutput('overextended', overextended, lastClosed, n),
+      evaluationFromOutput('breakout', breakout, lastClosed, n, engineCandles, previousLifecycleBySetup?.breakout),
+      evaluationFromOutput('pullback', pullback, lastClosed, n, engineCandles, previousLifecycleBySetup?.pullback),
+      evaluationFromOutput('overextended', overextended, lastClosed, n, engineCandles, previousLifecycleBySetup?.overextended),
     ],
   };
 }

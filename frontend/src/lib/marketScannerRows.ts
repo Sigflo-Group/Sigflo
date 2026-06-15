@@ -239,9 +239,14 @@ function isSyntheticMoverSignal(signal: CryptoSignal): boolean {
   return signal.id.startsWith('trend-');
 }
 
+function hasConfirmedTimingTrigger(signal: CryptoSignal): boolean {
+  return signal.triggerType != null && signal.triggerType !== 'unknown';
+}
+
 export function deriveMarketStatus(signal: CryptoSignal): MarketRowStatus {
   if (signal.timingState === 'extended') return 'extended';
   if (signal.timingState === 'triggered') return 'triggered';
+  if (signal.timingState === 'ready' && hasConfirmedTimingTrigger(signal)) return 'triggered';
   if (signal.setupType === 'overextended') return 'overextended';
   if (signal.timingState === 'ready' || signal.timingState === 'developing') return 'developing';
   if (signal.timingState === 'expired') return 'idle';
@@ -316,12 +321,13 @@ export function buildWatchlistMarketRows(
   return out;
 }
 
-/** Same rules as Feed → “Actionable” filter (triggered/developing, score ≥ 65, not overextended). */
+/** Same rules as Feed → “Actionable” filter (triggered at emit gate, developing ≥ 65, not overextended). */
 export function isFeedActionableOpportunity(signal: CryptoSignal): boolean {
   const status = deriveMarketStatus(signal);
   if (status === 'overextended') return false;
-  if (status !== 'triggered' && status !== 'developing') return false;
-  return signal.setupScore >= 65;
+  if (status === 'triggered') return signal.setupScore >= 45;
+  if (status === 'developing') return signal.setupScore >= 65;
+  return false;
 }
 
 export function buildMarketScannerRows(

@@ -34,10 +34,15 @@ export function evaluateMeanReversionTiming(args: {
   // For a long-overextended setup: trigger when RSI crosses back below the overbought
   // ceiling (74→<72) — first sign of cooling. For short-overextended: RSI crosses above
   // the oversold floor (26→>28).
-  const rsiCooling =
+  const rsiCrossCooling =
     args.side === 'long'
       ? args.rsiNow < 72 && args.rsiPrev >= 72 && args.rsiSlope < 0
       : args.rsiNow > 28 && args.rsiPrev <= 28 && args.rsiSlope > 0;
+  const rsiHotAndCooling =
+    args.side === 'long'
+      ? args.rsiNow >= 74 && args.rsiSlope <= -0.35
+      : args.rsiNow <= 26 && args.rsiSlope >= 0.35;
+  const rsiCooling = rsiCrossCooling || rsiHotAndCooling;
 
   // Reversal candle: price moved meaningfully back toward EMA20 on this bar.
   const revertingTowardEma =

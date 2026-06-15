@@ -7,7 +7,6 @@ import {
   patchActivateExchange,
   switchExchange,
 } from '../controllers/exchange.controller.js';
-import { requireStepUp } from '../middleware/requireStepUp.js';
 import { exchangeLinkLimiter } from '../middleware/rateLimit.js';
 import { validateBody } from '../middleware/validateRequest.js';
 import { linkExchangeSchema, revalidateExchangeSchema } from '../schemas/exchange.schema.js';
@@ -15,8 +14,8 @@ import { linkExchangeSchema, revalidateExchangeSchema } from '../schemas/exchang
 export const exchangeRouter = Router();
 
 exchangeRouter.get('/status', getExchangeStatus);
-exchangeRouter.post('/link', exchangeLinkLimiter, requireStepUp, validateBody(linkExchangeSchema), postLinkExchange);
-exchangeRouter.post('/switch', exchangeLinkLimiter, requireStepUp, validateBody(linkExchangeSchema), switchExchange);
-exchangeRouter.post('/revalidate', exchangeLinkLimiter, requireStepUp, validateBody(revalidateExchangeSchema), postRevalidateExchange);
-exchangeRouter.patch('/:id/activate', requireStepUp, patchActivateExchange);
-exchangeRouter.delete('/:broker', requireStepUp, deleteExchange);
+exchangeRouter.post('/link', exchangeLinkLimiter, validateBody(linkExchangeSchema), postLinkExchange);
+exchangeRouter.post('/switch', exchangeLinkLimiter, validateBody(linkExchangeSchema), switchExchange);
+exchangeRouter.post('/revalidate', exchangeLinkLimiter, validateBody(revalidateExchangeSchema), postRevalidateExchange);
+exchangeRouter.patch('/:id/activate', patchActivateExchange);
+exchangeRouter.delete('/:broker', deleteExchange);

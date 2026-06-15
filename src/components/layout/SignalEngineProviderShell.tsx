@@ -1,5 +1,6 @@
 import { Outlet } from 'react-router-dom';
 import { AccountSnapshotProvider } from '@/context/AccountSnapshotContext';
+import { ExchangeIntegrationsProvider } from '@/context/ExchangeIntegrationsContext';
 import { SignalEngineProvider } from '@/context/SignalEngineContext';
 import { ExitAiDecisionBridge } from '@/components/layout/ExitAiDecisionBridge';
 import { GlobalAnnouncementHost } from '@/components/layout/GlobalAnnouncementHost';
@@ -10,11 +11,13 @@ import { GlobalAnnouncementHost } from '@/components/layout/GlobalAnnouncementHo
 export function SignalEngineProviderShell() {
   return (
     <AccountSnapshotProvider pollMs={12_000}>
-      <SignalEngineProvider>
-        <ExitAiDecisionBridge />
-        <GlobalAnnouncementHost />
-        <Outlet />
-      </SignalEngineProvider>
+      <ExchangeIntegrationsProvider>
+        <SignalEngineProvider>
+          <ExitAiDecisionBridge />
+          <GlobalAnnouncementHost />
+          <Outlet />
+        </SignalEngineProvider>
+      </ExchangeIntegrationsProvider>
     </AccountSnapshotProvider>
   );
 }

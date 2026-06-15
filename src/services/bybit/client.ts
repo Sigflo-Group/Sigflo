@@ -1,6 +1,9 @@
 import type { Candle, KlineInterval, SymbolTicker, SymbolUniverseItem } from '@/types/market';
 
-const BASE = 'https://api.bybit.com';
+const BASE =
+  typeof import.meta !== 'undefined' && import.meta.env?.DEV
+    ? '/bybit-proxy'
+    : 'https://api.bybit.com';
 
 type BybitResp<T> = { retCode: number; retMsg: string; result: T };
 

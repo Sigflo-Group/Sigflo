@@ -168,7 +168,7 @@ export default function App() {
                   />
                   <Route path="/profile" element={<ProtectedRoute><ProfileScreen /></ProtectedRoute>} />
                   <Route path="/settings/profile" element={<ProtectedRoute><ProfileScreen /></ProtectedRoute>} />
-                  <Route path="/settings/exchange" element={<StepUpProtectedRoute><ProfileScreen /></StepUpProtectedRoute>} />
+                  <Route path="/settings/exchange" element={<ProtectedRoute><ProfileScreen /></ProtectedRoute>} />
                   <Route path="/settings/security" element={<ProtectedRoute><ProfileScreen /></ProtectedRoute>} />
                   <Route path="/settings/execution" element={<StepUpProtectedRoute><ProfileScreen /></StepUpProtectedRoute>} />
                   <Route path="/security/step-up" element={<ProtectedRoute><StepUpVerificationScreen /></ProtectedRoute>} />

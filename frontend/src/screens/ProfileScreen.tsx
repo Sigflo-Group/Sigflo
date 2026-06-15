@@ -22,7 +22,7 @@ import { sanitizeUserFacingHttpErrorMessage } from '@/lib/httpErrorMessage';
 import { getManualTrades } from '@/lib/tradeSourceFilter';
 import { playUiTapSound } from '@/utils/sound';
 import { AndroidAppSection } from '@/components/profile/AndroidAppSection';
-import type { ExchangeId, ExchangeSnapshot } from '@/types/integrations';
+import type { ExchangeId, ExchangeSnapshot, IntegrationStatus } from '@/types/integrations';
 
 const MFA_TOTP_FRIENDLY_NAME = 'Sigflo Account';
 const EXCHANGE_API_DOCS_HREF: Record<ExchangeId, string> = {
@@ -170,11 +170,24 @@ export default function ProfileScreen() {
   }, [user?.email, displayName]);
 
   const canUseExchangeApi = authMode === 'dev' || Boolean(user);
-  const mexcIntegration = integrations.find((item) => item.exchange === 'mexc');
-  const bybitIntegration = integrations.find((item) => item.exchange === 'bybit');
   const activeIntegration = integrations.find((item) => item.isActive) ?? null;
-  const primaryIntegration = activeIntegration ?? mexcIntegration ?? bybitIntegration ?? integrations[0] ?? null;
-  const connectedExchangeLabel = primaryIntegration ? primaryIntegration.exchange.toUpperCase() : null;
+  const liveSnapshots = useMemo(() => snapshots.filter((s) => s.status === 'connected'), [snapshots]);
+  const linkedIntegrations = useMemo(
+    () => integrations.filter((i) => i.status === 'connected'),
+    [integrations],
+  );
+  const headerExchange =
+    activeIntegration?.exchange ?? liveSnapshots[0]?.exchange ?? linkedIntegrations[0]?.exchange ?? null;
+  const headerSyncLive = headerExchange
+    ? liveSnapshots.some((s) => s.exchange === headerExchange)
+    : liveSnapshots.length > 0;
+  const connectedExchangeLabel = headerExchange ? headerExchange.toUpperCase() : null;
+  const connectedExchangeHeadline = connectedExchangeLabel
+    ? headerSyncLive
+      ? `Live · ${connectedExchangeLabel}`
+      : `Linked · ${connectedExchangeLabel}`
+    : 'No exchange connected';
+  const primaryIntegration = activeIntegration ?? linkedIntegrations[0] ?? null;
   const lastSynced = primaryIntegration?.lastValidatedAt
     ? new Date(primaryIntegration.lastValidatedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
     : null;
@@ -467,7 +480,7 @@ export default function ProfileScreen() {
               Pro
             </span>
             <p className="text-[11px] font-semibold text-sigflo-accent">
-              {connectedExchangeLabel ? `Connected to ${connectedExchangeLabel}` : 'No exchange connected'}
+              {connectedExchangeHeadline}
             </p>
             {lastSynced ? <p className="text-[10px] text-sigflo-muted">Last synced: {lastSynced}</p> : null}
           </div>
@@ -523,16 +536,16 @@ export default function ProfileScreen() {
           {(['bybit', 'mexc'] as ExchangeId[]).map((exchange) => {
             const integration = integrations.find((i) => i.exchange === exchange);
             const snapshot = snapshots.find((s) => s.exchange === exchange);
-            const connected = Boolean(integration);
+            const linked = Boolean(integration);
             const isActive = integration?.isActive ?? false;
-            const isInvalid = integration?.status === 'invalid';
+            const connection = describeExchangeConnection(integration, snapshot);
             return (
               <div
                 key={exchange}
                 className={`rounded-xl border p-2.5 transition ${
                   isActive
                     ? 'border-sigflo-accent/30 bg-[#101916] shadow-[0_0_26px_-16px_rgba(0,255,200,0.45)]'
-                    : connected
+                    : linked
                       ? 'border-white/[0.12] bg-sigflo-elevated'
                       : 'border-white/[0.06] bg-sigflo-elevated'
                 }`}
@@ -547,22 +560,12 @@ export default function ProfileScreen() {
                         </span>
                       )}
                     </div>
-                    <p className={`text-[11px] font-medium ${isActive ? 'text-emerald-300' : connected ? 'text-cyan-300/70' : 'text-sigflo-muted'}`}>
-                      {isActive ? 'Active exchange' : connected ? 'Connected' : 'Not connected'}
+                    <p className={`text-[11px] font-medium ${connection.labelClass}`}>
+                      {connection.label}
                     </p>
-                    <p className="text-[11px] text-sigflo-muted">
-                      {connected
-                        ? isInvalid
-                          ? 'API key invalid — reconnect to fix'
-                          : `Last synced: ${
-                              integration?.lastValidatedAt
-                                ? new Date(integration.lastValidatedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
-                                : 'just now'
-                            }`
-                        : 'Link API keys — withdrawals must be off'}
-                    </p>
+                    <p className="text-[11px] text-sigflo-muted">{connection.sublabel}</p>
                   </div>
-                  {connected ? (
+                  {linked ? (
                     <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
                       {!isActive && integration && (
                         <button
@@ -573,6 +576,7 @@ export default function ProfileScreen() {
                             setActivateBusy(integration.id);
                             try {
                               await setActive(integration.id);
+                              await refreshSnapshots();
                             } catch (e) {
                               setConnectError(e instanceof Error ? e.message : 'Failed to switch exchange.');
                             } finally {
@@ -659,7 +663,13 @@ export default function ProfileScreen() {
         </div>
         <div className="mt-2 flex items-center justify-between gap-2">
           {integrationsLoading || snapshotLoading ? (
-            <p className="text-[11px] text-sigflo-muted">Syncing integrations...</p>
+            <p className="text-[11px] text-sigflo-muted">
+              {integrationsLoading && snapshotLoading
+                ? 'Syncing exchange list and balances…'
+                : integrationsLoading
+                  ? 'Loading exchange connections…'
+                  : 'Syncing portfolio balances…'}
+            </p>
           ) : (
             <p className="text-[11px] text-sigflo-muted">Need a refresh? Sync manually.</p>
           )}
@@ -690,15 +700,6 @@ export default function ProfileScreen() {
         {connectError ? (
           <div className="mt-2 flex items-center gap-2">
             <p className="text-[11px] text-rose-300">{connectError}</p>
-            {connectError.toLowerCase().includes('step-up') ? (
-              <button
-                type="button"
-                onClick={() => navigate('/security/step-up?redirect=' + encodeURIComponent('/profile'))}
-                className="shrink-0 rounded-lg border border-rose-300/40 bg-rose-300/10 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-rose-200 transition hover:bg-rose-300/15"
-              >
-                Verify session
-              </button>
-            ) : null}
           </div>
         ) : null}
         {exchangeForm ? (
@@ -788,7 +789,7 @@ export default function ProfileScreen() {
                     passphrase: exchangeForm.passphrase || undefined,
                   });
                   closeConnectPanel();
-                  await refreshSnapshots();
+                  await Promise.all([refreshIntegrations(), refreshSnapshots()]);
                 } catch (e) {
                   setConnectError(
                     e instanceof Error ? sanitizeUserFacingHttpErrorMessage(e.message) : 'Connection failed.',
@@ -1202,6 +1203,68 @@ function ToggleRow({
       </span>
     </button>
   );
+}
+
+function formatExchangeLastSynced(lastValidatedAt: string | null | undefined): string {
+  if (!lastValidatedAt) return 'just now';
+  return new Date(lastValidatedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+}
+
+function describeExchangeConnection(
+  integration: IntegrationStatus | undefined,
+  snapshot: ExchangeSnapshot | undefined,
+): { label: string; sublabel: string; labelClass: string } {
+  const linked = Boolean(integration);
+  const syncLive = snapshot?.status === 'connected';
+  const syncError = snapshot?.status === 'error';
+  const isActive = integration?.isActive ?? false;
+  const isInvalid = integration?.status === 'invalid';
+
+  if (!linked) {
+    return {
+      label: syncLive ? 'Live (not linked here)' : 'Not connected',
+      sublabel: syncLive
+        ? 'Portfolio data is syncing, but this exchange is not stored in your account — use Connect if you expect it here.'
+        : 'Link API keys — withdrawals must be off',
+      labelClass: 'text-sigflo-muted',
+    };
+  }
+  if (isInvalid) {
+    return {
+      label: 'Invalid API keys',
+      sublabel: 'Reconnect with valid read-only keys',
+      labelClass: 'text-rose-300',
+    };
+  }
+  if (syncError) {
+    return {
+      label: isActive ? 'Active · sync failed' : 'Linked · sync failed',
+      sublabel:
+        snapshot?.syncError?.trim() != null && snapshot.syncError.trim() !== ''
+          ? sanitizeUserFacingHttpErrorMessage(snapshot.syncError.trim())
+          : 'Portfolio sync failed — try Sync now',
+      labelClass: 'text-rose-300',
+    };
+  }
+  if (syncLive && isActive) {
+    return {
+      label: 'Active · live',
+      sublabel: `Last synced: ${formatExchangeLastSynced(integration?.lastValidatedAt)}`,
+      labelClass: 'text-emerald-300',
+    };
+  }
+  if (syncLive) {
+    return {
+      label: 'Connected · live',
+      sublabel: `Last synced: ${formatExchangeLastSynced(integration?.lastValidatedAt)} · use Set Active to trade here`,
+      labelClass: 'text-cyan-300/70',
+    };
+  }
+  return {
+    label: isActive ? 'Active · syncing' : 'Linked · syncing',
+    sublabel: `Last synced: ${formatExchangeLastSynced(integration?.lastValidatedAt)} · waiting for portfolio data`,
+    labelClass: isActive ? 'text-emerald-300' : 'text-cyan-300/70',
+  };
 }
 
 function fmtUsdMaybe(n: number | null | undefined): string {

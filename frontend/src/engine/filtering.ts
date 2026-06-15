@@ -6,7 +6,7 @@ import type {
 } from '@/engine/types';
 
 function signalKey(candidate: SignalCandidate): string {
-  return `${candidate.symbol}:${candidate.setupType}`;
+  return `${candidate.symbol}:${candidate.setupType}:${candidate.directionBias}`;
 }
 
 function shouldEmitByDedup(

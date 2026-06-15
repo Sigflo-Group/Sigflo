@@ -25,48 +25,22 @@ import {
 } from './short';
 import { assessDirectionalBias, type BiasAssessment } from './scoring';
 import {
+  thresholdsForRegime,
+  type MarketRegime,
+} from '@/lib/scannerEngineConfig';
+import {
   coreMetrics,
   mapRiskTag,
   timingStatePriority,
   type DetectorOutput,
-  type DetectorThresholds,
 } from './shared';
 
+export type { MarketRegime, DetectorThresholds } from '@/lib/scannerEngineConfig';
 export type { DetectorOutput };
 
 const DEBUG: boolean =
   (import.meta as unknown as { env?: { DEV?: boolean } }).env?.DEV === true ||
   !!(globalThis as Record<string, unknown>).__SIGFLO_DEBUG__;
-
-export type MarketRegime = 'risk_on' | 'neutral' | 'risk_off';
-
-function thresholdsForRegime(regime: MarketRegime): DetectorThresholds {
-  if (regime === 'risk_off') {
-    return {
-      breakoutVolRatio: 1.36,
-      breakoutDistAtr: 0.28,
-      breakoutCompression: 0.46,
-      pullbackMaxDistAtr: 0.45,
-      overextendedStretchAtr: 1.7,
-    };
-  }
-  if (regime === 'risk_on') {
-    return {
-      breakoutVolRatio: 1.2,
-      breakoutDistAtr: 0.38,
-      breakoutCompression: 0.38,
-      pullbackMaxDistAtr: 0.6,
-      overextendedStretchAtr: 1.9,
-    };
-  }
-  return {
-    breakoutVolRatio: 1.26,
-    breakoutDistAtr: 0.32,
-    breakoutCompression: 0.44,
-    pullbackMaxDistAtr: 0.5,
-    overextendedStretchAtr: 1.8,
-  };
-}
 
 const MARKET_DETECTORS = [
   breakoutPressureDetector,

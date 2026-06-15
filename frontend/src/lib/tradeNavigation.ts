@@ -80,6 +80,8 @@ export type PortfolioPositionTradeExtras = {
   markPrice?: number;
   /** Exchange-reported leverage for manage-mode display. */
   leverage?: number;
+  /** Bybit hedge leg index (0 one-way, 1 long, 2 short). */
+  positionIdx?: number;
   /** From swipe actions on portfolio cards. */
   ticketIntent?: 'close' | 'add';
   /** Open Trade with Adjust Risk sheet once (manage mode). */
@@ -133,6 +135,9 @@ export function buildPortfolioPositionTradeQuery(
   if (extras?.exchange === 'bybit' || extras?.exchange === 'mexc') {
     qp.set('exchange', extras.exchange);
   }
+  if (extras?.positionIdx != null && Number.isFinite(extras.positionIdx)) {
+    qp.set('positionIdx', String(Math.round(extras.positionIdx)));
+  }
 
   /** Manage mode only when leg data is complete; otherwise Trade falls back to entry-style shell. */
   if (hasUsd && hasEntry && extras) {
@@ -155,10 +160,18 @@ export function buildPortfolioPositionTradeQuery(
  * `/trade` query for `mode=manage` from a live linear leg (same shape as Portfolio → Trade).
  * Notional uses `|size| × entry` like portfolio cards, not mark × size.
  */
-/** After manage-mode position is closed, return to entry shell for the same pair/side. */
-export function buildManageClosedEntryQuery(ctx: { pair: string; side: 'long' | 'short' }): string {
+/** After manage-mode position is closed, return to entry shell for the same pair/side/venue. */
+export function buildManageClosedEntryQuery(ctx: {
+  pair: string;
+  side: 'long' | 'short';
+  exchange?: 'bybit' | 'mexc';
+  positionIdx?: number;
+}): string {
   const symbol = ctx.pair.replace(/\//g, '').toUpperCase();
-  return buildPortfolioPositionTradeQuery(symbol, ctx.side);
+  return buildPortfolioPositionTradeQuery(symbol, ctx.side, {
+    ...(ctx.exchange ? { exchange: ctx.exchange } : {}),
+    ...(ctx.positionIdx != null ? { positionIdx: ctx.positionIdx } : {}),
+  });
 }
 
 export function buildManageTradeQueryFromLinearPosition(
@@ -181,6 +194,7 @@ export function buildManageTradeQueryFromLinearPosition(
           ? Math.round(options.leverageFallback)
           : undefined,
     ...(options?.exchange ? { exchange: options.exchange } : {}),
+    ...(pos.positionIdx != null ? { positionIdx: pos.positionIdx } : {}),
   };
   return buildPortfolioPositionTradeQuery(pos.symbol, pos.side, tradeExtras);
 }

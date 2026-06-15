@@ -1,3 +1,4 @@
+import { ENGINE_EMIT_CONFIG } from '@/lib/scannerEngineConfig';
 import { atr, rollingAvg } from '@/lib/indicators';
 import type { MarketMemorySnapshot } from '@/lib/marketMemory';
 import type { OutcomeAdaptiveFeedback } from '@/lib/signalLifecycleTracker';
@@ -93,6 +94,7 @@ function scoreMarketStructure(params: {
 
 function scoreMomentumTrend(params: {
   side: SignalSide;
+  setupType: DetectorOutput['setupType'];
   m15: ReturnType<typeof coreMetrics>;
   m5: ReturnType<typeof coreMetrics> | null;
   candles15m: Candle[];
@@ -105,7 +107,7 @@ function scoreMomentumTrend(params: {
   momentumStall: boolean;
   breakoutWeak: boolean;
 } {
-  const { side, m15, m5, candles15m } = params;
+  const { side, setupType, m15, m5, candles15m } = params;
   const reasons: string[] = [];
   const warnings: string[] = [];
   let score = 50;
@@ -153,6 +155,18 @@ function scoreMomentumTrend(params: {
   if (breakout.weak) { score -= 12; warnings.push('Breakout candles are wick-heavy or lacking follow-through.'); }
   if (momentumStall) { score -= 10; warnings.push('Momentum is weakening despite price pressure near the trigger zone.'); }
   if (conflictingMomentum) { score -= 12; warnings.push('Conflicting momentum across timeframes reduces conviction.'); }
+  const m5ConfirmsDirection =
+    m5 != null &&
+    (side === 'long'
+      ? m5.rsiNow >= 48 && m5.rsiNow <= 70 && m5.close >= m5.ema20
+      : m5.rsiNow <= 52 && m5.rsiNow >= 30 && m5.close <= m5.ema20);
+  if (m5ConfirmsDirection && (setupType === 'breakout' || setupType === 'pullback')) {
+    score += 10;
+    reasons.push('5m timeframe confirms the setup direction.');
+  } else if (m5 != null && setupType === 'breakout' && !m5ConfirmsDirection) {
+    score -= 6;
+    warnings.push('5m momentum has not confirmed the breakout yet.');
+  }
   return {
     score: clamp(Math.round(score), 0, 100), reasons, warnings, weakVolume,
     conflict: conflictingMomentum, momentumStall, breakoutWeak: breakout.weak,
@@ -285,12 +299,14 @@ export function assessDirectionalBias(params: {
   adaptationConfidenceAdjustment?: number;
 }): BiasAssessment {
   const m15 = coreMetrics(params.candles15m);
-  const m5 = params.candles5m && params.candles5m.length >= 60 ? coreMetrics(params.candles5m) : null;
+  const m5 = params.candles5m && params.candles5m.length >= ENGINE_EMIT_CONFIG.minClosedCandles5m
+    ? coreMetrics(params.candles5m)
+    : null;
   const higher = structureFromMetrics(m15);
   const lower = m5 ? structureFromMetrics(m5) : { structure: 'neutral' as StructureState, strength: 0 };
 
   const structure = scoreMarketStructure({ side: params.side, m15, candles15m: params.candles15m, higher });
-  const momentum = scoreMomentumTrend({ side: params.side, m15, m5, candles15m: params.candles15m });
+  const momentum = scoreMomentumTrend({ side: params.side, setupType: params.setupType, m15, m5, candles15m: params.candles15m });
   const context = scoreContextLocation({ side: params.side, m15, candles15m: params.candles15m, setupType: params.setupType });
   const mtf = scoreMtfAlignment({ side: params.side, higher, lower });
   const atrWindow = atr(params.candles15m, 14);

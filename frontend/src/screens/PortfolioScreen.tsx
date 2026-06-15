@@ -562,6 +562,7 @@ export default function PortfolioScreen() {
                         markPrice: current,
                         ...(p.leverage != null && p.leverage > 0 ? { leverage: p.leverage } : {}),
                         ...(posExchange ? { exchange: posExchange } : {}),
+                        ...(p.positionIdx != null ? { positionIdx: p.positionIdx } : {}),
                       }
                     : undefined;
                 const baseQuery = buildPortfolioPositionTradeQuery(p.symbol, p.side, tradeExtras);
@@ -868,13 +869,19 @@ export default function PortfolioScreen() {
             <div className="border-t border-white/[0.06] p-3">
               {connected ? (
                 <a
-                  href={BYBIT_APP_ASSETS_HOME_HREF}
+                  href={
+                    positions.some((p) => p.exchange === 'mexc') && !positions.some((p) => p.exchange === 'bybit')
+                      ? 'https://www.mexc.com/futures'
+                      : BYBIT_APP_ASSETS_HOME_HREF
+                  }
                   target="_blank"
                   rel="noopener noreferrer"
                   className="flex w-full items-center justify-center rounded-xl py-2.5 text-[11px] font-semibold transition hover:bg-white/[0.04]"
                   style={{ color: ACCENT }}
                 >
-                  Full ledger on Bybit →
+                  {positions.some((p) => p.exchange === 'mexc') && !positions.some((p) => p.exchange === 'bybit')
+                    ? 'Full ledger on MEXC →'
+                    : 'Full ledger on Bybit →'}
                 </a>
               ) : (
                 <button

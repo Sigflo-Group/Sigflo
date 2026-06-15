@@ -44,16 +44,12 @@ function toFrame(run: number, accepted: SignalCandidate[], allCandidates: Signal
  */
 export function runScannerDeterminismCheck(): ScannerDeterminismResult {
   const marketBySymbol = buildScannerLabFixtureInput();
-  const first = runScannerPipeline({
-    marketBySymbol,
-    filterConfig: { minSetupScore: 55, cooldownMs: 45 * 60 * 1000, minScoreImprovement: 8 },
-  });
+  const first = runScannerPipeline({ marketBySymbol });
 
   const state: EmittedSignalStateMap = first.nextState;
   const second = runScannerPipeline({
     marketBySymbol,
     previousState: state,
-    filterConfig: { minSetupScore: 55, cooldownMs: 45 * 60 * 1000, minScoreImprovement: 8 },
   });
 
   return {

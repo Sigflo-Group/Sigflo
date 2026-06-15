@@ -240,9 +240,9 @@ function isSyntheticMoverSignal(signal: CryptoSignal): boolean {
 }
 
 export function deriveMarketStatus(signal: CryptoSignal): MarketRowStatus {
-  if (signal.setupType === 'overextended') return 'overextended';
   if (signal.timingState === 'extended') return 'extended';
   if (signal.timingState === 'triggered') return 'triggered';
+  if (signal.setupType === 'overextended') return 'overextended';
   if (signal.timingState === 'ready' || signal.timingState === 'developing') return 'developing';
   if (signal.timingState === 'expired') return 'idle';
   // List gainers with heuristic “pullback” are constructive tape, not a fired setup.
@@ -254,15 +254,6 @@ export function deriveMarketStatus(signal: CryptoSignal): MarketRowStatus {
   if (isSyntheticMoverSignal(signal) && signal.setupType === 'breakout') {
     if (signal.setupScore >= 45) return 'developing';
     return 'idle';
-  }
-  // Only promote non-synthetic signals via score alone when lifecycle evidence exists.
-  if (
-    !isSyntheticMoverSignal(signal) &&
-    signal.setupScore >= 70 &&
-    signal.triggerType != null &&
-    signal.triggerType !== 'unknown'
-  ) {
-    return 'triggered';
   }
   if (signal.setupScore >= 45) return 'developing';
   return 'idle';

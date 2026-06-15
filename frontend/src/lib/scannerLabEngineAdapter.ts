@@ -128,7 +128,9 @@ function evaluationFromOutput(
     return {
       triggered: false,
       setupType,
-      reasons: [`Need at least ${MIN_ENGINE_BARS} candles in window (engine parity)`],
+      reasons: [
+        `Need at least ${MIN_ENGINE_BARS} candles in window (${barCount} visible, engine parity)`,
+      ],
     };
   }
   if (!lastClosed) {

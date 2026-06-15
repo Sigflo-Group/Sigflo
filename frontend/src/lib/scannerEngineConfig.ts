@@ -1,5 +1,7 @@
 import type { ScannerLifecycleConfig } from '@/lib/scannerConfig';
 import { SCANNER_LIFECYCLE_CONFIG } from '@/lib/scannerConfig';
+import type { ScannerFilterConfig } from '@/engine/types';
+import { DEFAULT_STRATEGY_PERSONALITY_MODE, STRATEGY_PERSONALITY_PROFILES } from '@/lib/strategyPersonality';
 
 /** Shared emit / warmup constants for live engine and offline replay. */
 export const ENGINE_EMIT_CONFIG = {
@@ -11,6 +13,18 @@ export const ENGINE_EMIT_CONFIG = {
   /** Minimum closed 5m bars for lower-timeframe confirmation in bias scoring. */
   minClosedCandles5m: 20,
 } as const;
+
+/** Offline scanner / determinism filter defaults — aligned with balanced live engine emit gate. */
+export function defaultScannerFilterConfig(): ScannerFilterConfig {
+  const personality = STRATEGY_PERSONALITY_PROFILES[DEFAULT_STRATEGY_PERSONALITY_MODE];
+  return {
+    minConfidenceToEmit: personality.minConfidenceToEmit,
+    minSetupScore: personality.minConfidenceToEmit,
+    cooldownMs: ENGINE_EMIT_CONFIG.cooldownMs * personality.cooldownMultiplier,
+    minScoreImprovement: ENGINE_EMIT_CONFIG.scoreImproveBypass,
+    atrMoveBypass: ENGINE_EMIT_CONFIG.atrMoveBypass,
+  };
+}
 
 export type MarketRegime = 'risk_on' | 'neutral' | 'risk_off';
 
@@ -100,7 +114,8 @@ export const FUNNEL_STAGE_LABELS: Record<string, string> = {
 };
 
 export const NOT_TRIGGERED_REASON_LABELS: Record<string, string> = {
-  no_breakout_trigger_close: 'No trigger close on this bar',
+  no_breakout_trigger_close: 'No timing trigger on this bar',
+  no_timing_trigger: 'No timing trigger on this bar',
   lifecycle_extended: 'Lifecycle is extended (late entry)',
   lifecycle_expired: 'Lifecycle expired',
   lifecycle_developing: 'Still developing',

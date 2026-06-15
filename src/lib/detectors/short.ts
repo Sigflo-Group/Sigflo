@@ -10,10 +10,13 @@ export function breakdownPressureDetector(candles: Candle[], thresholds: Detecto
   const distToLow = m.close - m.swingLow;
   const distanceToBreakdownAtr = m.atrNow > 0 ? distToLow / m.atrNow : 99;
   const nearBreakdown = m.atrNow > 0 && distToLow >= 0 && distToLow < thresholds.breakoutDistAtr * m.atrNow;
+  const brokenDown = distToLow < 0;
   const volBoost = m.volAvg > 0 ? m.volNow / m.volAvg : 1;
   const volOk = volBoost > thresholds.breakoutVolRatio;
   const rsiSlope = m.rsiNow - m.rsiPrev;
-  const rsiOk = m.rsiNow >= 28 && m.rsiNow <= 45 && rsiSlope <= 0.5;
+  const rsiOk = brokenDown
+    ? m.rsiNow >= 22 && m.rsiNow <= 50 && rsiSlope <= 1
+    : m.rsiNow >= 28 && m.rsiNow <= 45 && rsiSlope <= 0.5;
   const last = candles.at(-1);
   const prev = candles.at(-2);
   const bodyNow = last ? Math.abs(last.close - last.open) : 0;
@@ -21,10 +24,16 @@ export function breakdownPressureDetector(candles: Candle[], thresholds: Detecto
   const bodyStrength = bodyNow / rangeNow;
   const followThrough = last && prev ? last.close <= prev.close : false;
   const breakoutValid = volOk && bodyStrength >= 0.5 && followThrough;
-  const conditions = { trend, compression: compression > thresholds.breakoutCompression, nearBreakdown, rsiOk, breakoutValid };
+  const conditions = {
+    trend,
+    compression: compression > thresholds.breakoutCompression,
+    nearBreakdown: nearBreakdown || brokenDown,
+    rsiOk,
+    breakoutValid,
+  };
   const passCount = Object.values(conditions).filter(Boolean).length;
 
-  if (m.rsiNow < 24) return null;
+  if (m.rsiNow < 24 && !brokenDown) return null;
   if (passCount < 4 || !breakoutValid) return null;
 
   return {

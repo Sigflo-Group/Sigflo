@@ -402,7 +402,7 @@ function useSignalEngineValue(): SignalEngineState {
 
     function pipelineHealthCtx(mode: SignalEngineState['mode'], connection: SignalEngineState['connection']) {
       const triggeredPairs = Object.values(signalBookRef.current)
-        .filter((s) => deriveMarketStatus(s) === 'triggered')
+        .filter((s) => s.timingState === 'triggered')
         .map((s) => s.pair);
       return {
         engineMode: mode,
@@ -549,6 +549,7 @@ function useSignalEngineValue(): SignalEngineState {
       if (!signal) {
         pruneSignalBookForSymbol(symbol);
         recordScannerPipelineReport({ symbol, stage: 'skip_no_detector', ts: Date.now() }, healthCtx());
+        pushState(mode, connection);
         return;
       }
       const key = signalEmitKey(symbol, signal.signal.setupType, signal.signal.side);

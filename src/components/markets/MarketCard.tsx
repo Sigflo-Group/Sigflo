@@ -130,7 +130,7 @@ export function MarketCard({
   })();
   const miniLineColor = miniIsUp ? '#34d399' : '#fb7185';
   const line = sparkPath(series, chartW, chartH);
-  const area = `${line} L${chartW},${chartH} L0,${chartH} Z`;
+  const area = line ? `${line} L${chartW},${chartH} L0,${chartH} Z` : '';
   const [pressed, setPressed] = useState(false);
 
   return (
@@ -208,15 +208,17 @@ export function MarketCard({
                     <stop offset="100%" stopColor={miniLineColor} stopOpacity="0" />
                   </linearGradient>
                 </defs>
-                <path d={area} fill={`url(#market-area-${row.symbol})`} />
-                <path
-                  d={line}
-                  fill="none"
-                  stroke={miniLineColor}
-                  strokeWidth="1.85"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
+                {area ? <path d={area} fill={`url(#market-area-${row.symbol})`} /> : null}
+                {line ? (
+                  <path
+                    d={line}
+                    fill="none"
+                    stroke={miniLineColor}
+                    strokeWidth="1.85"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                ) : null}
               </svg>
             </div>
           </div>

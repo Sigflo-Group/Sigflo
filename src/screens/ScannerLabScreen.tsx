@@ -25,7 +25,6 @@ import { calculateSetupScore, getSetupScoreLabel } from '@/lib/setupScore';
 import {
   createPlaybackSession,
   resetPlayback,
-  setScenario as setPlaybackScenario,
   startAutoplay,
   stepForward,
   type PlaybackSession,
@@ -186,7 +185,7 @@ export function ScannerLabScreen() {
         }
       } else if (status === 'triggered') {
         nextNeed = 'Timing trigger fired — in play now.';
-      } else if (raw?.detectorQualified && status !== 'triggered') {
+      } else if (raw?.detectorQualified) {
         nextNeed = raw.reasons.at(-1) ?? 'Detector qualified; timing not confirmed yet.';
       }
 

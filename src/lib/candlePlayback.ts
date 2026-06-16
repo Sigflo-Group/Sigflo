@@ -51,6 +51,7 @@ export type PlaybackState = {
 
 export type PlaybackConfig = {
   symbol: string;
+  scenario?: ScenarioKey;
   windowSize: number;
   minSetupScore: number;
   cooldownCandles: number;
@@ -219,6 +220,7 @@ export class CandlePlaybackController {
       const signal: PlaybackSignal = {
         ...e.candidate,
         symbol: this.config.symbol,
+        scenario: this.config.scenario ?? 'breakout',
         timestamp: currentCandle.timestamp,
         candleIndex: this.currentIndex,
         scoreLabel: getSetupScoreLabel(e.candidate.setupScore),
@@ -227,6 +229,7 @@ export class CandlePlaybackController {
       this.cooldownRegistry[key] = {
         lastIndex: this.currentIndex,
         lastSetupScore: e.candidate.setupScore,
+        lastTriggerTs: null,
       };
       this.emittedSignals.push(signal);
       newSignals.push(signal);

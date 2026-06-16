@@ -3010,8 +3010,16 @@ export function TradeScreen() {
           const pos = args.pos;
           const qtyBase = Math.abs(pos.size) * Math.min(1, Math.max(0, fraction));
           const qtyStr = linearQtyFromBaseAmount(qtyBase);
-          const closeSide = pos.side === 'long' ? 'Sell' : 'Buy';
+          const positionSide = pos.side?.toLowerCase() === 'short' ? 'short' : 'long';
+          const closeSide = positionSide === 'long' ? 'Sell' : 'Buy';
           if (activeExchange === 'mexc') {
+            console.log('[Sigflo][Trade] MEXC close order', {
+              symbol: pos.symbol,
+              positionSide,
+              closeSide,
+              qty: qtyStr,
+              fraction,
+            });
             await postMexcLinearOrder({
               symbol: pos.symbol,
               side: closeSide,

@@ -373,10 +373,15 @@ function useSignalEngineValue(): SignalEngineState {
     let backfillGen = 0;
     async function ingestSymbolBackfill(symbols: string[]) {
       if (symbols.length === 0) return;
+      console.log('[Sigflo][Engine] ingestSymbolBackfill start', symbols);
       const [tickers, symbolResults] = await Promise.all([
         exchangeManager.current.fetchTickers(symbols),
         fetchKlinesSafe(symbols),
       ]);
+      console.log('[Sigflo][Engine] ingestSymbolBackfill got', {
+        tickers: tickers.length,
+        klineResults: symbolResults.length,
+      });
       for (const ticker of tickers) tickersRef.current[ticker.symbol] = ticker;
       for (const { symbol, candles5m, candles15m } of symbolResults) {
         candlesRef.current[symbol] = {
@@ -410,6 +415,7 @@ function useSignalEngineValue(): SignalEngineState {
 
       try {
         const tracked = [...TRACKED_SYMBOLS];
+        console.log('[Sigflo][Engine] bootstrap tracked symbols', tracked);
         const trackedSet = new Set<string>(tracked);
         await ingestSymbolBackfill(tracked);
         if (gen !== backfillGen || cancelled) return;
@@ -427,22 +433,41 @@ function useSignalEngineValue(): SignalEngineState {
             isClosed: pending.confirmed,
           });
         }
-        for (const symbol of tracked) recomputeForSymbol(symbol, 'REST');
+        for (const symbol of tracked) {
+          try {
+            recomputeForSymbol(symbol, 'REST');
+          } catch (recomputeErr) {
+            console.error('[Sigflo][Engine] recomputeForSymbol failed', symbol, recomputeErr);
+          }
+        }
         const extras = getKlineSymbols().filter((s) => !trackedSet.has(s));
+        console.log('[Sigflo][Engine] bootstrap extras', extras);
         if (extras.length > 0) {
           await ingestSymbolBackfill(extras);
           if (gen !== backfillGen || cancelled) return;
-          for (const symbol of extras) recomputeForSymbol(symbol, 'REST');
+          for (const symbol of extras) {
+            try {
+              recomputeForSymbol(symbol, 'REST');
+            } catch (recomputeErr) {
+              console.error('[Sigflo][Engine] recomputeForSymbol failed', symbol, recomputeErr);
+            }
+          }
         }
         recomputeAllFromStore('REST');
         finishBootstrap('REST');
       } catch (err) {
         if (gen !== backfillGen || cancelled) return;
-        if (DEBUG) console.warn('[Sigflo][Engine] full bootstrap failed, retrying tracked only', err);
+        console.warn('[Sigflo][Engine] full bootstrap failed, retrying tracked only', err);
         try {
           await ingestSymbolBackfill([...TRACKED_SYMBOLS]);
           if (gen !== backfillGen || cancelled) return;
-          for (const symbol of TRACKED_SYMBOLS) recomputeForSymbol(symbol, 'REST');
+          for (const symbol of TRACKED_SYMBOLS) {
+            try {
+              recomputeForSymbol(symbol, 'REST');
+            } catch (recomputeErr) {
+              console.error('[Sigflo][Engine] recomputeForSymbol failed', symbol, recomputeErr);
+            }
+          }
           recomputeAllFromStore('REST');
           finishBootstrap('REST');
         } catch (fallbackErr) {

@@ -11,7 +11,8 @@ function buildMiniSeries(row: MarketScannerRow): number[] {
   const trendBias = (row.signal.scoreBreakdown.trendAlignment - 12) / 22;
   const momentumBias = (row.signal.scoreBreakdown.momentumQuality - 10) / 18;
   const setupBias = (row.setupScore - 60) / 120;
-  const dailyBias = Math.max(-0.04, Math.min(0.04, row.change24hPct / 250));
+  const change24hPct = Number.isFinite(row.change24hPct) ? row.change24hPct : 0;
+  const dailyBias = Math.max(-0.04, Math.min(0.04, change24hPct / 250));
   const sideBias = row.signal.side === 'long' ? 0.02 : -0.02;
   const slope = trendBias * 0.35 + momentumBias * 0.25 + setupBias * 0.25 + dailyBias * 0.15 + sideBias;
   const out: number[] = [];
@@ -31,19 +32,26 @@ function seriesFromCandles(candles: Candle[], livePrice?: number): number[] {
   if (livePrice != null && Number.isFinite(livePrice) && closes.length > 0) {
     closes[closes.length - 1] = livePrice;
   }
-  const min = Math.min(...closes);
-  const max = Math.max(...closes);
+  const finiteCloses = closes.filter(Number.isFinite);
+  if (finiteCloses.length === 0) return [];
+  const min = Math.min(...finiteCloses);
+  const max = Math.max(...finiteCloses);
   const span = Math.max(0.000001, max - min);
-  return closes.map((v) => Math.max(0.1, Math.min(0.9, (v - min) / span)));
+  return closes.map((v) =>
+    Number.isFinite(v) ? Math.max(0.1, Math.min(0.9, (v - min) / span)) : Number.NaN,
+  );
 }
 
 function sparkPath(series: number[], w: number, h: number): string {
+  if (series.length < 2) return '';
   return series
     .map((v, i) => {
+      if (!Number.isFinite(v)) return '';
       const x = (i / (series.length - 1)) * w;
       const y = h - v * h;
       return `${i === 0 ? 'M' : 'L'}${x.toFixed(2)},${y.toFixed(2)}`;
     })
+    .filter(Boolean)
     .join(' ');
 }
 
@@ -100,9 +108,9 @@ export function MarketCard({
   const chartH = 36;
   const candleWindow = miniCandles && miniCandles.length >= 8 ? miniCandles.slice(-28) : undefined;
   const candleWindowWithLive =
-    candleWindow && candleWindow.length > 0
+    candleWindow && candleWindow.length > 0 && Number.isFinite(row.lastPrice)
       ? [...candleWindow.slice(0, -1), { ...candleWindow[candleWindow.length - 1], close: row.lastPrice }]
-      : undefined;
+      : candleWindow;
   const series =
     candleWindow ? seriesFromCandles(candleWindow, row.lastPrice) : buildMiniSeries(row);
   const miniIsUp = (() => {

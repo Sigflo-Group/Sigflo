@@ -109,6 +109,25 @@ async function fetchTickersBatch(symbols: string[], signal?: AbortSignal): Promi
   return mapTickerRows(data.result?.list ?? [], new Set(symbols));
 }
 
+async function fetchTickerSingle(symbol: string, signal?: AbortSignal): Promise<SymbolTicker | null> {
+  try {
+    const data = await getJson<BybitResp<{ list: Array<Record<string, string>> }>>(
+      `/v5/market/tickers?category=linear&symbol=${encodeURIComponent(symbol)}`,
+      signal,
+    );
+    if (data.retCode !== 0) return null;
+    return mapTickerRows(data.result?.list ?? [], new Set([symbol]))[0] ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function isSymbolInvalidError(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  const msg = err.message.toLowerCase();
+  return msg.includes('symbol invalid') || msg.includes('params error');
+}
+
 export async function fetchTickers(symbols?: string[], signal?: AbortSignal): Promise<SymbolTicker[]> {
   if (!symbols?.length) {
     const data = await getJson<BybitResp<{ list: Array<Record<string, string>> }>>(
@@ -121,8 +140,21 @@ export async function fetchTickers(symbols?: string[], signal?: AbortSignal): Pr
   const out: SymbolTicker[] = [];
   for (let i = 0; i < symbols.length; i += TICKER_BATCH_SIZE) {
     const batch = symbols.slice(i, i + TICKER_BATCH_SIZE);
-    const rows = await fetchTickersBatch(batch, signal);
-    out.push(...rows);
+    try {
+      const rows = await fetchTickersBatch(batch, signal);
+      out.push(...rows);
+    } catch (err) {
+      // Some symbols in the batch may not be valid linear perps (e.g. PAXGUSDT/XAGUSDT).
+      // Fallback to per-symbol fetches so one bad symbol cannot abort the whole bootstrap.
+      if (batch.length > 1 && isSymbolInvalidError(err)) {
+        const singleResults = await Promise.all(batch.map((s) => fetchTickerSingle(s, signal)));
+        for (const t of singleResults) {
+          if (t) out.push(t);
+        }
+      } else {
+        throw err;
+      }
+    }
   }
   return out;
 }

@@ -1,6 +1,10 @@
 import { apiJson } from '@/services/api/http';
 import type { Candle, SymbolTicker, SymbolUniverseItem } from '@/types/market';
 
+function toMexcSymbol(sym: string): string {
+  return sym.endsWith('USDT') ? sym.slice(0, -4) + '_USDT' : sym;
+}
+
 const INTERVAL_MAP: Record<string, string> = {
   '1': 'Min1',
   '5': 'Min5',
@@ -49,7 +53,7 @@ export type MexcPublicTickerSnapshot = {
 export async function fetchMexcKlines(symbol: string, interval: string, limit = 140): Promise<Candle[]> {
   const mexcInterval = INTERVAL_MAP[interval] ?? 'Min15';
   const json = await apiJson<MexcFuturesResponse<MexcKlineData>>(
-    `/mexc-public/klines/${encodeURIComponent(symbol)}?interval=${mexcInterval}&limit=${limit}`,
+    `/mexc-public/klines/${encodeURIComponent(toMexcSymbol(symbol))}?interval=${mexcInterval}&limit=${limit}`,
   );
   if (!json?.success || !json.data?.time?.length) return [];
   const d = json.data;
@@ -66,7 +70,7 @@ export async function fetchMexcKlines(symbol: string, interval: string, limit = 
 
 export async function fetchMexcTicker(symbol: string): Promise<MexcPublicTickerSnapshot | null> {
   const json = await apiJson<MexcFuturesResponse<MexcTickerData | MexcTickerData[]>>(
-    `/mexc-public/ticker/${encodeURIComponent(symbol)}`,
+    `/mexc-public/ticker/${encodeURIComponent(toMexcSymbol(symbol))}`,
   );
   if (!json?.success || !json.data) return null;
   const t = Array.isArray(json.data) ? json.data[0] : json.data;

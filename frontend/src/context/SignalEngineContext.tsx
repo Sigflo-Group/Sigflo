@@ -400,6 +400,7 @@ function useSignalEngineValue(): SignalEngineState {
       const finishBootstrap = (mode: SignalEngineState['mode']) => {
         if (gen !== backfillGen || cancelled) return;
         streamReadyRef.current = true;
+        console.log('[Sigflo][Engine] finishBootstrap', { reason, mode, gen, triggeredPairs: pipelineHealthCtx(mode, wsConnectedRef.current ? 'connected' : 'disconnected').triggeredPairs.length });
         const seenPending = new Set<string>();
         for (const pending of pendingWSCandlesRef.current) {
           if (pending.interval !== '15') continue;
@@ -594,7 +595,7 @@ function useSignalEngineValue(): SignalEngineState {
               const topId = rankCryptoSignals(builtSignals.map((b) => b.signal))[0]?.id;
               return builtSignals.find((b) => b.signal.id === topId) ?? builtSignals[0]!;
             })();
-      if (import.meta.env.DEV && Object.keys(rejectCounters).length > 0 && builtSignals.length === 0) {
+      if (Object.keys(rejectCounters).length > 0 && builtSignals.length === 0) {
         console.log(`[Sigflo][Engine] ${symbol} ALL detectors rejected`, rejectCounters);
       }
       signalLifecycleStoreRef.current = updateSignalLifecycleOutcomes({

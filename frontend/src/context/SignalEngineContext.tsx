@@ -11,7 +11,7 @@ import {
 import { runScannerDeterminismCheck } from '@/engine/scannerDeterminism';
 import { exchangeManager } from '@/core/exchange-manager';
 import { buildAllSignalsFromMarket, inferMarketRegime } from '@/lib/signalDetectors';
-import { timingStatePriority } from '@/lib/detectors/shared';
+import { timingStatePriority, coreMetrics } from '@/lib/detectors/shared';
 import { deriveMarketStatus, isSignalTimingTriggered } from '@/lib/marketScannerRows';
 import { atr } from '@/lib/indicators';
 import { updateMarketMemory, type MarketMemorySnapshot } from '@/lib/marketMemory';
@@ -596,7 +596,19 @@ function useSignalEngineValue(): SignalEngineState {
               return builtSignals.find((b) => b.signal.id === topId) ?? builtSignals[0]!;
             })();
       if (Object.keys(rejectCounters).length > 0 && builtSignals.length === 0) {
-        console.log(`[Sigflo][Engine] ${symbol} ALL detectors rejected`, rejectCounters);
+        const cm = coreMetrics(candles15m);
+        console.log(`[Sigflo][Engine] ${symbol} ALL detectors rejected`, {
+          rejectCounters,
+          close: cm.close,
+          ema20: cm.ema20,
+          ema50: cm.ema50,
+          rsi: cm.rsiNow,
+          atr: cm.atrNow,
+          volNow: cm.volNow,
+          volAvg: cm.volAvg,
+          swingHigh: cm.swingHigh,
+          swingLow: cm.swingLow,
+        });
       }
       signalLifecycleStoreRef.current = updateSignalLifecycleOutcomes({
         store: signalLifecycleStoreRef.current,

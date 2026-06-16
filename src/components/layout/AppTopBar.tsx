@@ -24,7 +24,7 @@ export function AppTopBar() {
   const taglineVisible = showAppTagline(pathname);
   const p = pathname.replace(/\/$/, '') || '/';
   const showBrandingLogo = p !== '/trade';
-  const { signals, loading, proIntelligenceMode, setProIntelligenceMode } = useSignalEngine();
+  const { signals, loading, mode, error, proIntelligenceMode, setProIntelligenceMode } = useSignalEngine();
   const triggeredPairCount = countTriggeredPairs(signals);
 
   return (
@@ -77,7 +77,14 @@ export function AppTopBar() {
               <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-sigflo-accent" />
             </span>
             <span className="sm:hidden">{loading ? '...' : `${triggeredPairCount} triggered`}</span>
-            <span className="hidden sm:inline">{loading ? 'Syncing...' : `Triggered ${triggeredPairCount}`}</span>
+            <span className="hidden sm:inline">
+              {loading ? 'Syncing...' : `Triggered ${triggeredPairCount}`}
+            </span>
+            {!loading && mode === 'OFFLINE' ? (
+              <span className="hidden text-[9px] font-medium normal-case text-rose-300/90 lg:inline" title={error}>
+                · offline
+              </span>
+            ) : null}
           </Link>
           <button
             type="button"

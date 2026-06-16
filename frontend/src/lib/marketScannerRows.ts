@@ -244,14 +244,22 @@ function isSyntheticMoverSignal(signal: CryptoSignal): boolean {
   return signal.id.startsWith('trend-');
 }
 
-function hasConfirmedTimingTrigger(signal: CryptoSignal): boolean {
-  return signal.triggerType != null && signal.triggerType !== 'unknown';
+/** Parity with Scanner Lab `isLabTimingTriggered` — engine timing fired, not heuristic tape. */
+export function isSignalTimingTriggered(signal: Pick<CryptoSignal, 'timingState' | 'triggerType'>): boolean {
+  if (signal.timingState === 'triggered') return true;
+  if (
+    signal.timingState === 'ready' &&
+    signal.triggerType != null &&
+    signal.triggerType !== 'unknown'
+  ) {
+    return true;
+  }
+  return false;
 }
 
 export function deriveMarketStatus(signal: CryptoSignal): MarketRowStatus {
+  if (isSignalTimingTriggered(signal)) return 'triggered';
   if (signal.timingState === 'extended') return 'extended';
-  if (signal.timingState === 'triggered') return 'triggered';
-  if (signal.timingState === 'ready' && hasConfirmedTimingTrigger(signal)) return 'triggered';
   if (signal.setupType === 'overextended') return 'overextended';
   if (signal.timingState === 'ready' || signal.timingState === 'developing') return 'developing';
   if (signal.timingState === 'expired') return 'idle';
@@ -273,7 +281,7 @@ export function deriveMarketStatus(signal: CryptoSignal): MarketRowStatus {
 export function countTriggeredPairs(signals: readonly CryptoSignal[]): number {
   const triggeredPairs = new Set<string>();
   for (const signal of signals) {
-    if (deriveMarketStatus(signal) !== 'triggered') continue;
+    if (!isSignalTimingTriggered(signal)) continue;
     const pairKey = signal.pair.trim().toUpperCase();
     if (!pairKey) continue;
     triggeredPairs.add(pairKey);

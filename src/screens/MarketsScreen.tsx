@@ -6,6 +6,8 @@ import { MarketNewsScanSheet } from '@/components/news/MarketNewsScanSheet';
 import { useFeedMiniCharts } from '@/hooks/useFeedMiniCharts';
 import { useSyncedTradeChartInterval } from '@/hooks/useSyncedTradeChartInterval';
 import { useMarketsScanner } from '@/hooks/useMarketsScanner';
+import { useSignalEngine } from '@/hooks/useSignalEngine';
+import { isSignalTimingTriggered } from '@/lib/marketScannerRows';
 import { buildTradeQueryString } from '@/lib/tradeNavigation';
 import { updateChecklist } from '@/lib/onboardingChecklist';
 import type { MarketScannerRow } from '@/types/markets';
@@ -20,6 +22,7 @@ const tabs: { id: MarketsTab; label: string }[] = [
 
 export default function MarketsScreen() {
   const navigate = useNavigate();
+  const engine = useSignalEngine();
   const [tab, setTab] = useState<MarketsTab>('tracked');
   const [newsScanOpen, setNewsScanOpen] = useState(false);
   const { trackedRows, moverRows, watchlistRows, mode, connection, tickersLoading } = useMarketsScanner();
@@ -56,6 +59,17 @@ export default function MarketsScreen() {
     }
     return seen.size;
   }, [moverRows, trackedRows, watchlistRows]);
+  const engineTimingDebug = useMemo(() => {
+    let triggered = 0;
+    let ready = 0;
+    let developing = 0;
+    for (const s of engine.signals) {
+      if (isSignalTimingTriggered(s)) triggered += 1;
+      else if (s.timingState === 'ready') ready += 1;
+      else if (s.timingState === 'developing') developing += 1;
+    }
+    return { total: engine.signals.length, triggered, ready, developing, mode: engine.mode, error: engine.error };
+  }, [engine.signals, engine.mode, engine.error]);
   const fastPairs = useMemo(() => {
     const out: string[] = [];
     for (const r of [...trackedRows, ...moverRows, ...watchlistRows]) {
@@ -134,6 +148,10 @@ export default function MarketsScreen() {
                 {triggeredNowCount} signal{triggeredNowCount === 1 ? '' : 's'} triggered now
               </span>
             </button>
+          </div>
+          <div className="mt-1 text-[10px] text-sigflo-muted">
+            engine {engineTimingDebug.mode} · {engineTimingDebug.total} sig · t:{engineTimingDebug.triggered} · r:{engineTimingDebug.ready} · d:{engineTimingDebug.developing}
+            {engineTimingDebug.error ? ` · err:${engineTimingDebug.error}` : ''}
           </div>
         </header>
 

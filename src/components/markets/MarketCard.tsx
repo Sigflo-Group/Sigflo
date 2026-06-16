@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { formatQuoteNumber } from '@/lib/formatQuote';
 import { useTriggeredMotion } from '@/hooks/useTriggeredMotion';
-import { uiSignalStateClasses, uiSignalStateFromMarketStatus, uiSignalStateLabel } from '@/lib/signalState';
+import { marketStatusLabel, uiSignalStateClasses, uiSignalStateFromMarketStatus } from '@/lib/signalState';
 import { TriggeredFireMark } from '@/components/ui/TriggeredFireMark';
 import type { Candle } from '@/types/market';
 import type { MarketScannerRow } from '@/types/markets';
@@ -179,7 +179,7 @@ export function MarketCard({
                     isTriggered ? 'uppercase tracking-[0.11em] text-[#b2ffef] drop-shadow-[0_0_8px_rgba(0,255,200,0.45)]' : ''
                   }`}
                 >
-                  {showJustTriggered ? 'Just triggered' : uiSignalStateLabel(uiState)}
+                  {showJustTriggered ? 'Just triggered' : marketStatusLabel(row.status)}
                 </span>
               </span>
             </div>

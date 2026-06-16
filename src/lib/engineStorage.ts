@@ -133,7 +133,9 @@ function sanitizeLifecycleStore(parsed: Record<string, CandidateLifecycle>): Rec
   const out: Record<string, CandidateLifecycle> = {};
   for (const [key, lc] of Object.entries(parsed)) {
     if (!lc || typeof lc !== 'object') continue;
-    if (lc.state === 'triggered' && (lc.trigger?.triggerCandleTs == null)) continue;
+    if (lc.state === 'triggered' && lc.trigger?.triggerCandleTs == null) continue;
+    // Stale extended/expired rows block fresh trigger re-arm after reload.
+    if (lc.state === 'extended' || lc.state === 'expired') continue;
     out[key] = lc;
   }
   return out;

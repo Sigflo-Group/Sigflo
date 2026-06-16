@@ -48,17 +48,10 @@ export async function fetchLinearMaxLeverage(symbol: string): Promise<number | n
   }
 }
 
-export async function fetchTickers(symbols?: string[], signal?: AbortSignal): Promise<SymbolTicker[]> {
-  const param = symbols?.length
-    ? `&symbol=${symbols.map((s) => encodeURIComponent(s)).join(',')}`
-    : '';
-  const data = await getJson<BybitResp<{ list: Array<Record<string, string>> }>>(
-    `/v5/market/tickers?category=linear${param}`,
-    signal,
-  );
-  if (data.retCode !== 0) throw new Error(data.retMsg || 'Bybit tickers failed');
-  const symbolSet = symbols ? new Set(symbols) : undefined;
-  return (data.result?.list ?? [])
+const TICKER_BATCH_SIZE = 10;
+
+function mapTickerRows(list: Array<Record<string, string>>, symbolSet?: Set<string>): SymbolTicker[] {
+  return list
     .filter((x) => (symbolSet ? symbolSet.has(String(x.symbol ?? '')) : true))
     .map((x) => {
       const markRaw = toNum(x.markPrice);
@@ -75,6 +68,34 @@ export async function fetchTickers(symbols?: string[], signal?: AbortSignal): Pr
         price24hPcnt: toNum(x.price24hPcnt),
       };
     });
+}
+
+async function fetchTickersBatch(symbols: string[], signal?: AbortSignal): Promise<SymbolTicker[]> {
+  const param = `&symbol=${symbols.map((s) => encodeURIComponent(s)).join(',')}`;
+  const data = await getJson<BybitResp<{ list: Array<Record<string, string>> }>>(
+    `/v5/market/tickers?category=linear${param}`,
+    signal,
+  );
+  if (data.retCode !== 0) throw new Error(data.retMsg || 'Bybit tickers failed');
+  return mapTickerRows(data.result?.list ?? [], new Set(symbols));
+}
+
+export async function fetchTickers(symbols?: string[], signal?: AbortSignal): Promise<SymbolTicker[]> {
+  if (!symbols?.length) {
+    const data = await getJson<BybitResp<{ list: Array<Record<string, string>> }>>(
+      `/v5/market/tickers?category=linear`,
+      signal,
+    );
+    if (data.retCode !== 0) throw new Error(data.retMsg || 'Bybit tickers failed');
+    return mapTickerRows(data.result?.list ?? []);
+  }
+  const out: SymbolTicker[] = [];
+  for (let i = 0; i < symbols.length; i += TICKER_BATCH_SIZE) {
+    const batch = symbols.slice(i, i + TICKER_BATCH_SIZE);
+    const rows = await fetchTickersBatch(batch, signal);
+    out.push(...rows);
+  }
+  return out;
 }
 
 export function rankLiquidUniverse(tickers: SymbolTicker[], minCount: number, maxCount: number): SymbolUniverseItem[] {

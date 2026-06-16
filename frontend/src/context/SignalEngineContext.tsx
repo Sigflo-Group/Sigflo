@@ -47,7 +47,7 @@ import {
   registerSignalImpression,
   type UserAdaptationStore,
 } from '@/lib/userAdaptation';
-import { TRACKED_SYMBOLS } from '@/lib/marketScannerRows';
+import { TRACKED_SYMBOLS, mergeScannerKlineSymbols } from '@/lib/marketScannerRows';
 import type { CandidateLifecycle } from '@/lib/timingLifecycle';
 import type { NormalizedKline } from '@/core/market-data-interface';
 import type { Candle, SymbolTicker } from '@/types/market';
@@ -234,6 +234,10 @@ function useSignalEngineValue(): SignalEngineState {
   const strategyPersonalityModeRef = useRef<StrategyPersonalityMode>(strategyPersonalityMode);
   strategyPersonalityModeRef.current = strategyPersonalityMode;
   const persistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const engineBridgeRef = useRef<{ backfillNewSymbols: (symbols: string[]) => Promise<void> } | null>(null);
+  const scannedTickerExtrasRef = useRef<string[]>([]);
+  const pendingKlineBackfillRef = useRef<string[]>([]);
+  const prevKlineSymbolsRef = useRef<string[]>([...STREAM_SYMBOLS]);
   const dirtyPersistRef = useRef({
     signalLifecycle: false,
     marketMemory: false,
@@ -271,7 +275,15 @@ function useSignalEngineValue(): SignalEngineState {
   }, []);
 
   useEffect(() => {
+    scannedTickerExtrasRef.current = scannerTickerExtras;
+  }, [scannerTickerExtras]);
+
+  useEffect(() => {
     let cancelled = false;
+
+    function getKlineSymbols(): string[] {
+      return mergeScannerKlineSymbols(scannedTickerExtrasRef.current);
+    }
 
     if (import.meta.env.DEV && !didPrintDeterminismRef.current) {
       didPrintDeterminismRef.current = true;
@@ -346,9 +358,10 @@ function useSignalEngineValue(): SignalEngineState {
       if (DEBUG) console.log(`[Sigflo][Engine] REST bootstrap (${reason})`);
       streamReadyRef.current = false;
       try {
+        const klineSymbols = getKlineSymbols();
         const [tickers, ...symbolResults] = await Promise.all([
-          exchangeManager.current.fetchTickers(STREAM_SYMBOLS),
-          ...STREAM_SYMBOLS.map(async (symbol) => {
+          exchangeManager.current.fetchTickers(klineSymbols),
+          ...klineSymbols.map(async (symbol) => {
             const [candles5m, candles15m] = await Promise.all([
               exchangeManager.current.fetchKlines(symbol, '5', 240),
               exchangeManager.current.fetchKlines(symbol, '15', 240),
@@ -727,7 +740,49 @@ function useSignalEngineValue(): SignalEngineState {
     }
 
     function recomputeAllFromStore(mode: SignalEngineState['mode']) {
-      for (const symbol of STREAM_SYMBOLS) recomputeForSymbol(symbol, mode);
+      for (const symbol of getKlineSymbols()) recomputeForSymbol(symbol, mode);
+    }
+
+    async function backfillNewSymbols(symbols: string[]) {
+      if (symbols.length === 0) return;
+      const gen = ++backfillGen;
+      if (DEBUG) console.log(`[Sigflo][Engine] backfill new kline symbols`, symbols);
+      try {
+        const [tickers, ...symbolResults] = await Promise.all([
+          exchangeManager.current.fetchTickers(symbols),
+          ...symbols.map(async (symbol) => {
+            const [candles5m, candles15m] = await Promise.all([
+              exchangeManager.current.fetchKlines(symbol, '5', 240),
+              exchangeManager.current.fetchKlines(symbol, '15', 240),
+            ]);
+            return { symbol, candles5m, candles15m };
+          }),
+        ]);
+        if (gen !== backfillGen || cancelled) return;
+        for (const ticker of tickers) tickersRef.current[ticker.symbol] = ticker;
+        for (const { symbol, candles5m, candles15m } of symbolResults) {
+          candlesRef.current[symbol] = {
+            ...emptyIntervalCandles(),
+            ...candlesRef.current[symbol],
+            '5': candles5m,
+            '15': candles15m,
+          };
+        }
+        const mode: SignalEngineState['mode'] = streamReadyRef.current ? 'WS' : 'REST';
+        for (const symbol of symbols) recomputeForSymbol(symbol, mode);
+        setLiveTickersBySymbol({ ...tickersRef.current });
+        pushState(mode, wsConnectedRef.current ? 'connected' : 'disconnected');
+      } catch (err) {
+        if (gen !== backfillGen || cancelled) return;
+        if (DEBUG) console.warn('[Sigflo][Engine] backfill new symbols failed', err);
+      }
+    }
+
+    engineBridgeRef.current = { backfillNewSymbols };
+    const pending = pendingKlineBackfillRef.current;
+    if (pending.length > 0) {
+      pendingKlineBackfillRef.current = [];
+      void backfillNewSymbols(pending);
     }
 
     // WS stream:
@@ -737,6 +792,10 @@ function useSignalEngineValue(): SignalEngineState {
     let startupDone = false;
 
     void backfillFromRest('startup').then(() => {
+      if (cancelled) return;
+      const klineSymbols = getKlineSymbols();
+      const missing = klineSymbols.filter((s) => (candlesRef.current[s]?.['15']?.length ?? 0) < 60);
+      if (missing.length > 0) void backfillNewSymbols(missing);
       if (cancelled) return;
       startupDone = true;
       exchangeManager.current.connectWebSocket({
@@ -830,12 +889,27 @@ function useSignalEngineValue(): SignalEngineState {
       if (d.userAdaptation) persistUserAdaptationStore(userAdaptation);
       if (d.aiSnapshot) persistAiSnapshotStore(aiSnapshot);
       exchangeManager.current.disconnectWebSocket();
+      engineBridgeRef.current = null;
     };
   }, []);
 
   useEffect(() => {
+    const klineSymbols = mergeScannerKlineSymbols(scannerTickerExtras);
     exchangeManager.current.updateTickerSymbols(mergedTickerSymbols);
-  }, [mergedTickerSymbols]);
+    exchangeManager.current.updateKlineSymbols(klineSymbols);
+
+    const prev = new Set(prevKlineSymbolsRef.current);
+    const added = klineSymbols.filter((s) => !prev.has(s));
+    prevKlineSymbolsRef.current = klineSymbols;
+
+    if (added.length > 0) {
+      if (engineBridgeRef.current) {
+        void engineBridgeRef.current.backfillNewSymbols(added);
+      } else {
+        pendingKlineBackfillRef.current = [...new Set([...pendingKlineBackfillRef.current, ...added])];
+      }
+    }
+  }, [mergedTickerSymbols, scannerTickerExtras]);
 
   return useMemo(
     () => ({

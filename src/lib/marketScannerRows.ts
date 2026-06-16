@@ -45,6 +45,11 @@ export function rankMoversUniverse(tickers: SymbolTicker[]): SymbolTicker[] {
   return [...gainers, ...losers];
 }
 
+/** Tracked watchlist + Movers extras — symbols that receive klines and detector pipeline. */
+export function mergeScannerKlineSymbols(scannerExtras: string[]): string[] {
+  return [...new Set([...TRACKED_SYMBOLS, ...scannerExtras])];
+}
+
 /** Above this 24h move %, synthetic Movers treat the tape as overextended (rare among “only green” lists). */
 const MOVER_OVEREXTENDED_PCT = 18;
 const MOVER_PULLBACK_PCT = 4;

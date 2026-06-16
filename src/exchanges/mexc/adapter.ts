@@ -136,4 +136,8 @@ export class MexcMarketDataAdapter implements MarketDataAdapter {
   updateTickerSymbols(symbols: string[]): void {
     this.wsClient?.updateTickerSymbols(symbols);
   }
+
+  updateKlineSymbols(symbols: string[]): void {
+    this.wsClient?.updateKlineSymbols(symbols);
+  }
 }

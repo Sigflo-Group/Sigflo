@@ -813,10 +813,16 @@ export function TradeScreen() {
     return bybitSnap ?? mexcSnap ?? null;
   }, [activeExchange, bybitSnap, mexcSnap]);
 
+  const chartDataExchange: 'bybit' | 'mexc' = useMemo(() => {
+    if (isManageMode && managePositionExchange) return managePositionExchange;
+    if (selectedSignal.exchange === 'mexc') return 'mexc';
+    return 'bybit';
+  }, [isManageMode, managePositionExchange, selectedSignal.exchange]);
+
   const live = useLiveTradeMarket(liveSymbol, chartInterval, {
     uiThrottleMs: isManageMode ? 16 : undefined,
     immediateUiOnTick: isManageMode,
-    exchange: activeExchange ?? 'bybit',
+    exchange: chartDataExchange,
   });
   const [manageFastMark, setManageFastMark] = useState<number | undefined>(undefined);
 

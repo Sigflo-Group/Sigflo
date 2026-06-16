@@ -9,8 +9,8 @@ const BASE =
 // api.bybit.com directly, so serialise kline requests with a small gap and retry
 // when we get rate-limit responses. This prevents the engine bootstrap from failing
 // with "Too many visits" and leaving every symbol stuck at skip_btc_eth_warmup.
-const KLINE_MIN_INTERVAL_MS = 200; // 5 req/s max
-const KLINE_RATE_LIMIT_RETRIES = 3;
+const KLINE_MIN_INTERVAL_MS = 500; // 2 req/s max
+const KLINE_RATE_LIMIT_RETRIES = 5;
 
 let klineRequestQueue: Promise<unknown> = Promise.resolve();
 let lastKlineRequestTime = 0;

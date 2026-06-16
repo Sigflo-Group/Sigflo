@@ -287,17 +287,17 @@ function useSignalEngineValue(): SignalEngineState {
 
     async function fetchKlinesSafe(symbols: string[]) {
       const ok: Array<{ symbol: string; candles5m: Candle[]; candles15m: Candle[] }> = [];
-      // Process symbols sequentially instead of all-at-once. Combined with the per-request
-      // throttle in the Bybit client this avoids production rate-limiting on bootstrap.
+      // Process symbols sequentially and fetch intervals sequentially per symbol.
+      // Combined with the per-request throttle in the Bybit client this avoids
+      // production rate-limiting on bootstrap.
       for (const symbol of symbols) {
         try {
-          const [candles5m, candles15m] = await Promise.all([
-            exchangeManager.current.fetchKlines(symbol, '5', 240),
-            exchangeManager.current.fetchKlines(symbol, '15', 240),
-          ]);
+          const candles5m = await exchangeManager.current.fetchKlines(symbol, '5', 240);
+          const candles15m = await exchangeManager.current.fetchKlines(symbol, '15', 240);
           ok.push({ symbol, candles5m, candles15m });
         } catch (err) {
-          if (DEBUG) console.warn('[Sigflo][Engine] skipped symbol kline backfill', err);
+          // Always log kline backfill failures in production so we can see rate-limiting.
+          console.warn('[Sigflo][Engine] skipped symbol kline backfill', symbol, err);
         }
       }
       return ok;

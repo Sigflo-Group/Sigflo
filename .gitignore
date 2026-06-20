@@ -21,6 +21,14 @@ dist
 # Continue IDE local config (models, MCP servers, secrets placeholders)
 .continue/
 
-# OpenCode config (may contain MCP server secrets / tokens)
+# OpenCode / local bridge config (may contain MCP server secrets / tokens)
 opencode.json
 .opencode/
+opencode-link.json
+.bridge.env
+scripts/.bridge.env
+
+# Examples are safe to commit
+!opencode.example.json
+!opencode-link.example.json
+!scripts/bridge.env.example

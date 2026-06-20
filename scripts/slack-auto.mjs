@@ -1,16 +1,17 @@
 import { readFileSync, writeFileSync, statSync, existsSync } from 'fs';
 import { execSync } from 'child_process';
 
-const SLACK_BOT_TOKEN = process.env.SLACK_BOT_TOKEN;
+const SLACK_BOT_TOKEN = process.env.SLACK_BOT_TOKEN?.trim();
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY?.trim();
 const OPENCODE_API_KEY = process.env.OPENCODE_API_KEY;
 const API_BASE = 'https://opencode.ai/zen/v1';
 const MODEL = 'gpt-4o-mini';
 const MSGS_FILE = '/tmp/slack-messages.jsonl';
 const PROCESSED_FILE = '/tmp/slack-processed.json';
-const DM_CHANNEL = 'REDACTED';
+const DM_CHANNEL = process.env.SLACK_DM_CHANNEL?.trim();
 
-if (!SLACK_BOT_TOKEN || !OPENAI_API_KEY) {
-  console.error('Missing SLACK_BOT_TOKEN or OPENAI_API_KEY');
+if (!SLACK_BOT_TOKEN || !OPENAI_API_KEY || !DM_CHANNEL) {
+  console.error('Missing SLACK_BOT_TOKEN, OPENAI_API_KEY, or SLACK_DM_CHANNEL');
   process.exit(1);
 }
 
@@ -99,6 +100,5 @@ async function processMessages() {
   }
 }
 
-// Poll every 2 seconds
 setInterval(processMessages, 2000);
 console.error('[SLACK BOT] Auto-reply bot started');

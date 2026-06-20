@@ -1,0 +1,6 @@
+{
+  "provider": "slack",
+  "botToken": "${SLACK_BOT_TOKEN}",
+  "appToken": "${SLACK_APP_TOKEN}",
+  "channelId": "${SLACK_DM_CHANNEL}"
+}

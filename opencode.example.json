@@ -10,7 +10,5 @@
       }
     }
   },
-  "plugin": [
-    "./.opencode/plugins/opencode-link"
-  ]
+  "plugin": []
 }

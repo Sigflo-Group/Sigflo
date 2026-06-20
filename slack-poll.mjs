@@ -3,8 +3,15 @@ import { appendFileSync, readFileSync, writeFileSync } from 'fs';
 
 const FILE = '/tmp/slack-messages.jsonl';
 const TS_FILE = '/tmp/slack-last-ts.txt';
-const channel = 'REDACTED';
-const web = new WebClient(process.env.SLACK_BOT_TOKEN);
+const channel = process.env.SLACK_DM_CHANNEL?.trim();
+const token = process.env.SLACK_BOT_TOKEN?.trim();
+
+if (!token || !channel) {
+  console.error('Set SLACK_BOT_TOKEN and SLACK_DM_CHANNEL before starting slack-poll.mjs');
+  process.exit(1);
+}
+
+const web = new WebClient(token);
 
 writeFileSync(FILE, '');
 let lastTs = '';
@@ -24,7 +31,7 @@ const poll = async () => {
         web.chat.postMessage({ channel, text: 'Got it!' }).catch(() => {});
       }
     }
-  } catch (e) {}
+  } catch {}
 };
 
 setInterval(poll, 2000);

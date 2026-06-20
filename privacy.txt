@@ -1,0 +1,3 @@
+Privacy policy: https://www.sigflo.group/privacy
+
+For data handling details, see SECURITY.md and the in-app Privacy screen.

@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { Card } from '@/components/ui/Card';
 import { runScannerDeterminismCheck } from '@/engine/scannerDeterminism';
 import type { ScannerDeterminismFrame } from '@/engine/scannerDeterminism';
+import { useSignalEngine } from '@/hooks/useSignalEngine';
 import {
   formatNotTriggeredReason,
   FUNNEL_STAGE_LABELS,
@@ -10,6 +11,7 @@ import {
   type ScannerPipelineHealthSnapshot,
 } from '@/lib/scannerPipelineHealth';
 import { lifecycleConfigSummary } from '@/lib/scannerEngineConfig';
+import { isSignalTimingTriggered } from '@/lib/marketScannerRows';
 
 function PassCard({ frame, title }: { frame: ScannerDeterminismFrame; title: string }) {
   return (
@@ -92,12 +94,22 @@ function readScannerDiagnostics(): ScannerDiagnosticRow[] {
   return Array.isArray(raw) ? (raw as ScannerDiagnosticRow[]).slice().reverse() : [];
 }
 
-function PipelineHealthCard({ health }: { health: ScannerPipelineHealthSnapshot }) {
+function PipelineHealthCard({
+  health,
+  engineLoading,
+}: {
+  health: ScannerPipelineHealthSnapshot;
+  engineLoading: boolean;
+}) {
   if (!health.updatedAt) {
     return (
       <Card className="p-4">
         <h2 className="text-sm font-semibold text-white">Pipeline funnel</h2>
-        <p className="mt-2 text-xs text-sigflo-muted">No live pipeline data yet. Open /feed and wait for scanner ticks.</p>
+        <p className="mt-2 text-xs text-sigflo-muted">
+          {engineLoading
+            ? 'Live engine bootstrapping — fetching candles and running detectors…'
+            : 'No live pipeline data yet. Wait for bootstrap to finish or open /feed and wait for scanner ticks.'}
+        </p>
       </Card>
     );
   }
@@ -156,6 +168,77 @@ function PipelineHealthCard({ health }: { health: ScannerPipelineHealthSnapshot 
           ))
         )}
       </div>
+    </Card>
+  );
+}
+
+function LiveEngineCard() {
+  const engine = useSignalEngine();
+  const timing = useMemo(() => {
+    let triggered = 0;
+    let ready = 0;
+    let developing = 0;
+    for (const s of engine.signals) {
+      if (isSignalTimingTriggered(s)) triggered += 1;
+      else if (s.timingState === 'ready') ready += 1;
+      else if (s.timingState === 'developing') developing += 1;
+    }
+    return { triggered, ready, developing };
+  }, [engine.signals]);
+
+  const topSignals = useMemo(
+    () =>
+      [...engine.signals]
+        .sort((a, b) => {
+          const t = (isSignalTimingTriggered(b) ? 1 : 0) - (isSignalTimingTriggered(a) ? 1 : 0);
+          if (t !== 0) return t;
+          return b.setupScore - a.setupScore;
+        })
+        .slice(0, 8),
+    [engine.signals],
+  );
+
+  return (
+    <Card className="p-4">
+      <h2 className="text-sm font-semibold text-white">Live engine (Bybit data)</h2>
+      <p className="mt-2 text-xs text-sigflo-muted">
+        Mode {engine.mode} · {engine.connection}
+        {engine.loading ? ' · bootstrapping' : ''}
+        {engine.error ? ` · error: ${engine.error}` : ''}
+      </p>
+      <p className="mt-1 text-xs text-sigflo-muted">
+        {engine.signals.length} in signal book · triggered {timing.triggered} · ready {timing.ready} · developing{' '}
+        {timing.developing}
+      </p>
+      <p className="mt-2 text-[11px] text-amber-200/90">
+        Top bar &quot;Triggered&quot; counts pairs where timing lifecycle fired — not detector qualification alone. Scanner
+        Lab breakout at candle 74 is a crafted scenario; live markets may have developing setups without a timing trigger
+        yet.
+      </p>
+      {topSignals.length === 0 ? (
+        <p className="mt-3 text-xs text-sigflo-muted">No live signals in book yet.</p>
+      ) : (
+        <div className="mt-3 space-y-2">
+          {topSignals.map((s) => (
+            <div
+              key={s.id}
+              className="rounded-xl border border-sigflo-border bg-sigflo-bg/45 px-3 py-2"
+            >
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-medium text-white">
+                  {s.pair} · {s.side} · {s.setupType}
+                </p>
+                <p className="text-xs text-emerald-300">{s.setupScore}</p>
+              </div>
+              <p className="mt-1 text-[11px] uppercase tracking-wide text-sigflo-muted">
+                timing: {s.timingState ?? 'n/a'}
+                {s.triggerType && s.triggerType !== 'unknown' ? ` · ${s.triggerType.replaceAll('_', ' ')}` : ''}
+                {isSignalTimingTriggered(s) ? ' · counts as triggered' : ' · not triggered yet'}
+              </p>
+            </div>
+          ))}
+        </div>
+      )}
     </Card>
   );
 }
@@ -225,6 +308,7 @@ function ScannerDiagnosticsCard({
 
 export function EngineDebugScreen() {
   const navigate = useNavigate();
+  const engine = useSignalEngine();
   const [rerunTick, setRerunTick] = useState(0);
   const [lastRerunAt, setLastRerunAt] = useState(() => new Date());
   const [diagTick, setDiagTick] = useState(0);
@@ -275,14 +359,17 @@ export function EngineDebugScreen() {
         </div>
         <h1 className="text-2xl font-semibold tracking-tight text-white">Engine Debug</h1>
         <p className="mt-1 text-sm text-sigflo-muted">
-          Deterministic scanner check using the live <code className="text-xs">buildSignalFromMarket</code> path. Pass 2 should be reduced by cooldown/dedup.
+          Pass 1/2 use <strong className="font-medium text-white/90">synthetic fixture candles</strong> (not live Bybit).
+          Same <code className="text-xs">buildSignalFromMarket</code> path as production. Developing = detector qualified,
+          timing not fired.
         </p>
         <p className="mt-1 text-[11px] text-sigflo-muted">
           Reruns: {rerunTick} · Last run: {lastRerunAt.toLocaleTimeString()}
         </p>
       </header>
 
-      <PipelineHealthCard health={pipelineHealth} />
+      <LiveEngineCard />
+      <PipelineHealthCard health={pipelineHealth} engineLoading={engine.loading} />
       <PassCard frame={determinism.firstPass} title={`Pass 1: initial emit #${rerunTick + 1}`} />
       <PassCard frame={determinism.secondPass} title={`Pass 2: cooldown and dedup #${rerunTick + 1}`} />
       <ScannerDiagnosticsCard

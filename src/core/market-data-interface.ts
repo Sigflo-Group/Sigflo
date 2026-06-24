@@ -56,4 +56,5 @@ export interface MarketDataAdapter {
   connectWebSocket(options: WsSubscriptionOptions): void;
   disconnectWebSocket(): void;
   updateTickerSymbols(symbols: string[]): void;
+  updateKlineSymbols(symbols: string[]): void;
 }

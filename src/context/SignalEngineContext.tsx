@@ -11,8 +11,8 @@ import {
 import { runScannerDeterminismCheck } from '@/engine/scannerDeterminism';
 import { exchangeManager } from '@/core/exchange-manager';
 import { buildAllSignalsFromMarket, inferMarketRegime } from '@/lib/signalDetectors';
-import { timingStatePriority } from '@/lib/detectors/shared';
-import { deriveMarketStatus } from '@/lib/marketScannerRows';
+import { timingStatePriority, coreMetrics } from '@/lib/detectors/shared';
+import { isSignalTimingTriggered } from '@/lib/marketScannerRows';
 import { atr } from '@/lib/indicators';
 import { updateMarketMemory, type MarketMemorySnapshot } from '@/lib/marketMemory';
 import {
@@ -47,7 +47,7 @@ import {
   registerSignalImpression,
   type UserAdaptationStore,
 } from '@/lib/userAdaptation';
-import { TRACKED_SYMBOLS } from '@/lib/marketScannerRows';
+import { TRACKED_SYMBOLS, mergeScannerKlineSymbols } from '@/lib/marketScannerRows';
 import type { CandidateLifecycle } from '@/lib/timingLifecycle';
 import type { NormalizedKline } from '@/core/market-data-interface';
 import type { Candle, SymbolTicker } from '@/types/market';
@@ -234,6 +234,10 @@ function useSignalEngineValue(): SignalEngineState {
   const strategyPersonalityModeRef = useRef<StrategyPersonalityMode>(strategyPersonalityMode);
   strategyPersonalityModeRef.current = strategyPersonalityMode;
   const persistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const engineBridgeRef = useRef<{ backfillNewSymbols: (symbols: string[]) => Promise<void> } | null>(null);
+  const scannedTickerExtrasRef = useRef<string[]>([]);
+  const pendingKlineBackfillRef = useRef<string[]>([]);
+  const prevKlineSymbolsRef = useRef<string[]>([...STREAM_SYMBOLS]);
   const dirtyPersistRef = useRef({
     signalLifecycle: false,
     marketMemory: false,
@@ -271,7 +275,33 @@ function useSignalEngineValue(): SignalEngineState {
   }, []);
 
   useEffect(() => {
+    scannedTickerExtrasRef.current = scannerTickerExtras;
+  }, [scannerTickerExtras]);
+
+  useEffect(() => {
     let cancelled = false;
+
+    function getKlineSymbols(): string[] {
+      return mergeScannerKlineSymbols(scannedTickerExtrasRef.current);
+    }
+
+    async function fetchKlinesSafe(symbols: string[]) {
+      const ok: Array<{ symbol: string; candles5m: Candle[]; candles15m: Candle[] }> = [];
+      // Process symbols sequentially and fetch intervals sequentially per symbol.
+      // Combined with the per-request throttle in the Bybit client this avoids
+      // production rate-limiting on bootstrap.
+      for (const symbol of symbols) {
+        try {
+          const candles5m = await exchangeManager.current.fetchKlines(symbol, '5', 240);
+          const candles15m = await exchangeManager.current.fetchKlines(symbol, '15', 240);
+          ok.push({ symbol, candles5m, candles15m });
+        } catch (err) {
+          // Always log kline backfill failures in production so we can see rate-limiting.
+          console.warn('[Sigflo][Engine] skipped symbol kline backfill', symbol, err);
+        }
+      }
+      return ok;
+    }
 
     if (import.meta.env.DEV && !didPrintDeterminismRef.current) {
       didPrintDeterminismRef.current = true;
@@ -284,7 +314,7 @@ function useSignalEngineValue(): SignalEngineState {
     function rankCryptoSignals(signals: CryptoSignal[]): CryptoSignal[] {
       return [...signals].sort((a, b) => {
         const triggeredDelta =
-          (deriveMarketStatus(b) === 'triggered' ? 1 : 0) - (deriveMarketStatus(a) === 'triggered' ? 1 : 0);
+          (isSignalTimingTriggered(b) ? 1 : 0) - (isSignalTimingTriggered(a) ? 1 : 0);
         if (triggeredDelta !== 0) return triggeredDelta;
         const timingDelta = timingStatePriority(b.timingState) - timingStatePriority(a.timingState);
         if (timingDelta !== 0) return timingDelta;
@@ -341,32 +371,55 @@ function useSignalEngineValue(): SignalEngineState {
     // - refresh in-memory stores
     // - run detector pipeline against fresh snapshots
     let backfillGen = 0;
+    async function ingestSymbolBackfill(symbols: string[]) {
+      if (symbols.length === 0) return;
+      console.log('[Sigflo][Engine] ingestSymbolBackfill start', symbols);
+      const [tickers, symbolResults] = await Promise.all([
+        exchangeManager.current.fetchTickers(symbols),
+        fetchKlinesSafe(symbols),
+      ]);
+      console.log('[Sigflo][Engine] ingestSymbolBackfill got', {
+        tickers: tickers.length,
+        klineResults: symbolResults.length,
+      });
+      for (const ticker of tickers) tickersRef.current[ticker.symbol] = ticker;
+      for (const { symbol, candles5m, candles15m } of symbolResults) {
+        candlesRef.current[symbol] = {
+          ...emptyIntervalCandles(),
+          ...candlesRef.current[symbol],
+          '5': candles5m,
+          '15': candles15m,
+        };
+      }
+    }
+
     async function backfillFromRest(reason: 'startup' | 'reconnect') {
       const gen = ++backfillGen;
       if (DEBUG) console.log(`[Sigflo][Engine] REST bootstrap (${reason})`);
       streamReadyRef.current = false;
-      try {
-        const [tickers, ...symbolResults] = await Promise.all([
-          exchangeManager.current.fetchTickers(STREAM_SYMBOLS),
-          ...STREAM_SYMBOLS.map(async (symbol) => {
-            const [candles5m, candles15m] = await Promise.all([
-              exchangeManager.current.fetchKlines(symbol, '5', 240),
-              exchangeManager.current.fetchKlines(symbol, '15', 240),
-            ]);
-            return { symbol, candles5m, candles15m };
-          }),
-        ]);
+      const finishBootstrap = (mode: SignalEngineState['mode']) => {
         if (gen !== backfillGen || cancelled) return;
-        for (const ticker of tickers) tickersRef.current[ticker.symbol] = ticker;
-        for (const { symbol, candles5m, candles15m } of symbolResults) {
-          candlesRef.current[symbol] = {
-            ...emptyIntervalCandles(),
-            ...candlesRef.current[symbol],
-            '5': candles5m,
-            '15': candles15m,
-          };
+        streamReadyRef.current = true;
+        console.log('[Sigflo][Engine] finishBootstrap', { reason, mode, gen, triggeredPairs: pipelineHealthCtx(mode, wsConnectedRef.current ? 'connected' : 'disconnected').triggeredPairs.length });
+        const seenPending = new Set<string>();
+        for (const pending of pendingWSCandlesRef.current) {
+          if (pending.interval !== '15') continue;
+          const key = `${pending.symbol}:${pending.ts}`;
+          if (seenPending.has(key)) continue;
+          seenPending.add(key);
+          recomputeForSymbol(pending.symbol, 'WS');
         }
-        // Re-apply any WS confirmed 15m candles that arrived during backfill
+        pendingWSCandlesRef.current = [];
+        setLiveTickersBySymbol({ ...tickersRef.current });
+        pushState(mode, wsConnectedRef.current ? 'connected' : 'disconnected');
+      };
+
+      try {
+        const tracked = [...TRACKED_SYMBOLS];
+        console.log('[Sigflo][Engine] bootstrap tracked symbols', tracked);
+        const trackedSet = new Set<string>(tracked);
+        await ingestSymbolBackfill(tracked);
+        if (gen !== backfillGen || cancelled) return;
         for (const pending of pendingWSCandlesRef.current) {
           if (pending.interval !== '15') continue;
           const symbol = pending.symbol;
@@ -381,28 +434,51 @@ function useSignalEngineValue(): SignalEngineState {
             isClosed: pending.confirmed,
           });
         }
-        recomputeAllFromStore('REST');
-        if (gen !== backfillGen || cancelled) return;
-        streamReadyRef.current = true;
-        // Flush buffered WS recomputation now that store is ready.
-        // Deduplicate by (symbol, ts) first — the same confirmed candle can
-        // arrive more than once across a reconnect, and calling
-        // recomputeForSymbol twice for the same bar bypasses the cooldown
-        // check (the first call resets lastSignalRef so the second fires again).
-        const seenPending = new Set<string>();
-        for (const pending of pendingWSCandlesRef.current) {
-          if (pending.interval !== '15') continue;
-          const key = `${pending.symbol}:${pending.ts}`;
-          if (seenPending.has(key)) continue;
-          seenPending.add(key);
-          recomputeForSymbol(pending.symbol, 'WS');
+        for (const symbol of tracked) {
+          try {
+            recomputeForSymbol(symbol, 'REST');
+          } catch (recomputeErr) {
+            console.error('[Sigflo][Engine] recomputeForSymbol failed', symbol, recomputeErr);
+          }
         }
-        pendingWSCandlesRef.current = [];
-        setLiveTickersBySymbol({ ...tickersRef.current });
-        pushState('REST', wsConnectedRef.current ? 'connected' : 'disconnected');
+        const extras = getKlineSymbols().filter((s) => !trackedSet.has(s));
+        console.log('[Sigflo][Engine] bootstrap extras', extras);
+        if (extras.length > 0) {
+          await ingestSymbolBackfill(extras);
+          if (gen !== backfillGen || cancelled) return;
+          for (const symbol of extras) {
+            try {
+              recomputeForSymbol(symbol, 'REST');
+            } catch (recomputeErr) {
+              console.error('[Sigflo][Engine] recomputeForSymbol failed', symbol, recomputeErr);
+            }
+          }
+        }
+        recomputeAllFromStore('REST');
+        finishBootstrap('REST');
       } catch (err) {
         if (gen !== backfillGen || cancelled) return;
-        pushState('OFFLINE', wsConnectedRef.current ? 'reconnecting' : 'disconnected', err instanceof Error ? err.message : 'Signal engine failed');
+        console.warn('[Sigflo][Engine] full bootstrap failed, retrying tracked only', err);
+        try {
+          await ingestSymbolBackfill([...TRACKED_SYMBOLS]);
+          if (gen !== backfillGen || cancelled) return;
+          for (const symbol of TRACKED_SYMBOLS) {
+            try {
+              recomputeForSymbol(symbol, 'REST');
+            } catch (recomputeErr) {
+              console.error('[Sigflo][Engine] recomputeForSymbol failed', symbol, recomputeErr);
+            }
+          }
+          recomputeAllFromStore('REST');
+          finishBootstrap('REST');
+        } catch (fallbackErr) {
+          if (gen !== backfillGen || cancelled) return;
+          pushState(
+            'OFFLINE',
+            wsConnectedRef.current ? 'reconnecting' : 'disconnected',
+            fallbackErr instanceof Error ? fallbackErr.message : 'Signal engine failed',
+          );
+        }
       }
     }
 
@@ -410,7 +486,7 @@ function useSignalEngineValue(): SignalEngineState {
       const triggeredPairs = [
         ...new Set(
           Object.values(signalBookRef.current)
-            .filter((s) => deriveMarketStatus(s) === 'triggered')
+            .filter((s) => isSignalTimingTriggered(s))
             .map((s) => s.pair),
         ),
       ];
@@ -520,8 +596,20 @@ function useSignalEngineValue(): SignalEngineState {
               const topId = rankCryptoSignals(builtSignals.map((b) => b.signal))[0]?.id;
               return builtSignals.find((b) => b.signal.id === topId) ?? builtSignals[0]!;
             })();
-      if (import.meta.env.DEV && Object.keys(rejectCounters).length > 0 && builtSignals.length === 0) {
-        console.log(`[Sigflo][Engine] ${symbol} ALL detectors rejected`, rejectCounters);
+      if (Object.keys(rejectCounters).length > 0 && builtSignals.length === 0) {
+        const cm = coreMetrics(candles15m);
+        console.log(`[Sigflo][Engine] ${symbol} ALL detectors rejected`, {
+          rejectCounters,
+          close: cm.close,
+          ema20: cm.ema20,
+          ema50: cm.ema50,
+          rsi: cm.rsiNow,
+          atr: cm.atrNow,
+          volNow: cm.volNow,
+          volAvg: cm.volAvg,
+          swingHigh: cm.swingHigh,
+          swingLow: cm.swingLow,
+        });
       }
       signalLifecycleStoreRef.current = updateSignalLifecycleOutcomes({
         store: signalLifecycleStoreRef.current,
@@ -727,7 +815,42 @@ function useSignalEngineValue(): SignalEngineState {
     }
 
     function recomputeAllFromStore(mode: SignalEngineState['mode']) {
-      for (const symbol of STREAM_SYMBOLS) recomputeForSymbol(symbol, mode);
+      for (const symbol of getKlineSymbols()) recomputeForSymbol(symbol, mode);
+    }
+
+    async function backfillNewSymbols(symbols: string[]) {
+      if (symbols.length === 0) return;
+      if (DEBUG) console.log(`[Sigflo][Engine] backfill new kline symbols`, symbols);
+      try {
+        const [tickers, symbolResults] = await Promise.all([
+          exchangeManager.current.fetchTickers(symbols),
+          fetchKlinesSafe(symbols),
+        ]);
+        if (cancelled) return;
+        for (const ticker of tickers) tickersRef.current[ticker.symbol] = ticker;
+        for (const { symbol, candles5m, candles15m } of symbolResults) {
+          candlesRef.current[symbol] = {
+            ...emptyIntervalCandles(),
+            ...candlesRef.current[symbol],
+            '5': candles5m,
+            '15': candles15m,
+          };
+        }
+        const mode: SignalEngineState['mode'] = streamReadyRef.current ? 'WS' : 'REST';
+        for (const symbol of symbols) recomputeForSymbol(symbol, mode);
+        setLiveTickersBySymbol({ ...tickersRef.current });
+        pushState(mode, wsConnectedRef.current ? 'connected' : 'disconnected');
+      } catch (err) {
+        if (cancelled) return;
+        if (DEBUG) console.warn('[Sigflo][Engine] backfill new symbols failed', err);
+      }
+    }
+
+    engineBridgeRef.current = { backfillNewSymbols };
+    const pending = pendingKlineBackfillRef.current;
+    if (pending.length > 0) {
+      pendingKlineBackfillRef.current = [];
+      void backfillNewSymbols(pending);
     }
 
     // WS stream:
@@ -738,10 +861,14 @@ function useSignalEngineValue(): SignalEngineState {
 
     void backfillFromRest('startup').then(() => {
       if (cancelled) return;
+      const klineSymbols = getKlineSymbols();
+      const missing = klineSymbols.filter((s) => (candlesRef.current[s]?.['15']?.length ?? 0) < 60);
+      if (missing.length > 0) void backfillNewSymbols(missing);
+      if (cancelled) return;
       startupDone = true;
       exchangeManager.current.connectWebSocket({
-        klineSymbols: STREAM_SYMBOLS,
-        tickerSymbols: STREAM_SYMBOLS,
+        klineSymbols: getKlineSymbols(),
+        tickerSymbols: getKlineSymbols(),
         includeTickers: true,
         onLog: DEBUG ? (msg: string) => console.log(`[Sigflo][Engine] ${msg}`) : undefined,
         onConnectionChange: (connection) => {
@@ -830,12 +957,27 @@ function useSignalEngineValue(): SignalEngineState {
       if (d.userAdaptation) persistUserAdaptationStore(userAdaptation);
       if (d.aiSnapshot) persistAiSnapshotStore(aiSnapshot);
       exchangeManager.current.disconnectWebSocket();
+      engineBridgeRef.current = null;
     };
   }, []);
 
   useEffect(() => {
+    const klineSymbols = mergeScannerKlineSymbols(scannerTickerExtras);
     exchangeManager.current.updateTickerSymbols(mergedTickerSymbols);
-  }, [mergedTickerSymbols]);
+    exchangeManager.current.updateKlineSymbols(klineSymbols);
+
+    const prev = new Set(prevKlineSymbolsRef.current);
+    const added = klineSymbols.filter((s) => !prev.has(s));
+    prevKlineSymbolsRef.current = klineSymbols;
+
+    if (added.length > 0) {
+      if (engineBridgeRef.current) {
+        void engineBridgeRef.current.backfillNewSymbols(added);
+      } else {
+        pendingKlineBackfillRef.current = [...new Set([...pendingKlineBackfillRef.current, ...added])];
+      }
+    }
+  }, [mergedTickerSymbols, scannerTickerExtras]);
 
   return useMemo(
     () => ({

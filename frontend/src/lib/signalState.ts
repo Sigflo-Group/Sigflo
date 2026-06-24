@@ -4,8 +4,17 @@ export type UiSignalState = 'setup_forming' | 'in_play' | 'triggered';
 
 export function uiSignalStateFromMarketStatus(status: MarketRowStatus): UiSignalState {
   if (status === 'triggered') return 'triggered';
-  if (status === 'developing' || status === 'overextended' || status === 'extended') return 'in_play';
+  if (status === 'developing') return 'in_play';
+  if (status === 'overextended' || status === 'extended') return 'setup_forming';
   return 'setup_forming';
+}
+
+export function marketStatusLabel(status: MarketRowStatus): string {
+  if (status === 'triggered') return 'Triggered';
+  if (status === 'developing') return 'Developing';
+  if (status === 'extended') return 'Extended';
+  if (status === 'overextended') return 'Overextended';
+  return 'Setup forming';
 }
 
 export function uiSignalStateLabel(state: UiSignalState): string {

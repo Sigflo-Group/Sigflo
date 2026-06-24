@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { createPlaybackSession, stepForward } from '@/lib/candlePlayback';
 import {
   breakoutScenario5m,
   overextendedScenario5m,
@@ -117,5 +118,17 @@ describe('scanner lab scenario fixtures', () => {
     expect(pullback?.detectorQualified).toBe(true);
     expect(pullback?.timingTriggered).toBe(true);
     expect(pullback?.lifecycle && isLabTimingTriggered(pullback.lifecycle)).toBe(true);
+  });
+
+  it('pullback scenario emits only one history entry through outcome bars', () => {
+    let session = createPlaybackSession({ scenario: 'pullback' });
+    while (session.state.index < session.state.total) {
+      session = stepForward(session);
+    }
+    const signals = session.state.emittedSignals.filter(
+      (s) => s.scenario === 'pullback' && s.setupType === 'pullback',
+    );
+    expect(signals).toHaveLength(1);
+    expect(signals[0]?.candleIndex).toBe(SCENARIO_TRIGGER_CANDLE.pullback);
   });
 });

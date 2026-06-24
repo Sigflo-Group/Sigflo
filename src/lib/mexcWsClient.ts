@@ -91,6 +91,10 @@ export class MexcWsClient {
   updateTickerSymbols(_next: string[]) {
   }
 
+  // MEXC kline topics are fixed at connect — dynamic subscribe is a no-op.
+  updateKlineSymbols(_next: string[]) {
+  }
+
   connect() {
     this.running = true;
     this.openSocket();

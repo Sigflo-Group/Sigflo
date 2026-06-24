@@ -40,8 +40,9 @@ describe('pullback lab timing', () => {
       ticker: {
         symbol: 'ETHUSDT',
         lastPrice: 111,
-        change24h: 0,
+        price24hPcnt: 0,
         volume24h: 0,
+        turnover24h: 0,
         high24h: 112,
         low24h: 108,
       },

@@ -813,10 +813,16 @@ export function TradeScreen() {
     return bybitSnap ?? mexcSnap ?? null;
   }, [activeExchange, bybitSnap, mexcSnap]);
 
+  const chartDataExchange: 'bybit' | 'mexc' = useMemo(() => {
+    if (isManageMode && managePositionExchange) return managePositionExchange;
+    if (selectedSignal.exchange === 'mexc') return 'mexc';
+    return 'bybit';
+  }, [isManageMode, managePositionExchange, selectedSignal.exchange]);
+
   const live = useLiveTradeMarket(liveSymbol, chartInterval, {
     uiThrottleMs: isManageMode ? 16 : undefined,
     immediateUiOnTick: isManageMode,
-    exchange: activeExchange ?? 'bybit',
+    exchange: chartDataExchange,
   });
   const [manageFastMark, setManageFastMark] = useState<number | undefined>(undefined);
 
@@ -3004,8 +3010,16 @@ export function TradeScreen() {
           const pos = args.pos;
           const qtyBase = Math.abs(pos.size) * Math.min(1, Math.max(0, fraction));
           const qtyStr = linearQtyFromBaseAmount(qtyBase);
-          const closeSide = pos.side === 'long' ? 'Sell' : 'Buy';
+          const positionSide = pos.side?.toLowerCase() === 'short' ? 'short' : 'long';
+          const closeSide = positionSide === 'long' ? 'Sell' : 'Buy';
           if (activeExchange === 'mexc') {
+            console.log('[Sigflo][Trade] MEXC close order', {
+              symbol: pos.symbol,
+              positionSide,
+              closeSide,
+              qty: qtyStr,
+              fraction,
+            });
             await postMexcLinearOrder({
               symbol: pos.symbol,
               side: closeSide,

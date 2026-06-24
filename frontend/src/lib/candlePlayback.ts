@@ -51,6 +51,7 @@ export type PlaybackState = {
 
 export type PlaybackConfig = {
   symbol: string;
+  scenario?: ScenarioKey;
   windowSize: number;
   minSetupScore: number;
   cooldownCandles: number;
@@ -70,6 +71,8 @@ export type PlaybackSession = {
 type CooldownState = {
   lastIndex: number;
   lastSetupScore: number;
+  /** Dedupes re-emits while the same timing trigger remains active. */
+  lastTriggerTs: number | null;
 };
 
 const LAB_EMIT = defaultScannerFilterConfig();
@@ -119,9 +122,11 @@ function applyEvaluationsToSession(args: {
 
     const key = candidateKey(args.symbol, e.candidate.setupType);
     const prior = nextCooldown[key];
+    const triggerTs = e.lifecycle?.trigger.triggerCandleTs ?? null;
+    if (prior?.lastTriggerTs != null && prior.lastTriggerTs === triggerTs) continue;
     const cooldownElapsed = !prior || args.index - prior.lastIndex >= args.config.cooldownCandles;
     const improved = !prior || e.candidate.setupScore - prior.lastSetupScore >= args.config.minScoreImprovement;
-    if (!(cooldownElapsed || improved)) continue;
+    if (prior && !(cooldownElapsed && improved)) continue;
 
     const signal: PlaybackSignal = {
       ...e.candidate,
@@ -132,7 +137,11 @@ function applyEvaluationsToSession(args: {
       scoreLabel: getSetupScoreLabel(e.candidate.setupScore),
       whyFired: compactWhyFired(e),
     };
-    nextCooldown[key] = { lastIndex: args.index, lastSetupScore: e.candidate.setupScore };
+    nextCooldown[key] = {
+      lastIndex: args.index,
+      lastSetupScore: e.candidate.setupScore,
+      lastTriggerTs: triggerTs,
+    };
     newSignals.push(signal);
   }
 
@@ -211,6 +220,7 @@ export class CandlePlaybackController {
       const signal: PlaybackSignal = {
         ...e.candidate,
         symbol: this.config.symbol,
+        scenario: this.config.scenario ?? 'breakout',
         timestamp: currentCandle.timestamp,
         candleIndex: this.currentIndex,
         scoreLabel: getSetupScoreLabel(e.candidate.setupScore),
@@ -219,6 +229,7 @@ export class CandlePlaybackController {
       this.cooldownRegistry[key] = {
         lastIndex: this.currentIndex,
         lastSetupScore: e.candidate.setupScore,
+        lastTriggerTs: null,
       };
       this.emittedSignals.push(signal);
       newSignals.push(signal);

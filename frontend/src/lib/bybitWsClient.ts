@@ -72,7 +72,7 @@ export class BybitWsClient {
   private reconnectAttempt = 0;
   private running = false;
   private readonly options: BybitWsClientOptions;
-  private readonly klineSymbols: string[];
+  private klineSymbols: string[];
   private tickerSymbols: string[];
 
   constructor(options: BybitWsClientOptions) {
@@ -83,6 +83,33 @@ export class BybitWsClient {
     }
     this.klineSymbols = [...kline];
     this.tickerSymbols = [...(options.tickerSymbols ?? kline)];
+  }
+
+  /** Add/remove kline (+ optional publicTrade) subscriptions without reconnecting. */
+  updateKlineSymbols(next: string[]) {
+    const merged = [...new Set(next)];
+    const prev = this.klineSymbols;
+    this.klineSymbols = merged;
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+    const intervals = this.options.klineIntervals ?? ['5', '15'];
+    const prevTopics = new Set([
+      ...prev.flatMap((symbol) => intervals.map((i) => `kline.${i}.${symbol}`)),
+      ...(this.options.includePublicTrades ? prev.map((symbol) => `publicTrade.${symbol}`) : []),
+    ]);
+    const nextTopics = new Set([
+      ...merged.flatMap((symbol) => intervals.map((i) => `kline.${i}.${symbol}`)),
+      ...(this.options.includePublicTrades ? merged.map((symbol) => `publicTrade.${symbol}`) : []),
+    ]);
+    const toUnsub = [...prevTopics].filter((t) => !nextTopics.has(t));
+    const toSub = [...nextTopics].filter((t) => !prevTopics.has(t));
+    if (toUnsub.length) {
+      this.ws.send(JSON.stringify({ op: 'unsubscribe', args: toUnsub }));
+      this.log(`[WS] kline unsubscribe: ${toUnsub.length} topics`);
+    }
+    if (toSub.length) {
+      this.ws.send(JSON.stringify({ op: 'subscribe', args: toSub }));
+      this.log(`[WS] kline subscribe: ${toSub.length} topics`);
+    }
   }
 
   /** Add/remove ticker-only subscriptions while keeping kline topics unchanged. */

@@ -165,13 +165,13 @@ export function buildAllSignalsFromMarket(
       adaptationConfidenceAdjustment: input.adaptationConfidenceAdjustmentForSetup?.(out.setupType),
       adaptiveFeedback: input.adaptiveFeedbackForSetup?.(out.setupType, out.side),
     });
-    const emitThreshold = input.strategyPersonalityProfile?.minConfidenceToEmit ?? 45;
-    if (bias.confidence < emitThreshold) {
+    const emitThreshold = 45;
+    if (setupScore < emitThreshold) {
       input.onReject?.(detector.name, 'confidence_below_threshold', {
-        confidence: bias.confidence,
+        confidence: setupScore,
         threshold: emitThreshold,
       });
-      if (DEBUG) debugRejectLog.push({ detector: detector.name, reason: 'confidence_below_threshold', detail: { confidence: bias.confidence, threshold: emitThreshold } });
+      if (DEBUG) debugRejectLog.push({ detector: detector.name, reason: 'confidence_below_threshold', detail: { confidence: setupScore, threshold: emitThreshold } });
       continue;
     }
     const previousLifecycle =

@@ -157,6 +157,10 @@ export async function postMexcSetLinearLeverage(body: {
   });
 }
 
+function toMexcSymbol(sym: string): string {
+  return sym.endsWith('USDT') ? sym.slice(0, -4) + '_USDT' : sym;
+}
+
 export async function postMexcLinearOrder(body: {
   symbol: string;
   side: 'Buy' | 'Sell';
@@ -171,6 +175,7 @@ export async function postMexcLinearOrder(body: {
   return tradePost<MexcLinearOrderResponse>('/trade/mexc/linear-order', {
     orderType: 'Market',
     ...body,
+    symbol: toMexcSymbol(body.symbol),
   });
 }
 
@@ -190,7 +195,10 @@ export async function postMexcLinearTradingStop(body: {
   takeProfit?: string;
   stopLoss?: string;
 }): Promise<MexcLinearTradingStopResponse> {
-  return tradePost<MexcLinearTradingStopResponse>('/trade/mexc/linear-trading-stop', body);
+  return tradePost<MexcLinearTradingStopResponse>('/trade/mexc/linear-trading-stop', {
+    ...body,
+    symbol: toMexcSymbol(body.symbol),
+  });
 }
 
 export async function postBybitSpotOrder(body: {

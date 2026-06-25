@@ -20,27 +20,44 @@ function base64ToBytes(b64: string): Uint8Array {
 }
 
 function getKey(): Uint8Array {
-  // Key is persisted in localStorage so encrypted credentials survive reloads.
-  // Trade-off: same-origin XSS could read key + ciphertext. Prefer session-only key
-  // if threat model requires stronger isolation than obfuscation-at-rest.
+  // The encryption key is stored in sessionStorage so it doesn't persist across
+  // browser restarts. This limits the XSS exposure window: an attacker who can
+  // read sessionStorage (same-origin XSS) still gets key + ciphertext, but
+  // credentials are cleared when the tab/window is closed.
+  //
+  // Trade-off accepted: users must re-enter API keys after closing the browser.
+  // Legacy: older installs stored the key in localStorage; we still read it for
+  // backward compat so existing credentials aren't wiped on upgrade.
   if (cacheKey) return cacheKey;
   try {
-    const stored = localStorage.getItem(KEY_STORAGE);
-    if (stored) {
-      cacheKey = base64ToBytes(stored);
+    // Prefer sessionStorage (current scheme).
+    const session = globalThis.sessionStorage?.getItem(KEY_STORAGE);
+    if (session) {
+      cacheKey = base64ToBytes(session);
+      return cacheKey;
+    }
+    // Fall back to localStorage for legacy keys generated before this change.
+    const legacy = globalThis.localStorage?.getItem(KEY_STORAGE);
+    if (legacy) {
+      cacheKey = base64ToBytes(legacy);
+      // Migrate: write to sessionStorage and remove from localStorage so the
+      // next restart generates a fresh session-scoped key.
+      try { globalThis.sessionStorage?.setItem(KEY_STORAGE, legacy); } catch { /* quota */ }
+      try { globalThis.localStorage?.removeItem(KEY_STORAGE); } catch { /* ignore */ }
       return cacheKey;
     }
   } catch {
-    // Ignore storage access failures and fall back to in-memory key generation.
+    // Ignore storage access failures (e.g. private-browsing restrictions).
   }
   cacheKey = crypto.getRandomValues(new Uint8Array(KEY_BYTES));
   try {
-    localStorage.setItem(KEY_STORAGE, bytesToBase64(cacheKey));
+    globalThis.sessionStorage?.setItem(KEY_STORAGE, bytesToBase64(cacheKey));
   } catch {
     // Best-effort persistence only.
   }
   return cacheKey;
 }
+
 
 function xorDecrypt(encoded: string): string | null {
   try {

@@ -222,13 +222,17 @@ export function useLiveTradeMarket(
     const applyTickerToCandles = (price: number) => {
       const active = candlesRef.current[interval];
       if (active.length > 0) {
-        const last = active[active.length - 1];
-        active[active.length - 1] = {
-          ...last,
-          close: price,
-          high: Math.max(last.high, price),
-          low: Math.min(last.low, price),
-        };
+        const last = active[active.length - 1]!;
+        // Replace the array reference so any referential-equality checks detect the update.
+        candlesRef.current[interval] = [
+          ...active.slice(0, -1),
+          {
+            ...last,
+            close: price,
+            high: Math.max(last.high, price),
+            low: Math.min(last.low, price),
+          },
+        ];
       }
     };
 

@@ -27,6 +27,11 @@ function clamp(n: number, lo: number, hi: number): number {
   return Math.min(hi, Math.max(lo, n));
 }
 
+// TODO(vNext): Remove deprecated index-based fields in interfaces below.
+// All index-based fields (e.g. firstValidEntryCandleIndex, candleIndex, peakTimingCandleIndex, peakActionabilityCandleIndex)
+// are unreliable due to ring-buffer modifications. Migrate fully to their timestamp-based counterparts
+// (e.g. triggerCandleTs, peakTimingCandleTs, peakActionabilityCandleTs) for elapsed-candle counting.
+
 export interface TriggerMetadata {
   triggerType: ScannerTriggerType;
   triggerReason: string;

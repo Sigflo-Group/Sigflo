@@ -37,7 +37,7 @@ Docker compose mounts root source files directly into the container — no front
 
 ## Env & config quirks
 
-- **`Vite allowedHosts`:** `vite.config.ts` sets `server.allowedHosts: true` for Cursor/proxy compat
+- **`Vite allowedHosts`:** `vite.config.ts` sets `server.allowedHosts` to an explicit array (`localhost`, `127.0.0.1`, `.gitpod.io`, `.cursor.app`, `.loca.lt`) for Cursor/proxy compat
 - **Vite strictPort:** `true` — if port 5173 is taken, Vite errors rather than picking next port (Netlify Dev proxy would break)
 - **Vite merges `backend/.env`** into dev middleware for AI env vars (see `vite.config.ts` `loadAiSecretsFromDisk`)
 - **`OPENAI_API_KEY`** must not be an empty string in OS env — Vite prefers `process.env` over `.env.local` (workaround in `vite.config.ts`)

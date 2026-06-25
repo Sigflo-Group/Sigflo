@@ -24,7 +24,7 @@ import type { PlaybackCandle } from '@/types/market';
 function scanTimingTriggers(candles: PlaybackCandle[]) {
   const minScore = defaultScannerFilterConfig().minSetupScore;
   const hits: Array<{ bar: number; setupType: string; score: number }> = [];
-  let lifecycleRegistry: Partial<Record<'breakout' | 'pullback' | 'overextended', CandidateLifecycle>> = {};
+  const lifecycleRegistry: Partial<Record<'breakout' | 'pullback' | 'overextended', CandidateLifecycle>> = {};
   for (let i = MIN_ENGINE_BARS; i <= candles.length; i += 1) {
     const visible = candles.slice(0, i);
     const { evaluations } = runScannerLabEngineEvaluations('LAB', visible, 'neutral', lifecycleRegistry);
@@ -45,7 +45,7 @@ function replayThroughTrigger(
   symbol: string,
 ) {
   const candles = scenarioThroughTrigger(key);
-  let lifecycleRegistry: Partial<Record<'breakout' | 'pullback' | 'overextended', CandidateLifecycle>> = {};
+  const lifecycleRegistry: Partial<Record<'breakout' | 'pullback' | 'overextended', CandidateLifecycle>> = {};
   for (let i = MIN_ENGINE_BARS; i <= candles.length; i += 1) {
     const { evaluations } = runScannerLabEngineEvaluations(
       symbol,

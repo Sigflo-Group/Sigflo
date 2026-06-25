@@ -11,8 +11,6 @@ export type TrackedSymbol = (typeof TRACKED_SYMBOLS)[number];
 export const GAINERS_LIMIT = 15;
 /** Top 24h % losers (negative movers) merged into the Movers tab for short-bias tape. */
 export const LOSERS_LIMIT = 10;
-/** @deprecated Use GAINERS_LIMIT */
-export const TRENDING_LIMIT = GAINERS_LIMIT;
 
 /** Base asset for display / engine match (e.g. BTCUSDT → BTC). */
 export function symbolToPair(symbol: string): string {

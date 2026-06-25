@@ -1,4 +1,5 @@
 import { ensureRootEnvLoaded } from './lib/load-root-env.mjs';
+import { verifySupabaseBearer } from './lib/verify-supabase-auth.mjs';
 
 const rawOrigin = (
   process.env.BACKEND_API_ORIGIN ?? process.env.VITE_BACKEND_API_BASE ?? ''
@@ -41,6 +42,18 @@ export const handler = async (event) => {
         error:
           'Exchange API proxy not configured — set BACKEND_API_ORIGIN in Netlify env vars (e.g. https://your-app.up.railway.app)',
       }),
+    };
+  }
+
+  // Defence-in-depth: verify JWT before forwarding to backend.
+  // The backend also validates JWTs in production; this prevents unauthenticated
+  // requests from reaching the backend even when SUPABASE_JWT_SECRET is misconfigured there.
+  const auth = await verifySupabaseBearer(event.headers?.authorization ?? event.headers?.Authorization, process.env);
+  if (!auth.ok) {
+    return {
+      statusCode: auth.statusCode,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ error: auth.error }),
     };
   }
 

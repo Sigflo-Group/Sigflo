@@ -97,14 +97,10 @@ export default function App() {
     return () => clearTimeout(t);
   }, []);
 
-  const skipSplash =
-    isAuthFastEntryPath(location.pathname) ||
-    location.pathname === '/disclosure' ||
-    location.pathname === '/terms' ||
-    location.pathname === '/privacy' ||
-    location.pathname === '/privacy/' ||
-    location.pathname === '/legal' ||
-    location.pathname === '/legal/';
+  // Normalise path: strip trailing slash so /legal/ and /legal both match.
+  const normPath = location.pathname.replace(/\/$/, '') || '/';
+  const SPLASH_SKIP_PATHS = new Set(['/disclosure', '/terms', '/privacy', '/legal']);
+  const skipSplash = isAuthFastEntryPath(normPath) || SPLASH_SKIP_PATHS.has(normPath);
   const showSplash = !skipSplash && (!splashMinElapsed || authLoading);
 
   useEffect(() => {
@@ -133,7 +129,7 @@ export default function App() {
         <Suspense fallback={<SplashScreen />}>
         <Routes>
           <Route path="/login" element={<LoginScreen />} />
-          <Route path="/disclosure" element={<LegalScreen />} />
+          <Route path="/disclosure" element={<Navigate to="/legal" replace />} />
           <Route path="/terms" element={<LegalScreen />} />
           <Route path="/privacy" element={<PrivacyPolicyScreen />} />
           <Route path="/legal" element={<LegalScreen />} />

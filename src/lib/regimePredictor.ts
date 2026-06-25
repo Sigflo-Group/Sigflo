@@ -8,8 +8,7 @@ import type {
   RegimePredictorState,
   RegimeTransitionPressures,
 } from '@/types/regimePredictor';
-
-const REGIME_PREDICTOR_STORE_KEY = '__SIGFLO_REGIME_PREDICTOR_V1__';
+export { loadRegimePredictorStore, persistRegimePredictorStore } from '@/lib/engineStorage';
 
 const PRESSURE_KEYS: Array<keyof RegimeTransitionPressures> = [
   'trendToRange',
@@ -394,22 +393,4 @@ export function updateRegimePredictor(args: {
   };
 }
 
-export function loadRegimePredictorStore(): Record<string, RegimePredictorState> {
-  try {
-    const raw = globalThis.localStorage?.getItem(REGIME_PREDICTOR_STORE_KEY);
-    if (!raw) return {};
-    const parsed = JSON.parse(raw) as Record<string, RegimePredictorState>;
-    return parsed && typeof parsed === 'object' ? parsed : {};
-  } catch {
-    return {};
-  }
-}
-
-export function persistRegimePredictorStore(store: Record<string, RegimePredictorState>): void {
-  try {
-    globalThis.localStorage?.setItem(REGIME_PREDICTOR_STORE_KEY, JSON.stringify(store));
-  } catch {
-    // Ignore quota/privacy failures.
-  }
-}
 

@@ -123,7 +123,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         });
         if (error) throw error;
         if (data?.user && !data.user.email_confirmed_at) {
-          await supabase.auth.signOut();
+          try { await supabase.auth.signOut(); } catch { /* best-effort — still return no session */ }
           return { session: null };
         }
         return { session: data.session };

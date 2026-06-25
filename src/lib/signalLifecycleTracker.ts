@@ -27,7 +27,9 @@ export type SignalLifecycleTrackerStore = {
   generatedInsights: Array<{ ts: number; symbol: string; setupType: SignalSetupType; insight: string }>;
 };
 
-const MAX_EVENTS = 300;
+export const MAX_LIFECYCLE_EVENTS = 300;
+/** @internal kept as alias for existing usages within this module */
+const MAX_EVENTS = MAX_LIFECYCLE_EVENTS;
 const ARCHIVE_AFTER_MS = 7 * 24 * 60 * 60 * 1000;
 const STALE_SIGNAL_AFTER_MS = 18 * 60 * 60 * 1000;
 const STALE_SIGNAL_AFTER_15M_CANDLES = 72;

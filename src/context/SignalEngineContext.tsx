@@ -10,52 +10,29 @@ import {
 } from 'react';
 import { runScannerDeterminismCheck } from '@/engine/scannerDeterminism';
 import { exchangeManager } from '@/core/exchange-manager';
-import { buildAllSignalsFromMarket, inferMarketRegime } from '@/lib/signalDetectors';
-import { timingStatePriority, coreMetrics } from '@/lib/detectors/shared';
-import { isSignalTimingTriggered } from '@/lib/marketScannerRows';
-import { atr } from '@/lib/indicators';
-import { updateMarketMemory, type MarketMemorySnapshot } from '@/lib/marketMemory';
 import {
   DEFAULT_STRATEGY_PERSONALITY_MODE,
-  STRATEGY_PERSONALITY_PROFILES,
   type StrategyPersonalityMode,
 } from '@/lib/strategyPersonality';
 import {
-  appendAiSnapshotIfTriggered,
-  findActiveLifecycleEvent,
-} from '@/lib/aiSnapshotLog';
-import {
-  updateRegimePredictor,
-} from '@/lib/regimePredictor';
-import {
   createEmptySignalLifecycleTracker,
-  deriveAdaptiveFeedback,
-  registerSignalLifecycleEvent,
-  updateSignalLifecycleOutcomes,
   type SignalLifecycleTrackerStore,
 } from '@/lib/signalLifecycleTracker';
-import { recordScannerDiagnostic } from '@/lib/scannerDiagnostics';
-import { SCANNER_LIFECYCLE_CONFIG } from '@/lib/scannerConfig';
 import {
-  explainNotTriggered,
   logScannerHealthSummary,
-  recordScannerPipelineReport,
 } from '@/lib/scannerPipelineHealth';
 import {
-  adaptationConfidenceAdjustment,
   registerSignalFollow,
-  registerSignalImpression,
   type UserAdaptationStore,
 } from '@/lib/userAdaptation';
+import { type MarketMemorySnapshot } from '@/lib/marketMemory';
 import { TRACKED_SYMBOLS, mergeScannerKlineSymbols } from '@/lib/marketScannerRows';
 import type { CandidateLifecycle } from '@/lib/timingLifecycle';
 import type { NormalizedKline } from '@/core/market-data-interface';
 import type { Candle, SymbolTicker } from '@/types/market';
 import type { AiSnapshotStore } from '@/types/aiSnapshot';
-import type { CryptoSignal, SignalSetupType, SignalSide } from '@/types/signal';
+import type { CryptoSignal } from '@/types/signal';
 import type { RegimePredictorOutput, RegimePredictorState } from '@/types/regimePredictor';
-import { shouldAnnounceScannerBiasFlip } from '@/lib/biasFlipNotifyGate';
-import { emitGlobalAnnouncement } from '@/lib/globalAnnouncements';
 import {
   loadMarketMemoryStore,
   persistMarketMemoryStore,
@@ -73,11 +50,20 @@ import {
   persistAiSnapshotStore,
 } from '@/lib/engineStorage';
 import {
-  signalPairToLinearKey,
-  signalEmitKey,
   emptyIntervalCandles,
   upsertCandle,
 } from '@/lib/engineUtils';
+import {
+  recomputeForSymbol,
+  pushEngineState,
+  type EngineStores,
+  type PipelineCallbacks,
+} from '@/lib/enginePipeline';
+import {
+  backfillFromRest,
+  backfillNewSymbols,
+  type BootstrapContext,
+} from '@/lib/engineBootstrap';
 
 const DEBUG = import.meta.env.DEV || !!(globalThis as Record<string, unknown>).__SIGFLO_DEBUG__;
 
@@ -110,10 +96,6 @@ export type SignalEngineState = {
   setAdvancedPanelExpanded: (panelId: string, expanded: boolean) => void;
 };
 
-import {
-  ENGINE_EMIT_CONFIG,
-  evaluateEmitGate,
-} from '@/lib/scannerEngineConfig';
 type CandleStore = Record<string, Record<string, Candle[]>>;
 /** Same as Markets Tracked list — WS klines + tickers for live scanner + detectors. */
 const STREAM_SYMBOLS: string[] = [...TRACKED_SYMBOLS];
@@ -133,25 +115,31 @@ function useSignalEngineValue(): SignalEngineState {
     | 'regimePredictorBySymbol'
     | 'aiSnapshotLog'
   >;
-  const initialAiLog = loadAiSnapshotStore();
-  const initialProPrefs = loadProIntelligencePrefs();
-  const aiSnapshotStoreRef = useRef<AiSnapshotStore>(initialAiLog);
-  const [state, setState] = useState<EngineSnapshotState>({
-    signals: [],
-    loading: true,
-    mode: 'REST',
-    connection: 'disconnected',
-    outcomeFeedbackSummary: [],
-    lifecycleAnalytics: createEmptySignalLifecycleTracker(),
-    regimePredictorBySymbol: {},
-    aiSnapshotLog: initialAiLog,
+  const aiSnapshotStoreRef = useRef<AiSnapshotStore>(undefined as unknown as AiSnapshotStore);
+  const [state, setState] = useState<EngineSnapshotState>(() => {
+    const initialAiLog = loadAiSnapshotStore();
+    aiSnapshotStoreRef.current = initialAiLog;
+    return {
+      signals: [],
+      loading: true,
+      mode: 'REST',
+      connection: 'disconnected',
+      outcomeFeedbackSummary: [],
+      lifecycleAnalytics: createEmptySignalLifecycleTracker(),
+      regimePredictorBySymbol: {},
+      aiSnapshotLog: initialAiLog,
+    };
   });
   const [liveTickersBySymbol, setLiveTickersBySymbol] = useState<Record<string, SymbolTicker>>({});
   const [scannerTickerExtras, setScannerTickerExtras] = useState<string[]>([]);
-  const [proIntelligenceMode, setProIntelligenceModeState] = useState<boolean>(initialProPrefs.enabled);
-  const [advancedLayout, setAdvancedLayoutState] = useState<'compact' | 'expanded'>(initialProPrefs.layout);
+  const [proIntelligenceMode, setProIntelligenceModeState] = useState<boolean>(
+    () => loadProIntelligencePrefs().enabled,
+  );
+  const [advancedLayout, setAdvancedLayoutState] = useState<'compact' | 'expanded'>(
+    () => loadProIntelligencePrefs().layout,
+  );
   const [advancedPanelsExpanded, setAdvancedPanelsExpanded] = useState<Record<string, boolean>>(
-    initialProPrefs.panelExpanded,
+    () => loadProIntelligencePrefs().panelExpanded,
   );
   const proIntelligenceModeRef = useRef(proIntelligenceMode);
   const advancedLayoutRef = useRef(advancedLayout);
@@ -270,8 +258,8 @@ function useSignalEngineValue(): SignalEngineState {
     });
     dirtyPersistRef.current.userAdaptation = true;
     schedulePersistRef.current();
+    // adaptationTick increment already triggers a re-render for userAdaptation consumers.
     setAdaptationTick((n) => n + 1);
-    setState((prev) => ({ ...prev }));
   }, []);
 
   useEffect(() => {
@@ -280,27 +268,11 @@ function useSignalEngineValue(): SignalEngineState {
 
   useEffect(() => {
     let cancelled = false;
+    const cancelledRef = { current: false };
+    const backfillGenRef = { current: 0 };
 
     function getKlineSymbols(): string[] {
       return mergeScannerKlineSymbols(scannedTickerExtrasRef.current);
-    }
-
-    async function fetchKlinesSafe(symbols: string[]) {
-      const ok: Array<{ symbol: string; candles5m: Candle[]; candles15m: Candle[] }> = [];
-      // Process symbols sequentially and fetch intervals sequentially per symbol.
-      // Combined with the per-request throttle in the Bybit client this avoids
-      // production rate-limiting on bootstrap.
-      for (const symbol of symbols) {
-        try {
-          const candles5m = await exchangeManager.current.fetchKlines(symbol, '5', 240);
-          const candles15m = await exchangeManager.current.fetchKlines(symbol, '15', 240);
-          ok.push({ symbol, candles5m, candles15m });
-        } catch (err) {
-          // Always log kline backfill failures in production so we can see rate-limiting.
-          console.warn('[Sigflo][Engine] skipped symbol kline backfill', symbol, err);
-        }
-      }
-      return ok;
     }
 
     if (import.meta.env.DEV && !didPrintDeterminismRef.current) {
@@ -311,547 +283,70 @@ function useSignalEngineValue(): SignalEngineState {
       console.log('[Sigflo][Engine] determinism pass 2', check.secondPass);
     }
 
-    function rankCryptoSignals(signals: CryptoSignal[]): CryptoSignal[] {
-      return [...signals].sort((a, b) => {
-        const triggeredDelta =
-          (isSignalTimingTriggered(b) ? 1 : 0) - (isSignalTimingTriggered(a) ? 1 : 0);
-        if (triggeredDelta !== 0) return triggeredDelta;
-        const timingDelta = timingStatePriority(b.timingState) - timingStatePriority(a.timingState);
-        if (timingDelta !== 0) return timingDelta;
-        return b.setupScore - a.setupScore;
-      });
+    // Build the shared stores/callbacks bags that enginePipeline and engineBootstrap use.
+    const engineStores: EngineStores = {
+      candlesRef,
+      tickersRef,
+      signalBookRef,
+      lifecycleRef,
+      marketMemoryRef,
+      signalLifecycleStoreRef,
+      regimePredictorStoreRef,
+      aiSnapshotStoreRef,
+      userAdaptationRef,
+      lastSignalRef,
+      lastEmittedCandleTsRef,
+      biasSideBySymbolRef,
+      streamReadyRef,
+      wsConnectedRef,
+      strategyPersonalityModeRef,
+      dirtyPersistRef,
+      schedulePersistRef,
+    };
+    const engineCallbacks: PipelineCallbacks = {
+      setEngineState: setState,
+      setLiveTickersBySymbol,
+      setAdaptationTick,
+      getKlineSymbols,
+      streamSymbols: STREAM_SYMBOLS,
+    };
+    const bootstrapCtx: BootstrapContext = {
+      stores: engineStores,
+      callbacks: engineCallbacks,
+      cancelledRef,
+      backfillGenRef,
+      pendingWSCandlesRef,
+    };
+
+    // Convenience wrappers that keep WS callbacks concise.
+    function pushState(
+      mode: SignalEngineState['mode'],
+      connection: SignalEngineState['connection'],
+      error?: string,
+    ) {
+      pushEngineState(engineStores, engineCallbacks, mode, connection, error);
+    }
+    function recompute(symbol: string, mode: SignalEngineState['mode']) {
+      recomputeForSymbol(engineStores, engineCallbacks, symbol, mode);
     }
 
-    function pickCryptoSignalForSymbol(sym: string): CryptoSignal | null {
-      const matches = Object.values(signalBookRef.current).filter(
-        (s) => signalPairToLinearKey(s.pair) === sym,
-      );
-      return rankCryptoSignals(matches)[0] ?? null;
-    }
 
-    function pushState(mode: SignalEngineState['mode'], connection: SignalEngineState['connection'], error?: string) {
-      const ranked = rankCryptoSignals(Object.values(signalBookRef.current));
-      for (const sym of STREAM_SYMBOLS) {
-        const best = pickCryptoSignalForSymbol(sym);
-        if (!best) {
-          delete biasSideBySymbolRef.current[sym];
-          continue;
-        }
-        const next = best.side;
-        const prev = biasSideBySymbolRef.current[sym];
-        if (prev !== undefined && prev !== next && shouldAnnounceScannerBiasFlip(sym)) {
-          const shortLabel = sym.replace(/USDT$/i, '');
-          emitGlobalAnnouncement({
-            id: `bias-${sym}-${Date.now()}`,
-            kind: 'bias_flip',
-            title: 'Bias changed',
-            subtitle: `${shortLabel} ${prev === 'long' ? 'LONG' : 'SHORT'} → ${next === 'long' ? 'LONG' : 'SHORT'}`,
-          });
-        }
-        biasSideBySymbolRef.current[sym] = next;
-      }
-      setState((prev) => ({ ...prev,
-        signals: ranked,
-        loading: false,
-        mode,
-        connection,
-        error,
-        outcomeFeedbackSummary: signalLifecycleStoreRef.current.generatedInsights.slice(-4).map((x) => x.insight),
-        lifecycleAnalytics: signalLifecycleStoreRef.current,
-        regimePredictorBySymbol: Object.fromEntries(
-          Object.entries(regimePredictorStoreRef.current).map(([sym, row]) => [sym, row.output]),
-        ),
-        aiSnapshotLog: aiSnapshotStoreRef.current,
-      }));
-      schedulePersistRef.current();
-    }
+    // ---------------------------------------------------------------------------
+    // Bootstrap + WS
+    // ---------------------------------------------------------------------------
 
-    // REST bootstrap / reconnect catch-up:
-    // - backfill candles and tickers
-    // - refresh in-memory stores
-    // - run detector pipeline against fresh snapshots
-    let backfillGen = 0;
-    async function ingestSymbolBackfill(symbols: string[]) {
-      if (symbols.length === 0) return;
-      console.log('[Sigflo][Engine] ingestSymbolBackfill start', symbols);
-      const [tickers, symbolResults] = await Promise.all([
-        exchangeManager.current.fetchTickers(symbols),
-        fetchKlinesSafe(symbols),
-      ]);
-      console.log('[Sigflo][Engine] ingestSymbolBackfill got', {
-        tickers: tickers.length,
-        klineResults: symbolResults.length,
-      });
-      for (const ticker of tickers) tickersRef.current[ticker.symbol] = ticker;
-      for (const { symbol, candles5m, candles15m } of symbolResults) {
-        candlesRef.current[symbol] = {
-          ...emptyIntervalCandles(),
-          ...candlesRef.current[symbol],
-          '5': candles5m,
-          '15': candles15m,
-        };
-      }
-    }
 
-    async function backfillFromRest(reason: 'startup' | 'reconnect') {
-      const gen = ++backfillGen;
-      if (DEBUG) console.log(`[Sigflo][Engine] REST bootstrap (${reason})`);
-      streamReadyRef.current = false;
-      const finishBootstrap = (mode: SignalEngineState['mode']) => {
-        if (gen !== backfillGen || cancelled) return;
-        streamReadyRef.current = true;
-        console.log('[Sigflo][Engine] finishBootstrap', { reason, mode, gen, triggeredPairs: pipelineHealthCtx(mode, wsConnectedRef.current ? 'connected' : 'disconnected').triggeredPairs.length });
-        const seenPending = new Set<string>();
-        for (const pending of pendingWSCandlesRef.current) {
-          if (pending.interval !== '15') continue;
-          const key = `${pending.symbol}:${pending.ts}`;
-          if (seenPending.has(key)) continue;
-          seenPending.add(key);
-          recomputeForSymbol(pending.symbol, 'WS');
-        }
-        pendingWSCandlesRef.current = [];
-        setLiveTickersBySymbol({ ...tickersRef.current });
-        pushState(mode, wsConnectedRef.current ? 'connected' : 'disconnected');
-      };
 
-      try {
-        const tracked = [...TRACKED_SYMBOLS];
-        console.log('[Sigflo][Engine] bootstrap tracked symbols', tracked);
-        const trackedSet = new Set<string>(tracked);
-        await ingestSymbolBackfill(tracked);
-        if (gen !== backfillGen || cancelled) return;
-        for (const pending of pendingWSCandlesRef.current) {
-          if (pending.interval !== '15') continue;
-          const symbol = pending.symbol;
-          if (!candlesRef.current[symbol]) candlesRef.current[symbol] = emptyIntervalCandles();
-          candlesRef.current[symbol]['15'] = upsertCandle(candlesRef.current[symbol]['15'], {
-            ts: pending.ts,
-            open: pending.open,
-            high: pending.high,
-            low: pending.low,
-            close: pending.close,
-            volume: pending.volume,
-            isClosed: pending.confirmed,
-          });
-        }
-        for (const symbol of tracked) {
-          try {
-            recomputeForSymbol(symbol, 'REST');
-          } catch (recomputeErr) {
-            console.error('[Sigflo][Engine] recomputeForSymbol failed', symbol, recomputeErr);
-          }
-        }
-        const extras = getKlineSymbols().filter((s) => !trackedSet.has(s));
-        console.log('[Sigflo][Engine] bootstrap extras', extras);
-        if (extras.length > 0) {
-          await ingestSymbolBackfill(extras);
-          if (gen !== backfillGen || cancelled) return;
-          for (const symbol of extras) {
-            try {
-              recomputeForSymbol(symbol, 'REST');
-            } catch (recomputeErr) {
-              console.error('[Sigflo][Engine] recomputeForSymbol failed', symbol, recomputeErr);
-            }
-          }
-        }
-        recomputeAllFromStore('REST');
-        finishBootstrap('REST');
-      } catch (err) {
-        if (gen !== backfillGen || cancelled) return;
-        console.warn('[Sigflo][Engine] full bootstrap failed, retrying tracked only', err);
-        try {
-          await ingestSymbolBackfill([...TRACKED_SYMBOLS]);
-          if (gen !== backfillGen || cancelled) return;
-          for (const symbol of TRACKED_SYMBOLS) {
-            try {
-              recomputeForSymbol(symbol, 'REST');
-            } catch (recomputeErr) {
-              console.error('[Sigflo][Engine] recomputeForSymbol failed', symbol, recomputeErr);
-            }
-          }
-          recomputeAllFromStore('REST');
-          finishBootstrap('REST');
-        } catch (fallbackErr) {
-          if (gen !== backfillGen || cancelled) return;
-          pushState(
-            'OFFLINE',
-            wsConnectedRef.current ? 'reconnecting' : 'disconnected',
-            fallbackErr instanceof Error ? fallbackErr.message : 'Signal engine failed',
-          );
-        }
-      }
-    }
-
-    function pipelineHealthCtx(mode: SignalEngineState['mode'], connection: SignalEngineState['connection']) {
-      const triggeredPairs = [
-        ...new Set(
-          Object.values(signalBookRef.current)
-            .filter((s) => isSignalTimingTriggered(s))
-            .map((s) => s.pair),
-        ),
-      ];
-      return {
-        engineMode: mode,
-        connection,
-        streamReady: streamReadyRef.current,
-        wsConnected: wsConnectedRef.current,
-        triggeredPairs,
-      };
-    }
-
-    function pruneSignalBookForSymbol(symbol: string) {
-      const prefix = `${symbol}:`;
-      for (const key of Object.keys(signalBookRef.current)) {
-        if (key.startsWith(prefix)) delete signalBookRef.current[key];
-      }
-      for (const key of Object.keys(lifecycleRef.current)) {
-        if (key.startsWith(prefix)) delete lifecycleRef.current[key];
-      }
-    }
-
-    function pruneStaleSetupKeysForSymbol(symbol: string, activeKeys: Set<string>) {
-      const prefix = `${symbol}:`;
-      for (const key of Object.keys(signalBookRef.current)) {
-        if (key.startsWith(prefix) && !activeKeys.has(key)) delete signalBookRef.current[key];
-      }
-      for (const key of Object.keys(lifecycleRef.current)) {
-        if (key.startsWith(prefix) && !activeKeys.has(key)) delete lifecycleRef.current[key];
-      }
-    }
-
-    function recomputeForSymbol(symbol: string, mode: SignalEngineState['mode']) {
-      const connection = wsConnectedRef.current ? 'connected' : 'disconnected';
-      const healthCtx = () => pipelineHealthCtx(mode, connection);
-      const symbolCandles = candlesRef.current[symbol];
-      const ticker = tickersRef.current[symbol];
-      if (!symbolCandles || !ticker) {
-        recordScannerPipelineReport(
-          { symbol, stage: 'skip_no_ticker', ts: Date.now() },
-          healthCtx(),
-        );
-        pushState(mode, connection);
-        return;
-      }
-      // Strip the currently forming (open) candle so detectors always run on closed bars.
-      // REST backfill marks the last candle isClosed:false; WS marks confirmed candles isClosed:true.
-      const raw15m = symbolCandles['15'];
-      const openCandleStripped = raw15m.at(-1)?.isClosed === false;
-      const candles15m = openCandleStripped ? raw15m.slice(0, -1) : raw15m;
-      if (candles15m.length < 60) {
-        recordScannerPipelineReport(
-          { symbol, stage: 'skip_insufficient_candles', ts: Date.now() },
-          healthCtx(),
-        );
-        if (import.meta.env.DEV && openCandleStripped) {
-          console.log(`[Sigflo][Engine] ${symbol} open candle stripped → only ${candles15m.length} closed bars available`);
-        }
-        pushState(mode, connection);
-        return;
-      }
-      const btc15raw = candlesRef.current.BTCUSDT?.['15'] ?? [];
-      const eth15raw = candlesRef.current.ETHUSDT?.['15'] ?? [];
-      const btc15 = btc15raw.at(-1)?.isClosed === false ? btc15raw.slice(0, -1) : btc15raw;
-      const eth15 = eth15raw.at(-1)?.isClosed === false ? eth15raw.slice(0, -1) : eth15raw;
-      if (btc15.length < 60 || eth15.length < 60) {
-        recordScannerPipelineReport({ symbol, stage: 'skip_btc_eth_warmup', ts: Date.now() }, healthCtx());
-        pushState(mode, connection);
-        return;
-      }
-      if (import.meta.env.DEV && openCandleStripped) {
-        console.log(`[Sigflo][Engine] ${symbol} stripped open 15m candle ts=${raw15m.at(-1)?.ts}, running on ${candles15m.length} closed bars`);
-      }
-      const raw5m = symbolCandles['5'] ?? [];
-      const candles5m = raw5m.at(-1)?.isClosed === false ? raw5m.slice(0, -1) : raw5m;
-      const rejectCounters: Record<string, number> = {};
-      const regime = inferMarketRegime({ btc15m: btc15, eth15m: eth15 });
-      const marketInput = {
-        symbol,
-        exchange: 'Bybit' as const,
-        ticker,
-        candles15m,
-        candles5m,
-        regime,
-        previousLifecycleForSetupSide: (setupType: SignalSetupType, side: SignalSide) =>
-          lifecycleRef.current[signalEmitKey(symbol, setupType, side)],
-        previousMarketMemory: marketMemoryRef.current[symbol],
-        strategyPersonalityMode: strategyPersonalityModeRef.current,
-        strategyPersonalityProfile: STRATEGY_PERSONALITY_PROFILES[strategyPersonalityModeRef.current],
-        adaptationConfidenceAdjustmentForSetup: (setupType: SignalSetupType) =>
-          adaptationConfidenceAdjustment(userAdaptationRef.current, setupType),
-        adaptiveFeedbackForSetup: (setupType: SignalSetupType, side: SignalSide) =>
-          deriveAdaptiveFeedback(signalLifecycleStoreRef.current, symbol, setupType, side),
-        onReject: (detectorName: string, reason: 'no_signal' | 'confidence_below_threshold', meta?: { confidence?: number; threshold?: number }) => {
-          const rejectKey = `${detectorName}:${reason}`;
-          rejectCounters[rejectKey] = (rejectCounters[rejectKey] ?? 0) + 1;
-          if (import.meta.env.DEV) {
-            console.log(`[Sigflo][Engine] ${symbol} detector rejected`, { detectorName, reason, ...meta });
-          }
-        },
-      };
-      const builtSignals = buildAllSignalsFromMarket(marketInput);
-      const primaryBuilt =
-        builtSignals.length === 0
-          ? null
-          : (() => {
-              const topId = rankCryptoSignals(builtSignals.map((b) => b.signal))[0]?.id;
-              return builtSignals.find((b) => b.signal.id === topId) ?? builtSignals[0]!;
-            })();
-      if (Object.keys(rejectCounters).length > 0 && builtSignals.length === 0) {
-        const cm = coreMetrics(candles15m);
-        console.log(`[Sigflo][Engine] ${symbol} ALL detectors rejected`, {
-          rejectCounters,
-          close: cm.close,
-          ema20: cm.ema20,
-          ema50: cm.ema50,
-          rsi: cm.rsiNow,
-          atr: cm.atrNow,
-          volNow: cm.volNow,
-          volAvg: cm.volAvg,
-          swingHigh: cm.swingHigh,
-          swingLow: cm.swingLow,
-        });
-      }
-      signalLifecycleStoreRef.current = updateSignalLifecycleOutcomes({
-        store: signalLifecycleStoreRef.current,
-        symbol,
-        price: ticker.lastPrice,
-        now: Date.now(),
-        candleTs: candles15m.at(-1)?.ts ?? Date.now(),
-      });
-      dirtyPersistRef.current.signalLifecycle = true;
-      const nextMemory = updateMarketMemory({
-        symbol,
-        previous: marketMemoryRef.current[symbol],
-        candles15m,
-        signal: primaryBuilt?.signal ?? null,
-        now: Date.now(),
-      });
-      marketMemoryRef.current[symbol] = nextMemory;
-      dirtyPersistRef.current.marketMemory = true;
-      const nextRegimePredictor = updateRegimePredictor({
-        previous: regimePredictorStoreRef.current[symbol] ?? null,
-        symbol,
-        memory: nextMemory,
-        candles15m,
-        lifecycleEvents: signalLifecycleStoreRef.current.events,
-        now: Date.now(),
-      });
-      regimePredictorStoreRef.current[symbol] = nextRegimePredictor;
-      dirtyPersistRef.current.regimePredictor = true;
-
-      function flushAiSnapshot(
-        memory: MarketMemorySnapshot,
-        crypto: CryptoSignal | null,
-        regimePredictor: RegimePredictorOutput,
-      ) {
-        const activeLifecycle = findActiveLifecycleEvent(signalLifecycleStoreRef.current.events, symbol);
-        const snapResult = appendAiSnapshotIfTriggered({
-          store: aiSnapshotStoreRef.current,
-          symbol,
-          price: ticker.lastPrice,
-          memory,
-          cryptoSignal: crypto,
-          activeLifecycle,
-          regimePredictor,
-          now: Date.now(),
-        });
-        if (snapResult.appended) {
-          aiSnapshotStoreRef.current = snapResult.store;
-          dirtyPersistRef.current.aiSnapshot = true;
-          dirtyPersistRef.current.regimePredictor = true;
-        }
-      }
-
-      flushAiSnapshot(
-        nextMemory,
-        primaryBuilt?.signal ?? pickCryptoSignalForSymbol(symbol),
-        nextRegimePredictor.output,
-      );
-
-      if (builtSignals.length === 0) {
-        pruneSignalBookForSymbol(symbol);
-        recordScannerPipelineReport({ symbol, stage: 'skip_no_detector', ts: Date.now() }, healthCtx());
-        pushState(mode, connection);
-        return;
-      }
-
-      const activeKeys = new Set(
-        builtSignals.map((entry) => signalEmitKey(symbol, entry.signal.setupType, entry.signal.side)),
-      );
-      pruneStaleSetupKeysForSymbol(symbol, activeKeys);
-
-      const now = Date.now();
-      const lastClosedTs = candles15m.at(-1)?.ts ?? 0;
-      const prevCandleTs = lastEmittedCandleTsRef.current[symbol];
-      const atrNow = Math.max(0.000001, atr(candles15m, 14).at(-1) ?? 1);
-      const priceNow = ticker.lastPrice;
-      const personalityCooldown =
-        ENGINE_EMIT_CONFIG.cooldownMs *
-        (STRATEGY_PERSONALITY_PROFILES[strategyPersonalityModeRef.current]?.cooldownMultiplier ?? 1);
-
-      let anyEmitted = false;
-      for (const entry of builtSignals) {
-        const key = signalEmitKey(symbol, entry.signal.setupType, entry.signal.side);
-        const prev = lastSignalRef.current[key];
-        const emitGate = evaluateEmitGate({
-          now,
-          prev,
-          signalSetupScore: entry.signal.setupScore,
-          priceNow,
-          atrNow,
-          lastClosedTs,
-          prevCandleTs,
-          cooldownMs: personalityCooldown,
-        });
-        const { emit: shouldEmit } = emitGate;
-
-        signalBookRef.current[key] = entry.signal;
-        lifecycleRef.current[key] = entry.lifecycle;
-
-        if (!shouldEmit) {
-          if (DEBUG) {
-            console.log('[DETECTOR LIFECYCLE]', {
-              symbol,
-              key,
-              setupType: entry.signal.setupType,
-              side: entry.signal.side,
-              timingState: entry.signal.timingState,
-              suppressReason: 'cooldown',
-            });
-          }
-          continue;
-        }
-
-        anyEmitted = true;
-        userAdaptationRef.current = registerSignalImpression(userAdaptationRef.current, {
-          setupType: entry.signal.setupType,
-          riskLevel: entry.signal.riskLevel ?? 'moderate',
-          confidence: entry.signal.confidence ?? entry.signal.setupScore,
-          counterTrend: entry.signal.facts?.counterTrend === 'yes',
-        });
-        lastSignalRef.current[key] = {
-          emittedAt: now,
-          setupScore: entry.signal.setupScore,
-          refPrice: priceNow,
-          atr: atrNow,
-        };
-        signalLifecycleStoreRef.current = registerSignalLifecycleEvent({
-          store: signalLifecycleStoreRef.current,
-          signal: entry.signal,
-          symbol,
-          atrNow,
-          now,
-          strategyPersonalityMode: strategyPersonalityModeRef.current,
-        });
-        recordScannerDiagnostic({
-          symbol,
-          setupScore: entry.signal.setupScore,
-          setupType: entry.signal.setupType,
-          timingScore: entry.signal.timingScore ?? 0,
-          entryFreshnessScore: entry.signal.entryFreshnessScore ?? 0,
-          roomToTargetScore: entry.signal.roomToTargetScore ?? 0,
-          actionabilityScore: entry.signal.actionabilityScore ?? 0,
-          state: entry.signal.timingState ?? 'developing',
-          triggerType: entry.signal.triggerType ?? 'unknown',
-          idealEntryPrice: entry.signal.idealEntryPrice ?? null,
-          currentPrice: ticker.lastPrice,
-          atrExtensionFromIdeal:
-            entry.signal.idealEntryPrice && atrNow > 0
-              ? Math.abs(ticker.lastPrice - entry.signal.idealEntryPrice) / atrNow
-              : 0,
-          candlesSinceTrigger: entry.signal.candlesSinceTrigger ?? null,
-          candlesSincePeakTiming: entry.signal.candlesSincePeakTiming ?? null,
-          penalties: entry.signal.penaltyBreakdown ?? {
-            candlesLatePenalty: 0,
-            atrExtensionPenalty: 0,
-            percentExtensionPenalty: 0,
-            postTriggerImpulsePenalty: 0,
-            crowdedLevelPenalty: 0,
-            rrCompressionPenalty: 0,
-          },
-          positiveFactors: entry.signal.positiveTimingFactors ?? [],
-          ts: now,
-        });
-      }
-
-      if (anyEmitted) {
-        lastEmittedCandleTsRef.current[symbol] = lastClosedTs;
-        dirtyPersistRef.current.userAdaptation = true;
-        dirtyPersistRef.current.signalLifecycle = true;
-        setAdaptationTick((n) => n + 1);
-      }
-      dirtyPersistRef.current.lifecycle = true;
-
-      const reportSignal = primaryBuilt!.signal;
-      recordScannerPipelineReport(
-        {
-          symbol,
-          stage: anyEmitted ? 'emitted' : 'emitted_cooldown_suppressed',
-          setupType: reportSignal.setupType,
-          side: reportSignal.side,
-          timingState: reportSignal.timingState,
-          setupScore: reportSignal.setupScore,
-          actionabilityScore: reportSignal.actionabilityScore,
-          entryFreshnessScore: reportSignal.entryFreshnessScore,
-          timingScore: reportSignal.timingScore,
-          triggerHit: reportSignal.triggerType != null && reportSignal.triggerType !== 'unknown',
-          triggerType: reportSignal.triggerType,
-          emitThreshold:
-            STRATEGY_PERSONALITY_PROFILES[strategyPersonalityModeRef.current]?.minConfidenceToEmit ?? 45,
-          notTriggeredReasons: explainNotTriggered({
-            timingState: reportSignal.timingState,
-            triggerHit: reportSignal.triggerType != null && reportSignal.triggerType !== 'unknown',
-            actionabilityScore: reportSignal.actionabilityScore,
-            entryFreshnessScore: reportSignal.entryFreshnessScore,
-            triggeredActionabilityMin: SCANNER_LIFECYCLE_CONFIG.triggeredActionabilityMin,
-            triggeredFreshnessMin: SCANNER_LIFECYCLE_CONFIG.triggeredFreshnessMin,
-          }),
-          ts: now,
-        },
-        healthCtx(),
-      );
-      flushAiSnapshot(nextMemory, reportSignal, nextRegimePredictor.output);
-      pushState(mode, connection);
-    }
-
-    function recomputeAllFromStore(mode: SignalEngineState['mode']) {
-      for (const symbol of getKlineSymbols()) recomputeForSymbol(symbol, mode);
-    }
-
-    async function backfillNewSymbols(symbols: string[]) {
-      if (symbols.length === 0) return;
-      if (DEBUG) console.log(`[Sigflo][Engine] backfill new kline symbols`, symbols);
-      try {
-        const [tickers, symbolResults] = await Promise.all([
-          exchangeManager.current.fetchTickers(symbols),
-          fetchKlinesSafe(symbols),
-        ]);
-        if (cancelled) return;
-        for (const ticker of tickers) tickersRef.current[ticker.symbol] = ticker;
-        for (const { symbol, candles5m, candles15m } of symbolResults) {
-          candlesRef.current[symbol] = {
-            ...emptyIntervalCandles(),
-            ...candlesRef.current[symbol],
-            '5': candles5m,
-            '15': candles15m,
-          };
-        }
-        const mode: SignalEngineState['mode'] = streamReadyRef.current ? 'WS' : 'REST';
-        for (const symbol of symbols) recomputeForSymbol(symbol, mode);
-        setLiveTickersBySymbol({ ...tickersRef.current });
-        pushState(mode, wsConnectedRef.current ? 'connected' : 'disconnected');
-      } catch (err) {
-        if (cancelled) return;
-        if (DEBUG) console.warn('[Sigflo][Engine] backfill new symbols failed', err);
-      }
-    }
-
-    engineBridgeRef.current = { backfillNewSymbols };
+    engineBridgeRef.current = {
+      backfillNewSymbols: (symbols) => backfillNewSymbols(bootstrapCtx, symbols),
+    };
     const pending = pendingKlineBackfillRef.current;
     if (pending.length > 0) {
       pendingKlineBackfillRef.current = [];
-      void backfillNewSymbols(pending);
+      void backfillNewSymbols(bootstrapCtx, pending);
     }
+
+
 
     // WS stream:
     // - keep tickers fresh
@@ -859,12 +354,12 @@ function useSignalEngineValue(): SignalEngineState {
     // - feed 15m closed bars through detector pipeline
     let startupDone = false;
 
-    void backfillFromRest('startup').then(() => {
+    void backfillFromRest(bootstrapCtx, 'startup').then(() => {
       if (cancelled) return;
       const klineSymbols = getKlineSymbols();
       const missing = klineSymbols.filter((s) => (candlesRef.current[s]?.['15']?.length ?? 0) < 60);
-      if (missing.length > 0) void backfillNewSymbols(missing);
-      if (cancelled) return;
+      if (missing.length > 0) void backfillNewSymbols(bootstrapCtx, missing);
+      if (cancelledRef.current) return;
       startupDone = true;
       exchangeManager.current.connectWebSocket({
         klineSymbols: getKlineSymbols(),
@@ -875,7 +370,7 @@ function useSignalEngineValue(): SignalEngineState {
           wsConnectedRef.current = connection === 'connected';
           if (connection === 'connected') {
             if (startupDone) {
-              void backfillFromRest('reconnect').then(() => {
+              void backfillFromRest(bootstrapCtx, 'reconnect').then(() => {
                 pushState('WS', 'connected');
               });
             }
@@ -911,7 +406,7 @@ function useSignalEngineValue(): SignalEngineState {
             if (interval === '15') pendingWSCandlesRef.current.push(kline);
             return;
           }
-          if (interval === '15') recomputeForSymbol(symbol, 'WS');
+          if (interval === '15') recompute(symbol, 'WS');
         },
       });
     });
@@ -921,18 +416,16 @@ function useSignalEngineValue(): SignalEngineState {
         ? window.setInterval(() => logScannerHealthSummary(), 60_000)
         : undefined;
     // REST polling fallback when WS stays disconnected.
-    // Must call backfillFromRest (not recomputeAllFromStore) so we fetch
-    // fresh candle data before re-running the pipeline — otherwise signals
-    // keep updating their timestamps while replaying the same stale snapshot.
     const restPollTimer = window.setInterval(() => {
       if (wsConnectedRef.current) return;
-      if (streamReadyRef.current) void backfillFromRest('reconnect');
+      if (streamReadyRef.current) void backfillFromRest(bootstrapCtx, 'reconnect');
     }, 60_000);
 
     return () => {
       if (healthSummaryTimer != null) window.clearInterval(healthSummaryTimer);
       window.clearInterval(restPollTimer);
       cancelled = true;
+      cancelledRef.current = true;
       pendingWSCandlesRef.current = [];
       if (tickerFlushRafRef.current != null) {
         window.cancelAnimationFrame(tickerFlushRafRef.current);

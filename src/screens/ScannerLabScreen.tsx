@@ -280,7 +280,7 @@ export function ScannerLabScreen() {
       overextended: [],
     };
 
-    let lifecycleRegistry: Partial<Record<(typeof detectorKeys)[number], import('@/lib/timingLifecycle').CandidateLifecycle>> = {};
+    const lifecycleRegistry: Partial<Record<(typeof detectorKeys)[number], import('@/lib/timingLifecycle').CandidateLifecycle>> = {};
 
     for (let i = 1; i <= upto; i += 1) {
       const visible = candles.slice(0, i);

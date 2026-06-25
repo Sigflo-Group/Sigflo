@@ -69,6 +69,7 @@ function toNum(v: unknown): number {
 export class BybitWsClient {
   private ws: WebSocket | null = null;
   private reconnectTimer: number | null = null;
+  private pingTimer: number | null = null;
   private reconnectAttempt = 0;
   private running = false;
   private readonly options: BybitWsClientOptions;
@@ -142,9 +143,17 @@ export class BybitWsClient {
       window.clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
     }
+    this.clearPing();
     this.options.onConnectionChange?.('disconnected');
     this.ws?.close();
     this.ws = null;
+  }
+
+  private clearPing() {
+    if (this.pingTimer != null) {
+      window.clearInterval(this.pingTimer);
+      this.pingTimer = null;
+    }
   }
 
   private log(msg: string) {
@@ -161,6 +170,13 @@ export class BybitWsClient {
       this.options.onConnectionChange?.('connected');
       this.log('[WS] connected');
       this.subscribe();
+      // Bybit requires a client ping every 20 s or the server closes the connection.
+      this.clearPing();
+      this.pingTimer = window.setInterval(() => {
+        if (this.ws?.readyState === WebSocket.OPEN) {
+          this.ws.send(JSON.stringify({ op: 'ping' }));
+        }
+      }, 20_000);
     };
 
     ws.onmessage = (event) => {
@@ -178,6 +194,7 @@ export class BybitWsClient {
     };
 
     ws.onclose = () => {
+      this.clearPing();
       this.ws = null;
       if (!this.running) return;
       this.options.onConnectionChange?.('reconnecting');

@@ -2,17 +2,20 @@ import type { MarketMemorySnapshot } from '@/lib/marketMemory';
 import { createEmptyUserAdaptationStore, type UserAdaptationStore } from '@/lib/userAdaptation';
 import {
   createEmptySignalLifecycleTracker,
+  MAX_LIFECYCLE_EVENTS,
   type SignalLifecycleTrackerStore,
 } from '@/lib/signalLifecycleTracker';
-import { loadRegimePredictorStore, persistRegimePredictorStore } from '@/lib/regimePredictor';
 import { loadAiSnapshotStore, persistAiSnapshotStore } from '@/lib/aiSnapshotLog';
 import type { CandidateLifecycle } from '@/lib/timingLifecycle';
+import type { RegimePredictorState } from '@/types/regimePredictor';
 
 export const MARKET_MEMORY_STORE_KEY = '__SIGFLO_MARKET_MEMORY_V1__';
 export const SIGNAL_LIFECYCLE_STORE_KEY = '__SIGFLO_SIGNAL_LIFECYCLE_V1__';
 export const USER_ADAPTATION_STORE_KEY = '__SIGFLO_USER_ADAPTATION_V1__';
 export const PRO_INTELLIGENCE_PREFS_KEY = '__SIGFLO_PRO_INTELLIGENCE_PREFS_V1__';
 export const LIFECYCLE_REF_STORE_KEY = '__SIGFLO_LIFECYCLE_REF_V2__';
+/** Regime predictor localStorage key — single source of truth for all engine persistence. */
+export const REGIME_PREDICTOR_STORE_KEY = '__SIGFLO_REGIME_PREDICTOR_V1__';
 
 type ProIntelligencePrefs = {
   enabled: boolean;
@@ -59,7 +62,8 @@ export function loadSignalLifecycleStore(): SignalLifecycleTrackerStore {
     const parsed = JSON.parse(raw) as SignalLifecycleTrackerStore;
     if (!parsed || typeof parsed !== 'object') return createEmptySignalLifecycleTracker();
     return {
-      events: Array.isArray(parsed.events) ? parsed.events : [],
+      // Enforce the cap on load — guards against stale over-limit JSON from schema migrations or bugs.
+      events: (Array.isArray(parsed.events) ? parsed.events : []).slice(-MAX_LIFECYCLE_EVENTS),
       feedbackBySymbolSetup:
         parsed.feedbackBySymbolSetup && typeof parsed.feedbackBySymbolSetup === 'object'
           ? parsed.feedbackBySymbolSetup
@@ -158,4 +162,19 @@ export function persistLifecycleRef(store: Record<string, CandidateLifecycle>): 
 }
 
 export type { ProIntelligencePrefs };
-export { loadRegimePredictorStore, persistRegimePredictorStore, loadAiSnapshotStore, persistAiSnapshotStore };
+export { loadAiSnapshotStore, persistAiSnapshotStore };
+
+export function loadRegimePredictorStore(): Record<string, RegimePredictorState> {
+  try {
+    const raw = safeGetItem(REGIME_PREDICTOR_STORE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as Record<string, RegimePredictorState>;
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+export function persistRegimePredictorStore(store: Record<string, RegimePredictorState>): void {
+  safeSetItem(REGIME_PREDICTOR_STORE_KEY, JSON.stringify(store));
+}

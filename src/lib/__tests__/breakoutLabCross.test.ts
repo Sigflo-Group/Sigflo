@@ -5,7 +5,7 @@ import type { CandidateLifecycle } from '@/lib/timingLifecycle';
 
 describe('breakout scenario cross-contamination', () => {
   it('does not emit pullback timing trigger before breakout fire bar', () => {
-    let lifecycleRegistry: Partial<Record<'breakout' | 'pullback' | 'overextended', CandidateLifecycle>> = {};
+    const lifecycleRegistry: Partial<Record<'breakout' | 'pullback' | 'overextended', CandidateLifecycle>> = {};
     const falsePullbacks: number[] = [];
     for (let i = 60; i <= 71; i += 1) {
       const { evaluations } = runScannerLabEngineEvaluations(

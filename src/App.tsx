@@ -40,8 +40,9 @@ const TradeScreen = lazy(() => import('@/screens/TradeScreen').then((m) => ({ de
 const StepUpVerificationScreen = lazy(() => import('@/screens/StepUpVerificationScreen'));
 
 function ProtectedLayout() {
-  const { user, loading } = useAuthProvider();
+  const { user, loading, authMode } = useAuth();
   if (loading) return null;
+  if (authMode !== 'supabase') return <Outlet />;
   const needLogin = !user;
   if (needLogin) return <Navigate to="/login" replace />;
   return <Outlet />;

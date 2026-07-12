@@ -15,6 +15,7 @@ import { evaluateBreakoutTiming } from '@/lib/timingEvaluators/breakoutTiming';
 import { evaluateMeanReversionTiming } from '@/lib/timingEvaluators/meanReversionTiming';
 import {
   findRecentBreakoutCrossover,
+  findRecentMeanReversionCooling,
   findRecentPullbackBounce,
 } from '@/lib/timingEvaluators/recentTriggerLookback';
 import { evaluatePullbackTiming } from '@/lib/timingEvaluators/pullbackTiming';
@@ -308,6 +309,19 @@ export function evaluateTimingLifecycle(args: {
         effectiveTriggerHit = true;
         effectiveTriggerType = 'pullback_bounce_confirmed';
         effectiveTriggerReason = 'Pullback bounce confirmed within the active window.';
+        backfillTriggerTs = recent.ts;
+        backfillTriggerIndex = recent.candleIndex;
+      }
+    } else if (args.setupType === 'overextended') {
+      // overextendedDetector requires RSI to still be hot (>74/<26) to qualify, while the
+      // cooling trigger fires once RSI has already crossed back (<72/>28) — the exact reversal
+      // candle can satisfy the trigger while failing the detector's own gate, pruning the
+      // lifecycle before the trigger is evaluated live. Recover it from recent history instead.
+      const recent = findRecentMeanReversionCooling(candles, args.side, config.extendedAfterCandles);
+      if (recent) {
+        effectiveTriggerHit = true;
+        effectiveTriggerType = 'mean_reversion_cooling';
+        effectiveTriggerReason = 'RSI cooling from extreme confirmed within the active window.';
         backfillTriggerTs = recent.ts;
         backfillTriggerIndex = recent.candleIndex;
       }

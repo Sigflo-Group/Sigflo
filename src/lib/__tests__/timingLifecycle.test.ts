@@ -354,4 +354,43 @@ describe('evaluateTimingLifecycle — overextended (mean reversion)', () => {
       expect(cooled.trigger.triggerCandleTs).toBe(withCooling.at(-1)?.ts);
     }
   });
+
+  it('backfills a missed cooling crossover from recent history when lifecycle memory was lost', () => {
+    // Same RSI-hot buildup as above, then the cooling crossover candle, then one more
+    // candle after it. Crucially we call evaluateTimingLifecycle with previous: undefined —
+    // simulating the exact scenario where overextendedDetector momentarily failed to
+    // qualify on the crossover candle (RSI dropped below its own rsiHot>74 gate at the
+    // same moment it crossed the cooling threshold), causing the pipeline to prune the
+    // lifecycle before the trigger was ever evaluated live.
+    const candles: Candle[] = [];
+    for (let i = 0; i < 70; i++) {
+      candles.push(makeCandle(i, { open: 100, high: 101, low: 99, close: 100, volume: 1000 }));
+    }
+    for (let i = 0; i < 14; i++) {
+      candles.push(makeCandle(70 + i, { open: 100 + i, high: 102 + i, low: 99 + i, close: 101 + i, volume: 1200 }));
+    }
+    candles.push(makeCandle(84, { open: 114, high: 114.5, low: 113.5, close: 114, volume: 900 }));
+    // The cooling crossover candle (RSI crosses back below 72).
+    candles.push(makeCandle(85, { open: 114, high: 114, low: 111, close: 111.5, volume: 1500 }));
+    // One further candle after the crossover — the "current" candle when we re-detect,
+    // with no lifecycle memory carried over (previous: undefined).
+    const afterMissedCross = [
+      ...candles,
+      makeCandle(86, { open: 111.5, high: 112, low: 110.5, close: 111, volume: 1100 }),
+    ].slice(-240);
+
+    const { lifecycle } = evaluateTimingLifecycle({
+      setupType: 'overextended',
+      side: 'long',
+      setupScore: 49,
+      candles: afterMissedCross,
+      previous: undefined,
+    });
+
+    // The backfill lookback must recover the crossover from history rather than reporting
+    // no trigger at all, which is what would happen (and did, before this fix) if the
+    // pipeline had pruned the lifecycle on the exact crossover candle.
+    expect(lifecycle.trigger.triggerCandleTs).not.toBeNull();
+    expect(lifecycle.trigger.triggerType).toBe('mean_reversion_cooling');
+  });
 });

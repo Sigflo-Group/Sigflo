@@ -1,4 +1,4 @@
-import { atr, ema, recentSwingHigh, recentSwingLow } from '@/lib/indicators';
+import { atr, ema, recentSwingHigh, recentSwingLow, rsi } from '@/lib/indicators';
 import type { Candle } from '@/types/market';
 
 export function findRecentBreakoutCrossover(
@@ -68,6 +68,39 @@ export function findRecentPullbackBounce(
     if (confirmedBounce) {
       return { candleIndex: i, ts: candles[i]!.ts };
     }
+  }
+  return null;
+}
+
+/**
+ * Looks back for the candle where RSI first crossed back from an overextended reading —
+ * the same "cooling" crossover `evaluateMeanReversionTiming` checks on the live candle.
+ *
+ * This exists because `overextendedDetector`'s own qualification gate requires RSI to still
+ * be hot (>74 long / <26 short), while the cooling trigger requires RSI to have already
+ * crossed back (<72 long / >28 short). A single reversal candle can satisfy the trigger
+ * condition while failing the detector's gate on that same candle, which would otherwise
+ * cause the setup to be pruned before its trigger is ever evaluated. Scanning recent history
+ * recovers that crossover the same way breakout/pullback recover a missed confirmation bar.
+ */
+export function findRecentMeanReversionCooling(
+  candles: Candle[],
+  side: 'long' | 'short',
+  lookbackBars = 8,
+): { candleIndex: number; ts: number } | null {
+  if (candles.length < 16) return null;
+  const closes = candles.map((c) => c.close);
+  const rsiSeries = rsi(closes, 14);
+  const start = Math.max(1, candles.length - lookbackBars);
+  for (let i = candles.length - 1; i >= start; i -= 1) {
+    const rsiNow = rsiSeries[i] ?? 50;
+    const rsiPrev = rsiSeries[i - 1] ?? rsiNow;
+    const rsiSlope = rsiNow - rsiPrev;
+    const crossedCooling =
+      side === 'long'
+        ? rsiNow < 72 && rsiPrev >= 72 && rsiSlope < 0
+        : rsiNow > 28 && rsiPrev <= 28 && rsiSlope > 0;
+    if (crossedCooling) return { candleIndex: i, ts: candles[i]!.ts };
   }
   return null;
 }

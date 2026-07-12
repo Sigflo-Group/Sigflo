@@ -258,8 +258,11 @@ export function isSignalTimingTriggered(signal: Pick<CryptoSignal, 'timingState'
 export function deriveMarketStatus(signal: CryptoSignal): MarketRowStatus {
   if (isSignalTimingTriggered(signal)) return 'triggered';
   if (signal.timingState === 'extended') return 'extended';
-  if (signal.setupType === 'overextended') return 'overextended';
+  // Lifecycle progress (ready/developing) takes priority over the static "overextended" setup-type
+  // label — otherwise a mean-reversion setup that's fully qualified and waiting on the RSI-cooling
+  // candle looks identical to one that was just detected, with no visible progress in between.
   if (signal.timingState === 'ready' || signal.timingState === 'developing') return 'developing';
+  if (signal.setupType === 'overextended') return 'overextended';
   if (signal.timingState === 'expired') return 'idle';
   // List gainers with heuristic “pullback” are constructive tape, not a fired setup.
   if (isSyntheticMoverSignal(signal) && signal.setupType === 'pullback') {

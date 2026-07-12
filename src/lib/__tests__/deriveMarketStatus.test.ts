@@ -42,4 +42,25 @@ describe('deriveMarketStatus', () => {
       ),
     ).toBe('developing');
   });
+
+  it('shows overextended setups as developing once they reach ready, not stuck at overextended', () => {
+    expect(
+      deriveMarketStatus(
+        shell({ setupType: 'overextended', timingState: 'ready', triggerType: 'unknown' }),
+      ),
+    ).toBe('developing');
+    expect(
+      deriveMarketStatus(
+        shell({ setupType: 'overextended', timingState: 'developing', triggerType: 'unknown' }),
+      ),
+    ).toBe('developing');
+  });
+
+  it('keeps overextended label when there is no lifecycle progress yet (e.g. synthetic movers)', () => {
+    expect(
+      deriveMarketStatus(
+        shell({ setupType: 'overextended', timingState: undefined, triggerType: undefined }),
+      ),
+    ).toBe('overextended');
+  });
 });

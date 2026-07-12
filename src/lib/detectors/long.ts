@@ -1,3 +1,4 @@
+import { recentSwingHigh } from '@/lib/indicators';
 import { coreMetrics, rangeCompressionScore, clamp, type DetectorOutput, type DetectorThresholds } from './shared';
 import type { Candle } from '@/types/market';
 
@@ -6,7 +7,13 @@ export function breakoutPressureDetector(candles: Candle[], thresholds: Detector
   const m = coreMetrics(candles);
   const trend = m.close > m.ema20 && m.ema20 > m.ema50 && m.ema20 > m.ema20Prev && m.ema50 > m.ema50Prev;
   const compression = rangeCompressionScore(candles, m.atrNow);
-  const distToHigh = m.swingHigh - m.close;
+  // Reference level must come from candles before this one — m.swingHigh includes the
+  // current candle's own high, which is always >= its own close, making "distToHigh < 0"
+  // (brokenOut) mathematically unreachable and permanently disabling the post-breakout
+  // RSI relaxation below.
+  const priorCandles = candles.length > 1 ? candles.slice(0, -1) : candles;
+  const priorSwingHigh = recentSwingHigh(priorCandles, 40) || m.swingHigh;
+  const distToHigh = priorSwingHigh - m.close;
   const distanceToBreakoutAtr = m.atrNow > 0 ? distToHigh / m.atrNow : 99;
   const nearBreakout = m.atrNow > 0 && distToHigh >= 0 && distToHigh < thresholds.breakoutDistAtr * m.atrNow;
   const brokenOut = distToHigh < 0;
@@ -32,7 +39,9 @@ export function breakoutPressureDetector(candles: Candle[], thresholds: Detector
   };
   const passCount = Object.values(conditions).filter(Boolean).length;
 
-  if (m.rsiNow > 76 && !brokenOut) return null;
+  // Unconditional: prevents co-activation with the overextended detector regardless of
+  // breakout status — do not exempt brokenOut here, only the rsiOk band above is relaxed.
+  if (m.rsiNow > 76) return null;
   if (passCount < 4 || !breakoutValid) return null;
 
   return {

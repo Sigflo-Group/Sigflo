@@ -179,9 +179,13 @@ export function buildManageTradeQueryFromLinearPosition(
   options?: { markPrice?: number; leverageFallback?: number; exchange?: 'bybit' | 'mexc' },
 ): string {
   const notional = Math.abs(pos.size * pos.entryPrice);
+  // pos.markPrice comes straight from the exchange's own position data, so it's correct
+  // even for symbols Sigflo doesn't track internally. Prefer it over the caller-supplied
+  // options.markPrice, which can be a stale/synthetic fallback (e.g. for untracked pairs).
   const mark =
-    options?.markPrice ??
-    (pos.markPrice != null && pos.markPrice > 0 ? pos.markPrice : pos.entryPrice);
+    pos.markPrice != null && pos.markPrice > 0
+      ? pos.markPrice
+      : (options?.markPrice ?? pos.entryPrice);
   const tradeExtras: PortfolioPositionTradeExtras = {
     positionUsd: Math.max(1, Math.round(notional)),
     entryPrice: pos.entryPrice,

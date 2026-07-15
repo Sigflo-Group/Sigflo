@@ -291,28 +291,44 @@ function normalizeQtyToStep(
   return out === '' ? '0' : out;
 }
 
-async function fetchInstrumentLot(symbol: string): Promise<MexcContractDetail | null> {
+/**
+ * Throws with the real underlying reason on any failure — the two call sites previously
+ * treated a `null` return as one generic "could not load" message, which silently discarded
+ * the actual cause (network failure, bad response shape, symbol genuinely not listed) and
+ * made a systemic failure indistinguishable from a per-symbol one.
+ */
+async function fetchInstrumentLot(symbol: string): Promise<MexcContractDetail> {
   const sym = symbol.toUpperCase();
   const now = Date.now();
   const hit = instrumentLotCache.get(sym);
   if (hit && hit.expiryMs > now) return hit.lot;
+  let res: { success: boolean; data: Array<Record<string, unknown>> };
   try {
-    const res = await getJson<{ success: boolean; data: Array<Record<string, unknown>> }>(
+    res = await getJson<{ success: boolean; data: Array<Record<string, unknown>> }>(
       `${FUTURES_BASE}/api/v1/contract/detail`,
       {},
     );
-    if (res.success && Array.isArray(res.data)) {
-      const raw = res.data.find((c) => c.symbol === sym);
-      const lot = raw ? parseContractDetail(raw) : null;
-      if (lot) {
-        instrumentLotCache.set(sym, { expiryMs: now + LOT_CACHE_TTL_MS, lot });
-        return lot;
-      }
-    }
-    return null;
-  } catch {
-    return null;
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    log('warn', 'MEXC contract/detail fetch failed', { symbol: sym, error: msg });
+    throw new Error(`Could not reach MEXC contract rules for ${sym}: ${msg}`);
   }
+  if (!res.success || !Array.isArray(res.data)) {
+    log('warn', 'MEXC contract/detail returned an unexpected response', {
+      symbol: sym,
+      success: res.success,
+      hasData: Array.isArray(res.data),
+    });
+    throw new Error(`Could not load MEXC contract rules for ${sym}: unexpected API response. Try again shortly.`);
+  }
+  const raw = res.data.find((c) => c.symbol === sym);
+  const lot = raw ? parseContractDetail(raw) : null;
+  if (!lot) {
+    log('warn', 'MEXC contract/detail has no matching entry for symbol', { symbol: sym, contractCount: res.data.length });
+    throw new Error(`MEXC does not list a contract for ${sym}.`);
+  }
+  instrumentLotCache.set(sym, { expiryMs: now + LOT_CACHE_TTL_MS, lot });
+  return lot;
 }
 
 /** Convert base-asset qty string → MEXC contract `vol` string (step/min applied). */
@@ -595,12 +611,21 @@ export class MexcAdapter implements ExchangeAdapter {
     const lotBySymbol = new Map<string, MexcContractDetail>();
     await Promise.all(
       [...new Set(open.map((p) => p.symbol))].map(async (mexcSym) => {
-        let lot = await fetchInstrumentLot(mexcSym);
-        if (!lot) {
-          await new Promise<void>((r) => {
-            setTimeout(r, 250);
-          });
+        let lot: MexcContractDetail | null = null;
+        try {
           lot = await fetchInstrumentLot(mexcSym);
+        } catch {
+          try {
+            await new Promise<void>((r) => {
+              setTimeout(r, 250);
+            });
+            lot = await fetchInstrumentLot(mexcSym);
+          } catch (e) {
+            log('warn', 'MEXC lot lookup failed while listing positions', {
+              symbol: mexcSym,
+              error: e instanceof Error ? e.message : String(e),
+            });
+          }
         }
         if (lot) lotBySymbol.set(mexcSym, lot);
       }),
@@ -771,9 +796,6 @@ export class MexcAdapter implements ExchangeAdapter {
     let qty = params.qty;
     try {
       const lot = await fetchInstrumentLot(mexcSymbol);
-      if (!lot) {
-        throw new Error(`Could not load MEXC contract rules for ${mexcSymbol}. Try again shortly.`);
-      }
       if (price) price = normalizePriceToStep(price, lot.priceUnit);
       qty = baseQtyToContractVol(qty, lot, { bumpToMin: !params.reduceOnly });
     } catch (e) {
@@ -893,9 +915,6 @@ export class MexcAdapter implements ExchangeAdapter {
     }
 
     const lot = await fetchInstrumentLot(mexcSymbol);
-    if (!lot) {
-      throw new Error(`Could not load MEXC contract rules for ${mexcSymbol}. Try again shortly.`);
-    }
 
     let contractVol: string;
     try {

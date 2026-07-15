@@ -4,10 +4,11 @@ import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { useSession } from '@/hooks/useSession';
 
 export function StepUpProtectedRoute({ children }: { children: ReactNode }) {
-  const { user, loading } = useCurrentUser();
+  const { user, loading, authMode } = useCurrentUser();
   const { sessionReady, stepUpRequired } = useSession();
   const location = useLocation();
 
+  if (authMode !== 'supabase') return <>{children}</>;
   if (loading || !sessionReady) {
     return (
       <div className="flex min-h-[40vh] items-center justify-center text-sm text-sigflo-muted">

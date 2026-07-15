@@ -1,6 +1,6 @@
-import { useAuthProvider } from '@/providers/AuthProvider';
+import { useAuth } from '@/context/AuthContext';
 
 export function useCurrentUser() {
-  const { user, loading } = useAuthProvider();
-  return { user, loading };
+  const { user, loading, authMode } = useAuth();
+  return { user, loading, authMode };
 }

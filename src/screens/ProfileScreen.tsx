@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { useRiskSettings } from '@/services/risk/riskSettings';
 import { useAuth } from '@/context/AuthContext';
 import { useAccountSnapshot } from '@/hooks/useAccountSnapshot';
 import { useBotStatuses } from '@/hooks/useBotStatuses';
@@ -153,6 +154,7 @@ export default function ProfileScreen() {
     setAdvancedLayout,
   } = useSignalEngine();
   const { statusMap } = useBotStatuses();
+  const realRiskSettings = useRiskSettings();
 
   const displayName = user
     ? (user.user_metadata?.full_name as string | undefined) ??
@@ -836,6 +838,24 @@ export default function ProfileScreen() {
           })}
         </div>
         <p className={`mt-2 text-xs ${riskColor}`}>Risk profile: {riskMode}</p>
+      </section>
+
+      <section className="rounded-2xl border border-white/[0.06] bg-sigflo-surface sigflo-panel-texture p-3.5">
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-sigflo-muted">Risk Controls</p>
+          <span className="rounded-full border border-white/10 bg-sigflo-elevated px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-sigflo-muted">
+            {realRiskSettings.riskMode}
+          </span>
+        </div>
+        <p className="mt-1.5 text-[11px] text-sigflo-muted">
+          Set your risk mode, position/loss limits, and execution safety switches.
+        </p>
+        <Link
+          to="/risk"
+          className="mt-2.5 inline-flex rounded-lg border border-cyan-400/25 bg-cyan-500/[0.08] px-2.5 py-1.5 text-[11px] font-semibold text-cyan-100 transition hover:bg-cyan-500/[0.14]"
+        >
+          Open risk controls
+        </Link>
       </section>
 
       <section className="rounded-2xl border border-white/[0.06] bg-sigflo-surface sigflo-panel-texture p-3.5">

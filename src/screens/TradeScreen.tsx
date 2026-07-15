@@ -122,6 +122,7 @@ import {
   coerceStopTargetToSide,
   ensureStopForOpenPosition,
   ensureTargetForOpenPosition,
+  fallbackChartCandles,
   resolveTradeAnchorPrice,
 } from '@/lib/tradeViewFromSignal';
 import { syntheticFromExchangePosition, syntheticFromSpotHolding } from '@/lib/exchangePositionSynthetic';
@@ -1079,6 +1080,31 @@ export function TradeScreen() {
     if (isManageMode && manageCtx) {
       next.entry = manageCtx.entryPrice;
       if (manageCtx.pair) next.pair = manageCtx.pair;
+      // Managed positions aren't necessarily one of the tracked symbols the live engine
+      // scans, so `live.lastPrice` above may never populate. Without this, `lastPrice`
+      // falls through to the generic per-base fallback table (100 for anything not in it),
+      // which corrupts both the displayed price/stop/target percentages and — since
+      // `executeTrade` prioritizes `mergedModel.lastPrice` for order sizing — the actual
+      // notional sent to the exchange.
+      if (live.lastPrice == null) {
+        const correctedPrice =
+          manageCtx.markPrice != null && Number.isFinite(manageCtx.markPrice) && manageCtx.markPrice > 0
+            ? manageCtx.markPrice
+            : Number.isFinite(manageCtx.entryPrice) && manageCtx.entryPrice > 0
+              ? manageCtx.entryPrice
+              : null;
+        if (correctedPrice != null) {
+          next.lastPrice = correctedPrice;
+          next.high24h = correctedPrice * 1.02;
+          next.low24h = correctedPrice * 0.98;
+          // Regenerate the placeholder candles/series around the corrected price too —
+          // otherwise the chart keeps drawing around the wrong (e.g. ~100) anchor while
+          // the price header/stats above it now show the real value.
+          if (!(live.chartCandles && live.chartCandles.length > 20)) {
+            next.chartCandles = fallbackChartCandles(correctedPrice);
+          }
+        }
+      }
     }
     return next;
   }, [

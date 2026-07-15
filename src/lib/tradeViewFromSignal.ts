@@ -70,7 +70,7 @@ function deriveLevels(side: TradeSide, ref: number, _setupScore: number): { stop
   return { entry, stop, target };
 }
 
-function fallbackChartCandles(refPrice: number, points = 64): TradeChartCandle[] {
+export function fallbackChartCandles(refPrice: number, points = 64): TradeChartCandle[] {
   const base = Number.isFinite(refPrice) && refPrice > 0 ? refPrice : 100;
   const now = Date.now();
   const stepMs = 60_000;

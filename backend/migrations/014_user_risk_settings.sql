@@ -1,5 +1,5 @@
 create table if not exists user_risk_settings (
-  user_id uuid primary key references users(id) on delete cascade,
+  user_id text primary key references users(id) on delete cascade,
   risk_mode text not null default 'Balanced' check (risk_mode in ('Defensive', 'Balanced', 'Aggressive')),
   max_risk_per_trade_pct numeric(6,3) not null default 1 check (max_risk_per_trade_pct between 0.1 and 25),
   max_daily_loss_pct numeric(6,3) not null default 3 check (max_daily_loss_pct between 0.5 and 50),

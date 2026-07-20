@@ -13,20 +13,13 @@ async function migrationDirectory(): Promise<string> {
   return path.resolve(here, '../../migrations');
 }
 
-async function ensureMigrationTable(client: PoolClient): Promise<boolean> {
-  const { rows } = await client.query<{ exists: boolean }>(
-    `select to_regclass('public.schema_migrations') is not null as exists`,
-  );
-  const existed = rows[0]?.exists ?? false;
-
+async function ensureMigrationTable(client: PoolClient): Promise<void> {
   await client.query(`
     create table if not exists schema_migrations (
       filename text primary key,
       applied_at timestamptz not null default now()
     )
   `);
-
-  return existed;
 }
 
 function migrationNumber(filename: string): number {
@@ -34,12 +27,11 @@ function migrationNumber(filename: string): number {
   return match ? Number(match[1]) : Number.NaN;
 }
 
-async function bootstrapLegacyHistory(
-  client: PoolClient,
-  filenames: string[],
-  migrationTableExisted: boolean,
-): Promise<void> {
-  if (migrationTableExisted) return;
+async function bootstrapLegacyHistory(client: PoolClient, filenames: string[]): Promise<void> {
+  const { rows: historyRows } = await client.query<{ count: string }>(
+    'select count(*)::text as count from schema_migrations',
+  );
+  if (Number(historyRows[0]?.count ?? 0) > 0) return;
 
   const { rows } = await client.query<{ exists: boolean }>(
     `select to_regclass('public.users') is not null as exists`,
@@ -76,8 +68,8 @@ async function run(): Promise<void> {
       .filter((name) => MIGRATION_FILE_RE.test(name))
       .sort((a, b) => a.localeCompare(b, 'en', { numeric: true }));
 
-    const migrationTableExisted = await ensureMigrationTable(client);
-    await bootstrapLegacyHistory(client, filenames, migrationTableExisted);
+    await ensureMigrationTable(client);
+    await bootstrapLegacyHistory(client, filenames);
 
     const { rows } = await client.query<{ filename: string }>(
       'select filename from schema_migrations order by filename',

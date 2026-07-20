@@ -58,7 +58,7 @@ function mapRow(row: DbRow): UserRiskSettings {
 
 export async function getUserRiskSettings(userId: string): Promise<UserRiskSettingsResult> {
   const { rows } = await db.query<DbRow>(
-    `select ${SELECT_COLS} from user_risk_settings where user_id = $1::uuid limit 1`,
+    `select ${SELECT_COLS} from user_risk_settings where user_id = $1 limit 1`,
     [userId],
   );
   if (!rows[0]) return { ...DEFAULT_USER_RISK_SETTINGS, persisted: false };
@@ -70,7 +70,7 @@ export async function upsertUserRiskSettings(userId: string, settings: UserRiskS
     `insert into user_risk_settings
       (user_id, risk_mode, max_risk_per_trade_pct, max_daily_loss_pct, max_open_positions,
        allow_live_execution, require_confirmation, paper_mode_default)
-     values ($1::uuid,$2,$3,$4,$5,$6,$7,$8)
+     values ($1,$2,$3,$4,$5,$6,$7,$8)
      on conflict (user_id) do update set
        risk_mode = excluded.risk_mode,
        max_risk_per_trade_pct = excluded.max_risk_per_trade_pct,

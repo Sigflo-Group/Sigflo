@@ -1,6 +1,7 @@
 import { BybitAdapter } from '../exchanges/bybit.js';
 import { resolveBrokerCredentials } from './brokerCredentials.js';
 import type { BrokerAccountRow } from '../db/queries/brokerAccounts.js';
+import { placeBybitManagedLinearOrder } from './bybitManagedOrder.service.js';
 
 const bybitAdapter = new BybitAdapter();
 
@@ -11,6 +12,7 @@ export async function executeBrokerOrder(input: {
   positionSizeUsd: number;
   leverage: number;
   entryPrice: number;
+  clientOrderId: string;
 }) {
   if (input.account.broker !== 'bybit') {
     throw new Error('Broker not supported');
@@ -24,24 +26,28 @@ export async function executeBrokerOrder(input: {
   if (!Number.isFinite(input.positionSizeUsd) || input.positionSizeUsd <= 0) {
     throw new Error(`Invalid position size for order calculation: ${input.positionSizeUsd}`);
   }
+  if (!/^[A-Za-z0-9_-]{8,36}$/.test(input.clientOrderId)) {
+    throw new Error('Invalid client order id');
+  }
 
   await bybitAdapter.ensureTradeEnabled(creds);
 
   const side = input.direction === 'long' ? 'Buy' : 'Sell';
-  // qty must be in base-coin units (e.g. BTC for BTCUSDT), not USD
   const rawQty = input.positionSizeUsd / input.entryPrice;
-  const qty = rawQty.toFixed(8).replace(/\.?0+$/, '') || '0';
-
-  const result = await bybitAdapter.placeLinearOrder(creds, {
+  const result = await placeBybitManagedLinearOrder({
+    creds,
     symbol: input.symbol,
     side,
-    orderType: 'Market',
-    qty,
-    positionIdx: 0,
+    rawQty,
+    orderLinkId: input.clientOrderId,
   });
 
   return {
     brokerOrderId: result.orderId,
-    brokerResponse: { orderId: result.orderId, orderLinkId: result.orderLinkId ?? null },
+    brokerResponse: {
+      orderId: result.orderId,
+      orderLinkId: result.orderLinkId ?? input.clientOrderId,
+      reconciledAfterTimeout: result.reconciledAfterTimeout,
+    },
   };
 }

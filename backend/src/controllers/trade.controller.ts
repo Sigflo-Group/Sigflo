@@ -10,6 +10,7 @@ import { writeAuditLog } from '../services/auditLog.service.js';
 import { consumeIdempotencyKey } from '../utils/idempotency.js';
 import { SECURITY } from '../config/security.js';
 import { tradeIntentSchema, tradeExecuteSchema } from '../schemas/trade.schema.js';
+import { enforceReliableLiveRiskLimits } from '../services/riskEnforcement.service.js';
 
 type TradeIntentBody = z.infer<typeof tradeIntentSchema>;
 type TradeExecuteBody = z.infer<typeof tradeExecuteSchema>;
@@ -29,6 +30,13 @@ export async function postTradeIntent(req: AuthedRequest, res: Response) {
     account = accounts.find((a) => a.status === 'connected') ?? null;
   }
   if (!account) return res.status(400).json({ error: 'No linked broker account.' });
+
+  const riskGate = await enforceReliableLiveRiskLimits({
+    userId: req.user.userId,
+    account,
+    symbol: body.symbol,
+  });
+  if (!riskGate.ok) return res.status(riskGate.status).json({ error: riskGate.reason });
 
   const riskSummary = computeRiskSummary(body);
   const intent = await createTradeIntent({
@@ -97,6 +105,13 @@ export async function postTradeExecute(req: AuthedRequest, res: Response) {
   if (!Number.isFinite(entryPrice) || entryPrice <= 0) {
     return res.status(422).json({ error: 'Execution intent is missing a valid entry price' });
   }
+
+  const riskGate = await enforceReliableLiveRiskLimits({
+    userId: req.user.userId,
+    account,
+    symbol: intent.symbol,
+  });
+  if (!riskGate.ok) return res.status(riskGate.status).json({ error: riskGate.reason });
 
   // Only consume the idempotency key once every local/pre-execution validation
   // has passed. A request rejected with 4xx before this point must remain

@@ -4,6 +4,7 @@ import { ExecutionSafetyCard } from '@/components/risk/ExecutionSafetyCard';
 import { RiskLimitCard } from '@/components/risk/RiskLimitCard';
 import { RiskModeSelector } from '@/components/risk/RiskModeSelector';
 import { getRiskSettings, saveRiskSettings, useRiskSettings } from '@/services/risk/riskSettings';
+import { getServerRiskSettings, putServerRiskSettings } from '@/lib/api/risk';
 import { updateChecklist } from '@/lib/onboardingChecklist';
 import type { SigfloRiskMode, SigfloRiskSettings } from '@/types/risk';
 
@@ -43,8 +44,32 @@ export default function RiskControlsScreen() {
 
   useEffect(() => { updateChecklist({ visitedRisk: true }); }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const server = await getServerRiskSettings();
+        if (cancelled) return;
+        if (server.persisted) {
+          saveRiskSettings(server);
+        } else {
+          // First server-backed visit: preserve the user's existing device choices
+          // instead of replacing them with defaults, then make the server authoritative.
+          await putServerRiskSettings(getRiskSettings());
+        }
+      } catch {
+        // Keep local controls usable in demo/offline mode. Server-side execution
+        // enforcement remains fail-safe whenever persisted settings exist.
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
   const persist = useCallback((patch: Partial<SigfloRiskSettings>) => {
-    saveRiskSettings({ ...getRiskSettings(), ...patch });
+    const normalized = saveRiskSettings({ ...getRiskSettings(), ...patch });
+    void putServerRiskSettings(normalized).catch(() => {
+      // Local cache remains the UX fallback; the next visit retries account sync.
+    });
   }, []);
 
   const setMode = useCallback((riskMode: SigfloRiskMode) => persist({ riskMode }), [persist]);
@@ -75,7 +100,7 @@ export default function RiskControlsScreen() {
 
         <RiskLimitCard
           title="Per-trade risk"
-          description="Ceiling for how much of your plan Sigflo should treat as at stake on a single ticket."
+          description="Ceiling for how much of your plan Sigflo should treat as at stake on a single ticket. Saved to your account; server enforcement is being normalized across exchanges."
         >
           <NumField
             value={draft.maxRiskPerTradePct}
@@ -89,21 +114,21 @@ export default function RiskControlsScreen() {
 
         <RiskLimitCard
           title="Daily loss limit"
-          description="Soft cap for a single session — enforcement will respect this once portfolio sync lands."
+          description="Saved to your account. Hard daily-loss enforcement will activate once exchange PnL/equity inputs are normalized consistently."
         >
           <NumField
             value={draft.maxDailyLossPct}
             min={0.5}
             max={50}
             step={0.5}
-            suffix="% (soft cap)"
+            suffix="% (max)"
             onCommit={(maxDailyLossPct) => persist({ maxDailyLossPct })}
           />
         </RiskLimitCard>
 
         <RiskLimitCard
           title="Max open positions"
-          description="How many concurrent tickets Sigflo should assume across pairs."
+          description="Hard server-side cap for new managed positions. Existing symbols can still be adjusted without counting as a new slot."
         >
           <NumField
             value={draft.maxOpenPositions}
@@ -125,7 +150,7 @@ export default function RiskControlsScreen() {
         />
 
         <p className="rounded-xl border border-white/[0.06] bg-white/[0.03] px-3 py-2 text-[10px] leading-relaxed text-zinc-500">
-          Nothing on this page places orders. Preferences are saved on this device only for now.
+          Settings are cached on this device and synced to your authenticated Sigflo account when the backend is available. Live execution and max-open-position limits are enforced server-side for managed trades.
         </p>
       </div>
     </div>

@@ -20,6 +20,7 @@ import { signalRouter } from './routes/signal.routes.js';
 import { aiRouter } from './routes/ai.js';
 import { feedbackRouter } from './routes/feedback.routes.js';
 import { securityRouter } from './routes/security.routes.js';
+import { riskRouter } from './routes/risk.routes.js';
 import { listTrades } from './controllers/trade.controller.js';
 import { mexcPublicRouter } from './routes/mexcPublic.js';
 import { authRouter } from './routes/auth.routes.js';
@@ -81,18 +82,19 @@ export function createApp() {
   );
 
   app.get('/health', async (_req, res) => {
-  try {
-    await db.query('SELECT 1');
-    res.json({ ok: true, db: 'connected' });
-  } catch (error) {
-    console.error('Health check failed: database connectivity issue', error);
-    res.status(503).json({ ok: false, db: 'disconnected' });
-  }
-});
+    try {
+      await db.query('SELECT 1');
+      res.json({ ok: true, db: 'connected' });
+    } catch (error) {
+      console.error('Health check failed: database connectivity issue', error);
+      res.status(503).json({ ok: false, db: 'disconnected' });
+    }
+  });
 
   app.use('/api/mexc-public', mexcPublicRouter);
   app.use('/api/auth', authRouteLimiter, authRouter);
   app.use('/api/portfolio', requireAuth, portfolioRouter);
+  app.use('/api/risk', requireAuth, riskRouter);
   // MEXC futures trading is intentionally mounted without `requireStepUp` — the
   // MEXC trading UX does not require a fresh 2FA step-up (auth + idempotency only).
   // IMPORTANT: this mount must come BEFORE `/api/trade` below — `app.use('/api/trade', ...)`

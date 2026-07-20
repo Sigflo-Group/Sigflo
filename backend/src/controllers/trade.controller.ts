@@ -79,11 +79,7 @@ export async function postTradeExecute(req: AuthedRequest, res: Response) {
   if (!intent) return res.status(404).json({ error: 'Execution intent not found' });
   if (intent.usedAt) return res.status(409).json({ error: 'Execution intent already used' });
   if (Date.parse(intent.expiresAt) <= Date.now()) return res.status(410).json({ error: 'Execution intent expired' });
-  const idempotent = await consumeIdempotencyKey(`${req.user.userId}:${body.idempotencyKey}`, SECURITY.idempotencyTtlSec * 1000);
-  if (idempotent === 'unavailable') {
-    return res.status(503).json({ error: 'Idempotency store unavailable. Try again shortly.' });
-  }
-  if (idempotent === 'duplicate') return res.status(409).json({ error: 'Duplicate execution request' });
+
   const policy = validateTradePolicy({
     symbol: intent.symbol,
     direction: intent.direction,
@@ -101,6 +97,20 @@ export async function postTradeExecute(req: AuthedRequest, res: Response) {
   if (!Number.isFinite(entryPrice) || entryPrice <= 0) {
     return res.status(422).json({ error: 'Execution intent is missing a valid entry price' });
   }
+
+  // Only consume the idempotency key once every local/pre-execution validation
+  // has passed. A request rejected with 4xx before this point must remain
+  // correctable/retryable with the same key. From here onward, fail closed to
+  // prevent a retry from creating a duplicate live order after an ambiguous
+  // broker/network failure.
+  const idempotent = await consumeIdempotencyKey(
+    `${req.user.userId}:${body.idempotencyKey}`,
+    SECURITY.idempotencyTtlSec * 1000,
+  );
+  if (idempotent === 'unavailable') {
+    return res.status(503).json({ error: 'Idempotency store unavailable. Try again shortly.' });
+  }
+  if (idempotent === 'duplicate') return res.status(409).json({ error: 'Duplicate execution request' });
 
   // Consume the intent BEFORE calling the broker so a retry after a partial
   // failure cannot place a second order. If the broker call then fails, the

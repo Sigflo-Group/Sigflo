@@ -2,7 +2,9 @@
 
 > Learn Trading By Doing.
 
-Sigflo is an open-source trading workspace designed to help people learn the language of trading through practice, experimentation, and real-world experience.
+Sigflo is a trading workspace designed to help people learn the language of trading through practice, experimentation, and real-world experience.
+
+The project is currently developed in a private repository while the product is being hardened. Our long-term direction is open development: transparent documentation, inspectable behavior, and a contribution model that can expand as the project matures.
 
 Most trading platforms assume you already know what you're doing. Sigflo starts from a different belief: **trading is a skill that can be learned.**
 
@@ -26,13 +28,13 @@ Sigflo exists to support that process.
 
 **Performance analytics** — Review your results, identify strengths and weaknesses, and learn from both winning and losing trades.
 
-**Open development** — Sigflo is developed in public. Our roadmap, discussions, and code are open for anyone to inspect, improve, and contribute to.
+**Transparent development** — Sigflo is being built with a strong bias toward inspectable behavior, clear documentation, and an eventual broader contribution model. The source repository is currently private during active product hardening.
 
-## Why Open Source?
+## Why Transparency Matters
 
 Trust matters. Financial software should not be a black box.
 
-By building Sigflo in the open, we allow users to understand how the platform works, verify its behavior, and contribute to its future. We believe transparency creates better software and stronger communities.
+Sigflo is being designed so users and contributors can understand how the platform works, verify important behavior, and scrutinize the systems that handle trading logic and exchange connections. As the project matures, we intend to expand public access and contribution opportunities deliberately rather than overstate the repository's current visibility.
 
 ## Who Is Sigflo For?
 
@@ -52,39 +54,45 @@ The market will always be uncertain. Learning should not be.
 
 ## Contributing
 
-Sigflo is an open-source project and welcomes contributions of all kinds — bug fixes, documentation, design, testing, and new ideas. Your work helps make trading education more accessible.
+Sigflo is not yet accepting broad public contributions because the source repository is currently private. Internal and invited contributors can use [Contributing to Sigflo](CONTRIBUTING.md), [The Sigflo Manifesto](MANIFESTO.md), the [Roadmap](ROADMAP.md), and [Introducing Sigflo](FIRST_RELEASE.md).
 
-See [Contributing to Sigflo](CONTRIBUTING.md), [The Sigflo Manifesto](MANIFESTO.md), the [Roadmap](ROADMAP.md), and [Introducing Sigflo](FIRST_RELEASE.md).
-
-Together, we can build better tools for learning.
+Our intention is to widen participation as the project and contribution process mature.
 
 ---
 
 ## For developers
 
-**Stack:** React 19, TypeScript, Vite, Tailwind · Node/Express backend · Bybit & MEXC integrations · Netlify deploy
+**Stack:** React 19, TypeScript, Vite, Tailwind · Node/Express backend · Bybit & MEXC integrations · Netlify frontend/serverless functions · Railway-compatible Express backend
 
 | Task | Command |
 | --- | --- |
-| Frontend (recommended) | `npm run dev` — Netlify Dev on `:3999` with AI routes |
-| Frontend (UI only) | `npm run dev:vite` — Vite on `:5173` |
+| Frontend | `npm run dev` — Vite on `:5173` |
+| Frontend (explicit Vite alias) | `npm run dev:vite` — Vite on `:5173` |
+| Netlify local parity | `npm run dev:netlify-alt-port` — Netlify Dev on `:4000` |
 | Backend API | `npm run dev:backend` — Express on `:8787` |
 | Tests | `npm test` |
+| Lint | `npm run lint` |
 | Production build | `npm run build` |
+
+**Deployment model**
+
+- The frontend SPA and Netlify Functions are deployed on Netlify.
+- The Express backend is deployed separately (Railway is supported and currently used by the connected deployment status; Render or another Node host can also work).
+- `VITE_BACKEND_API_BASE` connects the frontend to the separately hosted Express API.
 
 **Docs**
 
 - [Dev quickstart](docs/DEV_QUICKSTART.md) — local setup, env vars, common issues
-- [Netlify deploy](docs/NETLIFY.md) — production env and checklist
-- [Backend README](backend/README.md) — Postgres, migrations, exchange credentials
+- [Netlify deploy](docs/NETLIFY.md) — frontend/serverless production env and checklist
+- [Backend README](backend/README.md) — Postgres, migrations, exchange credentials, and backend hosting
 - [Security policy](SECURITY.md) — reporting vulnerabilities responsibly
 - [Disclaimer](DISCLAIMER.md) — educational use, risk, and liability
 
 **Project layout**
 
 - `src/` — frontend SPA (source of truth)
-- `backend/` — optional Express API for live exchange trading and portfolio sync
-- `netlify/functions/` — serverless AI and admin routes in production
+- `backend/` — Express API for live exchange trading and portfolio sync, deployed separately from Netlify
+- `netlify/functions/` — serverless AI and admin routes deployed with the frontend
 
 The signal engine runs client-side in the browser; the backend holds encrypted exchange keys and executes trades server-side when connected.
 

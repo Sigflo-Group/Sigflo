@@ -2,6 +2,16 @@
 
 **Production site:** [https://sigflo.group](https://sigflo.group) (custom domain on Netlify; apex — add `www` in Netlify DNS if you use it too).
 
+## Deployment architecture
+
+Sigflo uses a split deployment model:
+
+- **Netlify** hosts the frontend SPA and `netlify/functions/` serverless routes.
+- **Railway (or another Node host)** runs the separate Express backend in `backend/` for exchange integrations, portfolio sync, and live-trading operations.
+- The frontend connects to the Express backend through `VITE_BACKEND_API_BASE`.
+
+A successful Railway status therefore confirms the backend deployment, not the Netlify frontend build. Both deployment surfaces should be checked when validating production health.
+
 ## Subdomain Matrix (recommended)
 
 Use separate Netlify sites per hostname so deploys stay isolated and predictable.
@@ -66,11 +76,11 @@ netlify deploy --prod
 | `VITE_SUPABASE_URL` | Auth |
 | `VITE_SUPABASE_ANON_KEY` | Auth |
 | `VITE_AUTH_REDIRECT_ORIGIN` | Optional canonical origin for Google OAuth return (e.g. `https://www.sigflo.group`) if apex→www redirects broke sign-in; must match entries in Supabase **Redirect URLs**. |
-| `VITE_BACKEND_API_BASE` | Exchange integrations API (e.g. `https://your-api.onrender.com/api`) if you host `backend/` elsewhere |
+| `VITE_BACKEND_API_BASE` | Exchange integrations API (for example a Railway or Render backend URL ending in `/api`) |
 | `VITE_BYBIT_AFFILIATE_CODE` | Optional Bybit referral code for exchange signup links in onboarding/profile |
 | `VITE_MEXC_AFFILIATE_CODE` | Optional MEXC referral code for exchange signup links in onboarding/profile |
 | `VITE_BYBIT_AFFILIATE_SIGNUP_URL` | Optional full Bybit affiliate signup URL override (takes precedence over code) |
-| `VITE_MEXC_AFFILIATE_SIGNUP_URL` | Optional full MEXC affiliate signup URL override (takes precedence over code) |
+| `VITE_MEXC_AFFILIATE_SIGNUP_URL` | Optional MEXC affiliate signup URL override (takes precedence over code) |
 | `VITE_BASE` | Only if the app is served under a subpath (must end with `/`; see `vite.config.ts`) |
 
 **Beta admin (in-app approvals)** — serverless only; never `VITE_*` except the existing Supabase URL/anon for JWT verification:
@@ -104,11 +114,14 @@ Local dev: set **`VITE_APP_HOST=app`** in `.env.local` to mimic app routing on `
 
 ## Optional checks
 
-- Run `npm run build` locally before pushing; fix any TypeScript errors.
-- Supabase → Authentication → URL configuration: add **`https://sigflo.group/**`** (and **`https://www.sigflo.group/**`** if you serve `www`). Keep `http://localhost:3999/**` for Netlify Dev.
+- Run `npm run lint`, `npm test`, and `npm run build` locally before pushing; CI runs the same frontend checks on pull requests.
+- Run `npm test --prefix backend` and `npm run build --prefix backend` for the Express backend; CI validates those too.
+- Supabase → Authentication → URL configuration: add **`https://sigflo.group/**`** (and **`https://www.sigflo.group/**`** if you serve `www`).
 - The Express app in `backend/` is **not** deployed by this Netlify config; host it separately and point `VITE_BACKEND_API_BASE` at it.
 
-## Local parity
+## Local development
 
-- `npm run dev` → Netlify Dev (port from `netlify.toml`, default **3999**): same redirects and functions as production.
-- `npm run dev:vite` → Vite only on **5173**; AI routes are handled by Vite middleware instead of functions.
+- `npm run dev` → Vite on **5173** (the default frontend development command).
+- `npm run dev:vite` → explicit alias for Vite development.
+- `npm run dev:netlify-alt-port` → Netlify Dev on **4000** when you need local Netlify redirects/functions parity.
+- `npm run dev:backend` → Express backend on **8787**.

@@ -22,14 +22,17 @@ export async function postTradeIntent(req: AuthedRequest, res: Response) {
   const policy = validateTradePolicy(body);
   if (!policy.ok) return res.status(400).json({ error: policy.reason });
 
-  let account = body.brokerAccountId
-    ? await getBrokerAccountForUser(req.user.userId, body.brokerAccountId)
-    : null;
-  if (!account) {
+  let account;
+  if (body.brokerAccountId) {
+    account = await getBrokerAccountForUser(req.user.userId, body.brokerAccountId);
+    if (!account) {
+      return res.status(404).json({ error: 'Broker account not found' });
+    }
+  } else {
     const accounts = await listBrokerAccountsForUser(req.user.userId);
     account = accounts.find((a) => a.status === 'connected') ?? null;
+    if (!account) return res.status(400).json({ error: 'No linked broker account.' });
   }
-  if (!account) return res.status(400).json({ error: 'No linked broker account.' });
 
   const riskGate = await enforceReliableLiveRiskLimits({
     userId: req.user.userId,
@@ -154,7 +157,7 @@ export async function postTradeExecute(req: AuthedRequest, res: Response) {
       direction: intent.direction,
       positionSizeUsd: Number(intent.positionSizeUsd),
       leverage: Number(intent.leverage),
-      entryPrice: intent.entryPrice,
+      entryPrice,
       stopPrice: intent.stopPrice,
       targetPrice: intent.targetPrice,
       status: 'submitted',

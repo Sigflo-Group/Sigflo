@@ -1,6 +1,8 @@
+import { randomUUID } from 'node:crypto';
 import { BybitAdapter } from '../exchanges/bybit.js';
 import { resolveBrokerCredentials } from './brokerCredentials.js';
 import type { BrokerAccountRow } from '../db/queries/brokerAccounts.js';
+import { placeBybitManagedLinearOrder } from './bybitManagedOrder.service.js';
 
 const bybitAdapter = new BybitAdapter();
 
@@ -28,20 +30,23 @@ export async function executeBrokerOrder(input: {
   await bybitAdapter.ensureTradeEnabled(creds);
 
   const side = input.direction === 'long' ? 'Buy' : 'Sell';
-  // qty must be in base-coin units (e.g. BTC for BTCUSDT), not USD
   const rawQty = input.positionSizeUsd / input.entryPrice;
-  const qty = rawQty.toFixed(8).replace(/\.?0+$/, '') || '0';
-
-  const result = await bybitAdapter.placeLinearOrder(creds, {
+  // Bybit orderLinkId allows up to 36 chars. Prefix makes Sigflo-originated orders recognizable.
+  const clientOrderId = `sf-${randomUUID().replace(/-/g, '').slice(0, 32)}`;
+  const result = await placeBybitManagedLinearOrder({
+    creds,
     symbol: input.symbol,
     side,
-    orderType: 'Market',
-    qty,
-    positionIdx: 0,
+    rawQty,
+    orderLinkId: clientOrderId,
   });
 
   return {
     brokerOrderId: result.orderId,
-    brokerResponse: { orderId: result.orderId, orderLinkId: result.orderLinkId ?? null },
+    brokerResponse: {
+      orderId: result.orderId,
+      orderLinkId: result.orderLinkId ?? clientOrderId,
+      reconciledAfterTimeout: result.reconciledAfterTimeout,
+    },
   };
 }

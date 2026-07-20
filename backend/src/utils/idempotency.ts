@@ -14,6 +14,8 @@ export type IdempotencyBeginResult =
   | { kind: 'accepted' }
   | Exclude<IdempotencyState, { kind: 'missing' }>;
 
+export type IdempotencyConsumeResult = 'accepted' | 'duplicate' | 'unavailable';
+
 type IdempotencyRow = {
   requestHash: string | null;
   status: 'processing' | 'succeeded' | 'failed';
@@ -102,6 +104,23 @@ export async function beginIdempotentRequest(input: {
     });
     return { kind: 'unavailable' };
   }
+}
+
+/**
+ * Backwards-compatible one-shot consume API used by generic idempotency middleware.
+ * It intentionally fingerprints only the fully-scoped key, preserving the previous
+ * behavior where any reuse of that key within the TTL is treated as a duplicate.
+ */
+export async function consumeIdempotencyKey(key: string, ttlMs: number): Promise<IdempotencyConsumeResult> {
+  const result = await beginIdempotentRequest({
+    key,
+    requestHash: hashIdempotencyRequest({ legacyKey: key }),
+    ttlMs,
+  });
+
+  if (result.kind === 'accepted') return 'accepted';
+  if (result.kind === 'unavailable') return 'unavailable';
+  return 'duplicate';
 }
 
 export async function completeIdempotentRequest(

@@ -99,6 +99,7 @@ async function getLinearLot(symbol: string): Promise<LotSizeFilter | undefined> 
   const query = new URLSearchParams({ category: 'linear', symbol: symbol.toUpperCase() }).toString();
   const data = await getJson<BybitResponse<{ list?: Array<{ lotSizeFilter?: LotSizeFilter }> }>>(
     `${BASE_URL}/v5/market/instruments-info?${query}`,
+    {},
   );
   if (data.retCode !== 0) return undefined;
   return data.result.list?.[0]?.lotSizeFilter;

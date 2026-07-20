@@ -11,6 +11,7 @@ type SessionProviderValue = {
   stepUpRequired: boolean;
   securityStateUnknown: boolean;
   refreshSecurityState: () => Promise<void>;
+  applySecurityState: (state: SecurityState) => void;
 };
 
 const SessionProviderContext = createContext<SessionProviderValue | null>(null);
@@ -20,6 +21,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const [sessionReady, setSessionReady] = useState(false);
   const [securityState, setSecurityState] = useState<SecurityState | null>(null);
   const [securityStateUnknown, setSecurityStateUnknown] = useState(false);
+
+  const applySecurityState = useCallback((state: SecurityState) => {
+    setSecurityState(state);
+    setSecurityStateUnknown(false);
+    setSessionReady(true);
+  }, []);
 
   const refreshSecurityState = useCallback(async () => {
     if (!user) {
@@ -31,8 +38,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     setSessionReady(false);
     try {
       const state = await getCurrentSessionState();
-      setSecurityState(state);
-      setSecurityStateUnknown(false);
+      applySecurityState(state);
     } catch {
       // Fail closed: block step-up-protected routes when security state is unknown.
       setSecurityState(null);
@@ -40,7 +46,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     } finally {
       setSessionReady(true);
     }
-  }, [user]);
+  }, [user, applySecurityState]);
 
   useEffect(() => {
     void refreshSecurityState();
@@ -53,8 +59,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       securityStateUnknown,
       stepUpRequired: computeStepUpRequired(securityState, securityStateUnknown),
       refreshSecurityState,
+      applySecurityState,
     }),
-    [securityState, sessionReady, securityStateUnknown, refreshSecurityState],
+    [securityState, sessionReady, securityStateUnknown, refreshSecurityState, applySecurityState],
   );
 
   return <SessionProviderContext.Provider value={value}>{children}</SessionProviderContext.Provider>;

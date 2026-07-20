@@ -22,11 +22,18 @@ describe('computeStepUpRequired', () => {
   });
 
   it('allows access when verified and state known', () => {
+    const verifiedAt = new Date();
+    const validUntil = new Date(verifiedAt.getTime() + 10 * 60 * 1000);
+
     expect(
       computeStepUpRequired(
         {
           userId: 'u1',
-          stepUp: { required: false, verifiedAt: new Date().toISOString(), validUntil: null },
+          stepUp: {
+            required: false,
+            verifiedAt: verifiedAt.toISOString(),
+            validUntil: validUntil.toISOString(),
+          },
           oneTapEnabled: false,
           mfaEnabled: true,
           sessions: [],

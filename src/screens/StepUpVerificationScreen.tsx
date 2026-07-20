@@ -13,7 +13,7 @@ import {
 export default function StepUpVerificationScreen() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const { refreshSecurityState } = useSession();
+  const { applySecurityState, refreshSecurityState } = useSession();
   const { refreshSession } = useAuthProvider();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -62,9 +62,15 @@ export default function StepUpVerificationScreen() {
       await verifyTotpStepUp(factorId, totpCode);
       await refreshSession();
 
-      await performStepUpCheck();
-      await refreshSecurityState();
+      // Apply the authoritative step-up response immediately so the protected
+      // route cannot see stale pre-verification state and redirect back here.
+      const state = await performStepUpCheck();
+      applySecurityState(state);
       navigate(redirectTarget, { replace: true });
+
+      // Reconcile with the server again without blocking navigation. The
+      // immediate response above already contains the new validUntil window.
+      void refreshSecurityState();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Step-up verification failed.');
     } finally {

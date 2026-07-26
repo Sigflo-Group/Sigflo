@@ -14,20 +14,21 @@ function basePosition(overrides: Partial<PositionItem> = {}): PositionItem {
 }
 
 describe('buildManageTradeQueryFromLinearPosition', () => {
-  it('prefers the exchange-reported markPrice over a caller-supplied fallback', () => {
-    // Regression: a symbol not tracked by Sigflo's internal live engine (e.g. a manually
-    // opened XAU position) previously had the caller's synthetic ~100 fallback price win
-    // over the real markPrice already present on the exchange position — corrupting both
-    // the manage-mode chart display and the order-sizing math on re-entry into that screen.
-    const pos = basePosition({ markPrice: 4041.1 });
-    const query = buildManageTradeQueryFromLinearPosition(pos, { markPrice: 100 });
+  it('prefers the caller-supplied markPrice over the exchange-reported one', () => {
+    // Callers (TradeScreen's openManagePositionView, BotFocusScreen's navigateToTradeForExit)
+    // deliberately pass a fresher live-tick price to beat pos.markPrice, which comes from a
+    // slower REST poll (e.g. useAccountSnapshot's 12s cadence). That freshness must win —
+    // untracked-symbol correctness is handled by the callers themselves, not by silently
+    // overriding their choice here.
+    const pos = basePosition({ markPrice: 4030 });
+    const query = buildManageTradeQueryFromLinearPosition(pos, { markPrice: 4041.1 });
     const parsed = parseManageTradeContext(new URLSearchParams(query));
     expect(parsed?.markPrice).toBe(4041.1);
   });
 
-  it('falls back to the caller-supplied markPrice when the exchange position has none', () => {
-    const pos = basePosition({ markPrice: undefined });
-    const query = buildManageTradeQueryFromLinearPosition(pos, { markPrice: 4041.1 });
+  it('falls back to the exchange-reported markPrice when the caller has none', () => {
+    const pos = basePosition({ markPrice: 4041.1 });
+    const query = buildManageTradeQueryFromLinearPosition(pos);
     const parsed = parseManageTradeContext(new URLSearchParams(query));
     expect(parsed?.markPrice).toBe(4041.1);
   });

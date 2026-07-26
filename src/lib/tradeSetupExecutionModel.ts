@@ -103,10 +103,22 @@ export function buildTradeTimingUiModel(args: {
   inPosition: boolean;
   marketStatus: MarketRowStatus;
   executionQuality: ExecutionQuality | null;
+  /**
+   * True when the underlying setup is a mean-reversion/overextended play — independent of
+   * lifecycle progress. `marketStatus` flips from 'overextended' to 'developing'/'ready' once
+   * the setup starts qualifying for its cooling trigger (deriveMarketStatus prioritizes
+   * lifecycle progress over the static setup-type label), which would otherwise hide this
+   * "poor risk/reward" warning right when a user is most likely to chase a stretched entry.
+   */
+  isOverextendedSetup?: boolean;
 }): TradeTimingUiModel {
-  const { inPosition, marketStatus, executionQuality } = args;
+  const { inPosition, marketStatus, executionQuality, isOverextendedSetup = false } = args;
 
-  if (!inPosition && (marketStatus === 'overextended' || marketStatus === 'extended')) {
+  if (
+    !inPosition &&
+    marketStatus !== 'triggered' &&
+    (marketStatus === 'overextended' || marketStatus === 'extended' || isOverextendedSetup)
+  ) {
     const chipLabel = marketStatus === 'extended' ? 'Late setup' : 'Stretched';
     return {
       setupState: 'building',

@@ -337,8 +337,12 @@ export function buildWatchlistMarketRows(
 
 /** Same rules as Feed → “Actionable” filter (triggered at emit gate, developing ≥ 65, not overextended). */
 export function isFeedActionableOpportunity(signal: CryptoSignal): boolean {
+  // Check the setup type directly, not the derived status — deriveMarketStatus now reports
+  // 'developing'/'triggered' for an overextended setup once it starts progressing, but a
+  // stretched/mean-reversion entry should never count as a safe "actionable" opportunity
+  // regardless of lifecycle stage.
+  if (signal.setupType === 'overextended') return false;
   const status = deriveMarketStatus(signal);
-  if (status === 'overextended') return false;
   if (status === 'triggered') return signal.setupScore >= 45;
   if (status === 'developing') return signal.setupScore >= 65;
   return false;

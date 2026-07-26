@@ -2056,8 +2056,9 @@ export function TradeScreen() {
         inPosition: timingInPosition,
         marketStatus: scannerStatus,
         executionQuality,
+        isOverextendedSetup: selectedSignal.setupType === 'overextended',
       }),
-    [executionQuality, scannerStatus, timingInPosition],
+    [executionQuality, scannerStatus, selectedSignal.setupType, timingInPosition],
   );
 
   const dockTimingChip = useMemo(
@@ -3963,9 +3964,15 @@ export function TradeScreen() {
           ? throttledOpenPnl.mark
           : live.lastPrice != null && live.lastPrice > 0
             ? live.lastPrice
-            : Number.isFinite(mergedModel.lastPrice) && mergedModel.lastPrice > 0
-              ? mergedModel.lastPrice
-              : undefined;
+            // Prefer the exchange position's own markPrice (always real, whether or not
+            // Sigflo tracks this symbol internally) before ever falling back to
+            // mergedModel.lastPrice, which can still be a synthetic per-base default for
+            // an untracked symbol at this pre-manage-mode point in the flow.
+            : pos.markPrice != null && Number.isFinite(pos.markPrice) && pos.markPrice > 0
+              ? pos.markPrice
+              : Number.isFinite(mergedModel.lastPrice) && mergedModel.lastPrice > 0
+                ? mergedModel.lastPrice
+                : undefined;
       const q = buildManageTradeQueryFromLinearPosition(pos, {
         markPrice: mark,
         leverageFallback: effectiveFuturesLeverage,

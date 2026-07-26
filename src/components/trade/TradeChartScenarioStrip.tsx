@@ -157,6 +157,8 @@ export type TradeChartScenarioStripTradeProps = {
   hasOpenPosition: boolean;
   /** After open — drives entry guidance execution line (separate from setup timing). */
   executionQuality?: ExecutionQuality | null;
+  /** setupType === 'overextended' — independent of scannerStatus, which no longer reflects it once the setup starts progressing. */
+  isOverextendedSetup?: boolean;
 };
 
 export type TradeChartScenarioStripManageProps = {
@@ -182,6 +184,8 @@ export type TradeChartScenarioStripManageProps = {
   scannerStatus: MarketRowStatus;
   tradeScore: number;
   setupScore: number;
+  /** setupType === 'overextended' — independent of scannerStatus, which no longer reflects it once the setup starts progressing. */
+  isOverextendedSetup?: boolean;
 };
 
 export type TradeChartScenarioStripProps = TradeChartScenarioStripTradeProps | TradeChartScenarioStripManageProps;
@@ -262,6 +266,7 @@ export function TradeChartScenarioStrip(props: TradeChartScenarioStripProps) {
         planEntry: props.entry,
         hasOpenPosition: props.hasOpenPosition,
         executionQuality: props.executionQuality ?? null,
+        isOverextendedSetup: props.isOverextendedSetup,
       });
     }
     return computeTradeEntryGuidance({
@@ -272,9 +277,11 @@ export function TradeChartScenarioStrip(props: TradeChartScenarioStripProps) {
       lastPrice: props.mark,
       planEntry: props.entry,
       hasOpenPosition: true,
+      isOverextendedSetup: props.isOverextendedSetup,
     });
   }, [
     props.mode,
+    props.isOverextendedSetup,
     props.scannerStatus,
     props.tradeScore,
     props.setupScore,

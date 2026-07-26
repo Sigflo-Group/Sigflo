@@ -748,8 +748,14 @@ export default function BotFocusScreen() {
   const navigateToTradeForExit = useCallback(() => {
     const connected = accountSnapshots.find((s) => s.exchange === 'bybit' && s.status === 'connected');
     const pos = connected ? findBybitLinearOpenLeg([connected], linearSymbol, effectiveExecSide) : null;
+    // Prefer the exchange position's own markPrice (always real, whether or not this symbol is
+    // one Sigflo tracks internally) before chartModelForPlot's synthetic per-base fallback.
     const mark =
-      live.lastPrice != null && live.lastPrice > 0 ? live.lastPrice : chartModelForPlot?.lastPrice ?? 0;
+      live.lastPrice != null && live.lastPrice > 0
+        ? live.lastPrice
+        : pos?.markPrice != null && Number.isFinite(pos.markPrice) && pos.markPrice > 0
+          ? pos.markPrice
+          : (chartModelForPlot?.lastPrice ?? 0);
     if (pos && mark > 0) {
       navigate(
         `/trade?${buildManageTradeQueryFromLinearPosition(pos, {

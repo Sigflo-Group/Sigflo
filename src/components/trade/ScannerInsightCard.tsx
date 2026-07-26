@@ -78,6 +78,7 @@ export function ScannerInsightCard({
     inPosition: hasOpenPosition,
     marketStatus: status,
     executionQuality: executionQuality ?? null,
+    isOverextendedSetup: signal.setupType === 'overextended',
   });
   const action = hasOpenPosition
     ? inPositionFeedbackLine(executionQuality ?? null)

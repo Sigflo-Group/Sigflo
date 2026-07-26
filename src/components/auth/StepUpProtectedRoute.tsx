@@ -8,7 +8,8 @@ export function StepUpProtectedRoute({ children }: { children: ReactNode }) {
   const { sessionReady, stepUpRequired } = useSession();
   const location = useLocation();
 
-  if (authMode !== 'supabase') return <>{children}</>;
+  // Dev-mode bypass must never apply outside a dev build — see ProtectedLayout in App.tsx.
+  if (import.meta.env.DEV && authMode !== 'supabase') return <>{children}</>;
   if (loading || !sessionReady) {
     return (
       <div className="flex min-h-[40vh] items-center justify-center text-sm text-sigflo-muted">

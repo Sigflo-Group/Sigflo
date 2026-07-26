@@ -393,4 +393,31 @@ describe('evaluateTimingLifecycle — overextended (mean reversion)', () => {
     expect(lifecycle.trigger.triggerCandleTs).not.toBeNull();
     expect(lifecycle.trigger.triggerType).toBe('mean_reversion_cooling');
   });
+
+  it('does not backfill a stale cooling trigger when RSI has since whipsawed back into hot territory', () => {
+    // Same hot buildup and cooling crossover as above, but followed by a strong re-extension
+    // candle that pushes RSI back above 74 (rsiNow ~86 here) — momentum is still extending,
+    // not reversing, so the backfill must not report a trigger.
+    const candles: Candle[] = [];
+    for (let i = 0; i < 70; i++) {
+      candles.push(makeCandle(i, { open: 100, high: 101, low: 99, close: 100, volume: 1000 }));
+    }
+    for (let i = 0; i < 14; i++) {
+      candles.push(makeCandle(70 + i, { open: 100 + i, high: 102 + i, low: 99 + i, close: 101 + i, volume: 1200 }));
+    }
+    candles.push(makeCandle(84, { open: 114, high: 114.5, low: 113.5, close: 114, volume: 900 }));
+    candles.push(makeCandle(85, { open: 114, high: 114, low: 111, close: 111.5, volume: 1500 }));
+    candles.push(makeCandle(86, { open: 111.5, high: 120, low: 111, close: 119, volume: 2000 }));
+
+    const { lifecycle } = evaluateTimingLifecycle({
+      setupType: 'overextended',
+      side: 'long',
+      setupScore: 49,
+      candles,
+      previous: undefined,
+    });
+
+    expect(lifecycle.trigger.triggerCandleTs).toBeNull();
+    expect(lifecycle.trigger.triggerType).not.toBe('mean_reversion_cooling');
+  });
 });

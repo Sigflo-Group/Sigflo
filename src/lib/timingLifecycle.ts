@@ -319,11 +319,19 @@ export function evaluateTimingLifecycle(args: {
       // lifecycle before the trigger is evaluated live. Recover it from recent history instead.
       const recent = findRecentMeanReversionCooling(candles, args.side, config.extendedAfterCandles);
       if (recent) {
-        effectiveTriggerHit = true;
-        effectiveTriggerType = 'mean_reversion_cooling';
-        effectiveTriggerReason = 'RSI cooling from extreme confirmed within the active window.';
-        backfillTriggerTs = recent.ts;
-        backfillTriggerIndex = recent.candleIndex;
+        // Mirror the breakout backfill's stillHolding check: a whipsaw where RSI dipped below
+        // the cooling threshold and then climbed back into hot/extreme territory within the
+        // lookback window means momentum is actually still extending, not reversing — accepting
+        // the stale crossover here would recreate the exact co-activation with overextended
+        // conditions the detectors' hard RSI guards are meant to prevent.
+        const stillCooling = args.side === 'long' ? rsiNow < 74 : rsiNow > 26;
+        if (stillCooling) {
+          effectiveTriggerHit = true;
+          effectiveTriggerType = 'mean_reversion_cooling';
+          effectiveTriggerReason = 'RSI cooling from extreme confirmed within the active window.';
+          backfillTriggerTs = recent.ts;
+          backfillTriggerIndex = recent.candleIndex;
+        }
       }
     }
   }

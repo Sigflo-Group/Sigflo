@@ -42,7 +42,10 @@ const StepUpVerificationScreen = lazy(() => import('@/screens/StepUpVerification
 function ProtectedLayout() {
   const { user, loading, authMode } = useAuth();
   if (loading) return null;
-  if (authMode !== 'supabase') return <Outlet />;
+  // Dev-mode bypass (no Supabase configured) must never apply to a production build — otherwise
+  // a deployment that accidentally omits VITE_SUPABASE_URL/VITE_SUPABASE_ANON_KEY would serve the
+  // whole app, trade execution included, with no login required instead of failing closed.
+  if (import.meta.env.DEV && authMode !== 'supabase') return <Outlet />;
   const needLogin = !user;
   if (needLogin) return <Navigate to="/login" replace />;
   return <Outlet />;
@@ -51,7 +54,8 @@ function ProtectedLayout() {
 function OnboardingGate() {
   const { user, authMode } = useAuth();
   const location = useLocation();
-  if (authMode !== 'supabase' || !user) return <Outlet />;
+  if (import.meta.env.DEV && authMode !== 'supabase') return <Outlet />;
+  if (!user) return <Outlet />;
   const connectSeen = isExchangeConnectOnboardingSeen();
   const onOnboarding = location.pathname === '/onboarding' || location.pathname === '/onboarding/connect';
   if (connectSeen && onOnboarding) {

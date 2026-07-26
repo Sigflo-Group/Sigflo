@@ -11,7 +11,8 @@ export function ProtectedRoute({ children }: { children: ReactNode }) {
       </div>
     );
   }
-  if (authMode !== 'supabase') return <>{children}</>;
+  // Dev-mode bypass must never apply outside a dev build — see ProtectedLayout in App.tsx.
+  if (import.meta.env.DEV && authMode !== 'supabase') return <>{children}</>;
   if (!user) return <Navigate to="/login" replace />;
   return <>{children}</>;
 }

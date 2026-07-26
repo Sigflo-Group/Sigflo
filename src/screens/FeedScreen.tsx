@@ -11,7 +11,6 @@ import { dismissFeedWelcome, isFeedWelcomeDismissed } from '@/lib/feedWelcomeBan
 import { updateChecklist } from '@/lib/onboardingChecklist';
 import {
   buildTrackedFallbackSignal,
-  deriveMarketStatus,
   isFeedActionableOpportunity,
   symbolToPair,
   TRACKED_SYMBOLS,
@@ -78,7 +77,10 @@ export function FeedScreen() {
     if (filter === 'strong') return feedSignalsBase.filter((s) => s.setupScore >= 75);
     if (filter === 'actionable') return feedSignalsBase.filter(isFeedActionableOpportunity);
     if (filter === 'risky') {
-      return feedSignalsBase.filter((s) => s.riskTag === 'High Risk' || deriveMarketStatus(s) === 'overextended');
+      // Check setupType directly, not the derived status — deriveMarketStatus now reports
+      // 'developing'/'triggered' for an overextended setup once it starts progressing, which
+      // would otherwise silently drop stretched setups from "Risky" right as they mature.
+      return feedSignalsBase.filter((s) => s.riskTag === 'High Risk' || s.setupType === 'overextended');
     }
     return feedSignalsBase;
   }, [filter, feedSignalsBase]);

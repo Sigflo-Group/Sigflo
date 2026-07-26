@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { deriveMarketStatus } from '@/lib/marketScannerRows';
+import { deriveMarketStatus, isFeedActionableOpportunity } from '@/lib/marketScannerRows';
 import type { CryptoSignal } from '@/types/signal';
 
 function shell(partial: Partial<CryptoSignal>): CryptoSignal {
@@ -62,5 +62,36 @@ describe('deriveMarketStatus', () => {
         shell({ setupType: 'overextended', timingState: undefined, triggerType: undefined }),
       ),
     ).toBe('overextended');
+  });
+});
+
+describe('isFeedActionableOpportunity', () => {
+  it('excludes an overextended setup even once it has progressed to developing/triggered', () => {
+    // Regression: deriveMarketStatus now reports 'developing'/'triggered' for an overextended
+    // setup once it starts progressing, which would otherwise let a stretched/mean-reversion
+    // entry slip into "Actionable" once its status stops literally reading 'overextended'.
+    expect(
+      isFeedActionableOpportunity(
+        shell({ setupType: 'overextended', timingState: 'developing', setupScore: 80, triggerType: 'unknown' }),
+      ),
+    ).toBe(false);
+    expect(
+      isFeedActionableOpportunity(
+        shell({ setupType: 'overextended', timingState: 'triggered', setupScore: 80, triggerType: 'mean_reversion_cooling' }),
+      ),
+    ).toBe(false);
+  });
+
+  it('still allows a non-overextended developing/triggered setup through the score gates', () => {
+    expect(
+      isFeedActionableOpportunity(
+        shell({ setupType: 'breakout', timingState: 'developing', setupScore: 70, triggerType: 'unknown' }),
+      ),
+    ).toBe(true);
+    expect(
+      isFeedActionableOpportunity(
+        shell({ setupType: 'breakout', timingState: 'ready', triggerType: 'breakout_first_close', setupScore: 45 }),
+      ),
+    ).toBe(true);
   });
 });

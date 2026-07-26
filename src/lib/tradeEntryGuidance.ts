@@ -30,11 +30,13 @@ export function computeTradeEntryGuidance(args: {
   planEntry: number;
   hasOpenPosition: boolean;
   executionQuality?: ExecutionQuality | null;
+  isOverextendedSetup?: boolean;
 }): EntryGuidance {
   const ui = buildTradeTimingUiModel({
     inPosition: args.hasOpenPosition,
     marketStatus: args.marketStatus,
     executionQuality: args.executionQuality ?? null,
+    isOverextendedSetup: args.isOverextendedSetup,
   });
 
   const blend = blendTimingReadinessScore(args.setupScore, args.tradeScore) / 100;

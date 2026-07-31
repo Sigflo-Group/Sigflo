@@ -119,7 +119,9 @@ export async function findBybitLinearOrderByLinkId(input: {
     },
     input.creds,
   );
-  const row = result.list?.find((item) => item.orderLinkId === input.orderLinkId) ?? result.list?.[0];
+  // Only accept an exact orderLinkId match — falling back to an arbitrary entry in the
+  // list would misattribute an unrelated order as this request's reconciled result.
+  const row = result.list?.find((item) => item.orderLinkId === input.orderLinkId);
   if (!row?.orderId) return null;
   return { orderId: row.orderId, orderLinkId: row.orderLinkId ?? input.orderLinkId };
 }

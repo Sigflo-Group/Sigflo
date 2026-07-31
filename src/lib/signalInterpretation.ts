@@ -78,14 +78,16 @@ function volatilityToLabel(signal: CryptoSignal): string {
 
 function derivePosture(signal: CryptoSignal, status: MarketRowStatus): SignalPosture {
   const rsi = signal.facts?.rsi;
-  const rsiOverheated = rsi !== undefined && rsi > 74;
+  // RSI extremity is direction-relative: overbought (>74) is the danger zone for longs,
+  // oversold (<26) is the mirror danger zone for shorts.
+  const rsiExtreme = rsi !== undefined && (signal.side === 'short' ? rsi < 26 : rsi > 74);
 
   if (signal.setupType === 'overextended') return 'trend_stretched';
 
   if (signal.setupType === 'breakout') {
-    if (status === 'triggered') return rsiOverheated ? 'trend_stretched' : 'breakout_active';
+    if (status === 'triggered') return rsiExtreme ? 'trend_stretched' : 'breakout_active';
     if (status === 'extended') return 'momentum_fading';
-    if (rsiOverheated) return 'trend_stretched';
+    if (rsiExtreme) return 'trend_stretched';
     if (signal.setupScore >= 45) return 'breakout_building';
     return 'unclear';
   }
@@ -127,13 +129,14 @@ function postureToColor(posture: SignalPosture): SignalInterpretation['postureCo
 function deriveChaseRisk(signal: CryptoSignal, status: MarketRowStatus): ChaseRisk {
   const rsi = signal.facts?.rsi;
   const ext = signal.facts?.extensionAtr;
+  const isShort = signal.side === 'short';
 
   if (signal.setupType === 'overextended' || status === 'overextended') return 'high';
-  if (rsi !== undefined && rsi > 74) return 'high';
+  if (rsi !== undefined && (isShort ? rsi < 26 : rsi > 74)) return 'high';
   if (ext !== undefined && ext > 1.5) return 'high';
   if (signal.riskTag === 'High Risk') return 'high';
 
-  if (rsi !== undefined && rsi > 65) return 'moderate';
+  if (rsi !== undefined && (isShort ? rsi < 35 : rsi > 65)) return 'moderate';
   if (signal.riskTag === 'Medium Risk' && status !== 'triggered') return 'moderate';
   if (status === 'extended') return 'moderate';
 

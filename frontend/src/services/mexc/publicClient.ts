@@ -1,7 +1,9 @@
 import { apiJson } from '@/services/api/http';
 import type { Candle, SymbolTicker, SymbolUniverseItem } from '@/types/market';
 
+/** Idempotent — see backend/src/routes/mexcPublic.ts for why this must never double-convert. */
 function toMexcSymbol(sym: string): string {
+  if (sym.includes('_')) return sym;
   return sym.endsWith('USDT') ? sym.slice(0, -4) + '_USDT' : sym;
 }
 

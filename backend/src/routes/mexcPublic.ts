@@ -3,8 +3,16 @@ import { getJson } from '../exchanges/http.js';
 
 const MEXC_API_BASE = 'https://api.mexc.com';
 
-/** "SILVERUSDT" → "SILVER_USDT" */
-function toMexcSymbol(sym: string): string {
+/**
+ * "SILVERUSDT" → "SILVER_USDT". Idempotent — the frontend client
+ * (`src/services/mexc/publicClient.ts`) already converts the symbol to this
+ * underscored format before building the request URL, so this route always
+ * receives an already-converted symbol. Re-inserting a second underscore
+ * ("SILVER__USDT") matches no real MEXC contract, silently breaking every
+ * public kline/ticker fetch and falling back to synthetic placeholder data.
+ */
+export function toMexcSymbol(sym: string): string {
+  if (sym.includes('_')) return sym;
   return sym.endsWith('USDT') ? sym.slice(0, -4) + '_USDT' : sym;
 }
 

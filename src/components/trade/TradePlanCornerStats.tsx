@@ -23,9 +23,14 @@ export function TradePlanCornerStats({
   style?: CSSProperties;
 }) {
   const refPx = Math.abs(entry) > 0 ? Math.abs(entry) : 1;
-  const pctStop = pctToLevel(lastPrice, stop, refPx);
-  const pctTarget = pctToLevel(lastPrice, target, refPx);
+  // Measured from entry (not lastPrice) so these percentages describe the same fixed plan as
+  // riskReward below — their ratio is R:R by construction. Mixing an entry-anchored R:R with
+  // lastPrice-anchored Stop/Tgt percentages made the two lines contradict each other as soon as
+  // price moved away from entry (e.g. "Stop -0.33% / Tgt +48.27%" next to "R:R 242:1").
+  const pctStop = pctToLevel(entry, stop, refPx);
+  const pctTarget = pctToLevel(entry, target, refPx);
   const rr = Number.isFinite(riskReward) && riskReward > 0 ? riskReward : null;
+  void lastPrice;
 
   return (
     <div

@@ -120,6 +120,7 @@ import { BYBIT_ASSET_TRANSFER_HREF } from '@/lib/exchangeTransferUrls';
 import {
   buildTradeViewModelFromSignal,
   coerceStopTargetToSide,
+  deriveLevels,
   ensureStopForOpenPosition,
   ensureTargetForOpenPosition,
   fallbackChartCandles,
@@ -1671,19 +1672,34 @@ export function TradeScreen() {
     const pos = primaryChartOpenPosition ?? exchangeSyntheticForManageChart;
     if (pos) {
       next.entry = pos.entryPrice;
-      if (pos.stopLossPrice != null && Number.isFinite(pos.stopLossPrice) && pos.stopLossPrice > 0) {
-        next.stop = pos.stopLossPrice;
-      } else {
+      const hasRealStop = pos.stopLossPrice != null && Number.isFinite(pos.stopLossPrice) && pos.stopLossPrice > 0;
+      const hasRealTarget =
+        pos.takeProfitPrice != null && Number.isFinite(pos.takeProfitPrice) && pos.takeProfitPrice > 0;
+      if (hasRealStop) {
+        next.stop = pos.stopLossPrice as number;
+      }
+      if (hasRealTarget) {
+        next.target = pos.takeProfitPrice as number;
+      }
+      if (!hasRealStop && !hasRealTarget) {
+        // Neither leg is real exchange data: `modelForMetrics.stop`/`.target` were derived from
+        // whatever price was current when the signal/plan was built, not this position's real
+        // entry. Validating each leg only by "is it on the correct side of entry" lets a stale,
+        // unrelated value slip through on one leg while the other falls back to the synthetic
+        // default — pairing e.g. a razor-thin fallback stop with a huge stale target and
+        // producing an absurd, meaningless R:R. Derive both together so they describe one
+        // coherent plan instead.
+        const d = deriveLevels(pos.side, pos.entryPrice, selectedSignal.setupScore);
+        next.stop = d.stop;
+        next.target = d.target;
+      } else if (!hasRealStop) {
         next.stop = ensureStopForOpenPosition(
           pos.side,
           pos.entryPrice,
           modelForMetrics.stop,
           selectedSignal.setupScore,
         );
-      }
-      if (pos.takeProfitPrice != null && Number.isFinite(pos.takeProfitPrice) && pos.takeProfitPrice > 0) {
-        next.target = pos.takeProfitPrice;
-      } else {
+      } else if (!hasRealTarget) {
         next.target = ensureTargetForOpenPosition(
           pos.side,
           pos.entryPrice,

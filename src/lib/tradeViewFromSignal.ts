@@ -56,7 +56,7 @@ function setupTypeToMomentum(setupType: CryptoSignal['setupType']): AiInsight['m
 /**
  * Derive stop / target distances from setup quality: stronger setups use slightly tighter invalidation bands.
  */
-function deriveLevels(side: TradeSide, ref: number, _setupScore: number): { stop: number; target: number; entry: number } {
+export function deriveLevels(side: TradeSide, ref: number, _setupScore: number): { stop: number; target: number; entry: number } {
   const stopFrac = 0.002; // 0.2% default stop distance at trade start
   const rewardMult = 1.45;
   const entry = ref;

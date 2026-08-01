@@ -485,8 +485,14 @@ async function ensureLinearLeverage(
   }
 }
 
-/** "BTCUSDT" → "BTC_USDT" (inserts underscore before USDT) */
-function standardSymbolToMexc(sym: string): string {
+/**
+ * "BTCUSDT" → "BTC_USDT" (inserts underscore before USDT).
+ * Idempotent — callers (e.g. the frontend trade client) may already send an
+ * underscored symbol, and re-inserting a second underscore ("BTC__USDT")
+ * silently breaks every downstream contract/position lookup for that symbol.
+ */
+export function standardSymbolToMexc(sym: string): string {
+  if (sym.includes('_')) return sym;
   return sym.endsWith('USDT') ? sym.slice(0, -4) + '_USDT' : sym;
 }
 

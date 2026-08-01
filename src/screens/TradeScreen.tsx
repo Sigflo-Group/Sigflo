@@ -1716,6 +1716,21 @@ export function TradeScreen() {
       next.stop = c.stop;
       next.target = c.target;
     }
+    // riskReward on modelForMetrics reflects the pre-override plan levels — recompute it from
+    // the entry/stop/target this chart actually plots (real exchange SL/TP when open), otherwise
+    // the R:R chip shows a stale ratio that doesn't match the Stop%/Tgt% displayed next to it.
+    if (
+      Number.isFinite(next.entry) &&
+      next.entry > 0 &&
+      Number.isFinite(next.stop) &&
+      next.stop > 0 &&
+      Number.isFinite(next.target) &&
+      next.target > 0
+    ) {
+      const stopMovePct = Math.abs((next.stop - next.entry) / next.entry);
+      const targetMovePct = Math.abs((next.target - next.entry) / next.entry);
+      if (stopMovePct > 0) next.riskReward = targetMovePct / stopMovePct;
+    }
     return next;
   }, [
     exchangeSyntheticForManageChart,

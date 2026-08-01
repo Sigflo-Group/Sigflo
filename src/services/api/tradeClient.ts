@@ -157,7 +157,13 @@ export async function postMexcSetLinearLeverage(body: {
   });
 }
 
-function toMexcSymbol(sym: string): string {
+/**
+ * Idempotent — the backend also normalizes this symbol before calling MEXC
+ * (`standardSymbolToMexc`), so re-inserting a second underscore here would
+ * produce e.g. "BTC__USDT" and break every order/position lookup for it.
+ */
+export function toMexcSymbol(sym: string): string {
+  if (sym.includes('_')) return sym;
   return sym.endsWith('USDT') ? sym.slice(0, -4) + '_USDT' : sym;
 }
 

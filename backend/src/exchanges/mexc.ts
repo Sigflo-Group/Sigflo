@@ -968,26 +968,46 @@ export class MexcAdapter implements ExchangeAdapter {
 
   async fetchClosedTrades(input: ConnectInput, opts?: { limit?: number }): Promise<ClosedTradeItem[]> {
     const pageSize = String(Math.min(opts?.limit ?? 50, 100));
-    let page: MexcHistoryPage;
-    try {
+
+    async function fetchPage(pageNum: number): Promise<MexcHistoryPage> {
       const res = await futuresPrivateGet<MexcFuturesResponse<MexcHistoryPage>>(
         '/api/v1/private/position/list/history_positions',
-        { pageNum: '1', pageSize },
+        { pageNum: String(pageNum), pageSize },
         input,
       );
-      page = res.success && res.data ? res.data : { pageNum: 1, pageSize: 0, totalPage: 0, resultList: [] };
+      return res.success && res.data ? res.data : { pageNum, pageSize: 0, totalPage: 0, resultList: [] };
+    }
+
+    let rows: MexcHistoryPosition[];
+    try {
+      const first = await fetchPage(1);
+      rows = first.resultList ?? [];
+      // history_positions' sort order isn't documented/verified — if there's more than one
+      // page, the newest closes could be on either end. Also pull the last page so a
+      // recently-closed position can never silently fall outside what we ever fetch.
+      if (first.totalPage > 1) {
+        const last = await fetchPage(first.totalPage).catch(() => null);
+        if (last) {
+          const seen = new Set(rows.map((r) => r.positionId));
+          for (const r of last.resultList ?? []) {
+            if (!seen.has(r.positionId)) rows.push(r);
+          }
+        }
+      }
     } catch (e) {
       console.warn('[MEXC] fetchClosedTrades failed:', e);
       return [];
     }
 
-    return (page.resultList ?? [])
+    return rows
       .filter((p) => Number(p.closeVol) > 0)
       .map((p): ClosedTradeItem => ({
         symbol: mexcSymbolToStandard(p.symbol),
         closedPnl: Number(p.realised),
         closedAt: new Date(p.updateTime).toISOString(),
         orderId: String(p.positionId),
-      }));
+      }))
+      .sort((a, b) => new Date(b.closedAt).getTime() - new Date(a.closedAt).getTime())
+      .slice(0, Number(pageSize));
   }
 }

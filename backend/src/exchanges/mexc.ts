@@ -835,9 +835,12 @@ export class MexcAdapter implements ExchangeAdapter {
       vol: qty,
       ...(params.leverage != null && !params.reduceOnly ? { leverage: params.leverage } : {}),
       price: price ?? '0',
+      // positionMode reflects the account's dual-side setting and must be the same
+      // value on every order for the account — it isn't an open-vs-close switch.
+      positionMode: 1,
       ...(params.reduceOnly
-        ? { positionMode: 2, reduceOnly: true, ...(existingLeg ? { positionId: existingLeg.positionId } : {}) }
-        : { positionMode: 1 }),
+        ? { reduceOnly: true, ...(existingLeg ? { positionId: existingLeg.positionId } : {}) }
+        : {}),
     };
 
     // MEXC order/create rejects TP/SL on market orders — callers use setPositionTpSl after fill.

@@ -15,6 +15,9 @@ dist
 .vercel
 .env*.local
 
+# Self-signed dev HTTPS cert (scripts/dev-https-cert.mjs) — regenerated automatically
+.cert/
+
 # Claude local worktrees (nested repos; not part of Sigflo source)
 .claude/worktrees/
 

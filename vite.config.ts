@@ -4,6 +4,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
+// @ts-expect-error TS7016 — untyped .mjs module
+import { ensureDevHttpsOptions } from './scripts/dev-https-cert.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -258,6 +260,17 @@ export default defineConfig(({ mode }) => {
        * the next port (e.g. 5174), the proxy (e.g. :4000) would still forward to :5173 → blank/black UI.
        */
       strictPort: true,
+      /**
+       * Opt-in (`npm run dev:https` or `SIGFLO_DEV_HTTPS=true npm run dev`): serves the dev server over
+       * a self-signed HTTPS cert covering your LAN IP, the same reason Umbra's tls_cert.py exists — so
+       * you can open Sigflo from your phone on the same WiFi (some browser APIs require a secure
+       * context). Off by default so it doesn't interfere with tunnel-based access (Gitpod/Cursor/
+       * localtunnel already terminate TLS themselves). See scripts/dev-https-cert.mjs.
+       */
+      https:
+        (process.env.SIGFLO_DEV_HTTPS ?? envFromFiles.SIGFLO_DEV_HTTPS) === 'true'
+          ? ensureDevHttpsOptions()
+          : undefined,
       // Only proxy backend routes. `/api/ai/suggest` is handled above (and by Netlify in production).
       proxy: {
         '/bybit-proxy': {
